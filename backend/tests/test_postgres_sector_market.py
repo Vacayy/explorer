@@ -11,9 +11,10 @@ import psycopg
 from psycopg import sql
 
 from pipeline.postgres_sector_market import PostgreSQLSectorSource, load_sector_market
-from pipeline.sector_rs import SQLiteSectorSource, build_sector_map
+from pipeline.sector_rs import SQLiteSectorSource, build_sector_map, group_members_from_source
 from pipeline.sector_peers import sector_peers
-from pipeline.sector_view import industry_map, industry_map_from_source, sector_peer_list, sector_peer_list_from_source
+from pipeline.sector_view import (industry_map, industry_map_from_source, sector_members_from_source,
+                                  sector_peer_list, sector_peer_list_from_source)
 
 
 @unittest.skipUnless(os.getenv('REFACTOR_TEST_DISPOSABLE') == '1', 'disposable fixture required')
@@ -35,7 +36,7 @@ class SectorMarketTest(unittest.TestCase):
                 trade_date TEXT NOT NULL, open INTEGER, high INTEGER, low INTEGER,
                 close INTEGER, volume INTEGER, market_cap INTEGER, shares INTEGER, fetched_at TEXT,
                 UNIQUE(stock_code, trade_date));
-            CREATE TABLE companies(stock_code TEXT, sector TEXT);
+            CREATE TABLE companies(stock_code TEXT, sector TEXT, corp_name TEXT);
             CREATE TABLE sector_map(sector_name TEXT, group_name TEXT);
             CREATE TABLE sector_overrides(stock_code TEXT, sector TEXT);
             CREATE TABLE sector_peer_map(sector TEXT, peer_group_id TEXT, sort INTEGER,
@@ -46,7 +47,7 @@ class SectorMarketTest(unittest.TestCase):
             CREATE TABLE entities(id INTEGER, type TEXT, aliases TEXT, name TEXT);
             CREATE TABLE entity_relations(src_id INTEGER, dst_id INTEGER, rel_type TEXT);
             INSERT INTO sector_map VALUES ('source-a','A'),('source-b','B');
-            INSERT INTO companies VALUES ('001','source-a'),('002','source-b'),('003','source-a');
+            INSERT INTO companies VALUES ('001','source-a','one'),('002','source-b','two'),('003','source-a','three');
             INSERT INTO sector_overrides VALUES ('003','B');
             INSERT INTO sector_peer_map VALUES ('A','g',0,0,NULL,'seed');
             INSERT INTO sector_benchmarks VALUES ('A','AAA','ETF A','index',NULL),('B',NULL,NULL,NULL,NULL);
@@ -89,6 +90,10 @@ class SectorMarketTest(unittest.TestCase):
             self.assertEqual(pgsource.peer_runtime().catalog.version, 'test')
             self.assertEqual(pgsource.snapshot('2026-01-09'), SQLiteSectorSource(self.db).snapshot('2026-01-09'))
             self.assertEqual(build_sector_map(pgsource), expected)
+            self.assertEqual(group_members_from_source(pgsource, 'A'),
+                             group_members_from_source(SQLiteSectorSource(self.db), 'A'))
+            self.assertEqual(sector_members_from_source(pgsource, 'A', '2026-01-09'),
+                             sector_members_from_source(SQLiteSectorSource(self.db), 'A', '2026-01-09'))
             prices = SimpleNamespace(asOf='2026-01-09', model_dump=lambda **_: {
                 'dates': [], 'prices': {}, 'asOf': '2026-01-09', 'qualityIssues': []})
             runtime = SimpleNamespace(catalog=SimpleNamespace(

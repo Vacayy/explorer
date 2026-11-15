@@ -404,6 +404,19 @@ def _members(conn, sector: str, latest: str) -> list[dict]:
     items = [i for i in group_members_rs(sector, limit=100000)["items"] if i.get("market_cap")]
     prev_day = conn.execute("SELECT max(trade_date) FROM stock_prices WHERE trade_date < ?", (latest,)).fetchone()[0]
     cur, prev = _snapshot(conn, latest), _snapshot(conn, prev_day) if prev_day else {}
+    return _member_rows(items, cur, prev)
+
+
+def sector_members_from_source(source, sector: str, latest: str) -> list[dict]:
+    from pipeline.sector_rs import group_members_from_source
+    items = [i for i in group_members_from_source(source, sector, limit=100000)['items'] if i.get('market_cap')]
+    prev_day = source.previous_date(latest)
+    cur = source.snapshot(latest)
+    prev = source.snapshot(prev_day) if prev_day else {}
+    return _member_rows(items, cur, prev)
+
+
+def _member_rows(items, cur, prev):
     total = sum(i["market_cap"] or 0 for i in items) or 1
     out = []
     for i in items:

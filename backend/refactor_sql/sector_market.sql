@@ -17,8 +17,14 @@ CREATE INDEX sector_market_snapshot_idx
 -- entity, and override tables used by other industry screens.
 CREATE TABLE sector_market_membership (
     stock_code TEXT PRIMARY KEY,
-    sector TEXT NOT NULL
+    sector TEXT NOT NULL,
+    ordinal BIGINT NOT NULL UNIQUE
 );
+
+CREATE TABLE sector_market_companies (
+    ordinal BIGINT PRIMARY KEY, stock_code TEXT NOT NULL, corp_name TEXT
+);
+CREATE INDEX sector_market_companies_code ON sector_market_companies(stock_code);
 
 CREATE TABLE sector_market_groups (sector TEXT PRIMARY KEY);
 CREATE TABLE sector_market_peer_links (

@@ -29,7 +29,7 @@ def load_sector_market(source, destination, *, peer_runtime=None):
     count = 0
     with destination.transaction():
         destination.execute('SELECT pg_advisory_xact_lock(%s)', (_LOCK_KEY,))
-        destination.execute('TRUNCATE sector_market_prices, sector_market_membership, '
+        destination.execute('TRUNCATE sector_market_prices, sector_market_membership, sector_market_companies, '
                             'sector_market_groups, sector_market_peer_links, '
                             'sector_market_benchmarks, sector_market_benchmark_prices, sector_market_index, '
                             'sector_market_peer_runtime')
@@ -40,10 +40,16 @@ def load_sector_market(source, destination, *, peer_runtime=None):
                 copy.write_row(tuple(row))
                 count += 1
         with destination.cursor().copy(
-            'COPY sector_market_membership (stock_code, sector) FROM STDIN'
+            'COPY sector_market_membership (stock_code, sector, ordinal) FROM STDIN'
         ) as copy:
-            for row in members.items():
-                copy.write_row(row)
+            for ordinal, (code, sector) in enumerate(members.items()):
+                copy.write_row((code, sector, ordinal))
+        with destination.cursor().copy(
+            'COPY sector_market_companies (ordinal, stock_code, corp_name) FROM STDIN'
+        ) as copy:
+            for ordinal, row in enumerate(source.execute(
+                "SELECT stock_code, corp_name FROM companies WHERE stock_code IS NOT NULL AND stock_code != ''")):
+                copy.write_row((ordinal, *row))
         with destination.cursor().copy('COPY sector_market_groups (sector) FROM STDIN') as copy:
             for row in source.execute('SELECT DISTINCT group_name FROM sector_map'):
                 copy.write_row(tuple(row))
@@ -77,7 +83,17 @@ class PostgreSQLSectorSource:
         return self.conn.execute('SELECT max(trade_date) FROM sector_market_prices').fetchone()[0]
 
     def members(self):
-        return dict(self.conn.execute('SELECT stock_code, sector FROM sector_market_membership'))
+        return dict(self.conn.execute('SELECT stock_code, sector FROM sector_market_membership ORDER BY ordinal'))
+
+    def previous_date(self, before):
+        return self.conn.execute('SELECT max(trade_date) FROM sector_market_prices WHERE trade_date < %s',
+                                 (before,)).fetchone()[0]
+
+    def company_names(self, codes):
+        if not codes:
+            return {}
+        return dict(self.conn.execute('SELECT stock_code, corp_name FROM sector_market_companies '
+                                      'WHERE stock_code = ANY(%s) ORDER BY ordinal', (codes,)))
 
     def peer_runtime(self):
         """Return the bundle committed with this snapshot, or None if absent."""

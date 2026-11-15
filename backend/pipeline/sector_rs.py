@@ -126,6 +126,15 @@ class SQLiteSectorSource:
     def snapshot(self, as_of):
         return _snapshot(self.conn, as_of)
 
+    def previous_date(self, before):
+        return self.conn.execute('SELECT max(trade_date) FROM stock_prices WHERE trade_date < ?', (before,)).fetchone()[0]
+
+    def company_names(self, codes):
+        if not codes:
+            return {}
+        return {r[0]: r[1] for r in self.conn.execute(
+            f"SELECT stock_code, corp_name FROM companies WHERE stock_code IN ({','.join('?' * len(codes))})", codes)}
+
 
 def build_sector_map(source) -> dict:
     """시세·소속 조회와 계산을 분리한다. source의 전체 조회는 같은 자료 시점을 사용해야 한다."""
@@ -180,16 +189,23 @@ def compute_sector_map() -> dict:
 def group_members_rs(group_name: str, limit: int = 40) -> dict:
     """대분류 소속 종목들의 개별 RS (전 종목 대비 백분위) — 드릴다운."""
     conn = get_connection()
-    latest = conn.execute("SELECT max(trade_date) FROM stock_prices").fetchone()[0]
-    members = _members(conn)
+    try:
+        return group_members_from_source(SQLiteSectorSource(conn), group_name, limit)
+    finally:
+        conn.close()
+
+
+def group_members_from_source(source, group_name: str, limit: int = 40) -> dict:
+    """기존 전 종목 대비 RS 계산을 전달된 자료 시점에서 수행한다."""
+    latest = source.latest_date()
+    members = source.members()
     codes = [c for c, g in members.items() if g == group_name]
     if not codes or not latest:
-        conn.close()
         return {"group": group_name, "items": []}
     d = date.fromisoformat(latest)
-    cur = _snapshot(conn, latest)
-    base_l = _snapshot(conn, (d - timedelta(days=LONG_CAL_DAYS)).isoformat())
-    base_s = _snapshot(conn, (d - timedelta(days=SHORT_CAL_DAYS)).isoformat())
+    cur = source.snapshot(latest)
+    base_l = source.snapshot((d - timedelta(days=LONG_CAL_DAYS)).isoformat())
+    base_s = source.snapshot((d - timedelta(days=SHORT_CAL_DAYS)).isoformat())
 
     # 전 종목 수익률 → 백분위 (RS는 시장 전체 대비)
     def rets(base):
@@ -202,9 +218,7 @@ def group_members_rs(group_name: str, limit: int = 40) -> dict:
     rl, rs_ = rets(base_l), rets(base_s)
     pl, ps = _percentile(rl), _percentile(rs_)
 
-    names = {r["stock_code"]: r["corp_name"] for r in conn.execute(
-        f"SELECT stock_code, corp_name FROM companies WHERE stock_code IN ({','.join('?'*len(codes))})", codes)}
-    conn.close()
+    names = source.company_names(codes)
     items = [{
         "stock_code": c, "corp_name": names.get(c, c),
         "market_cap": cur.get(c, (0, 0))[1],
