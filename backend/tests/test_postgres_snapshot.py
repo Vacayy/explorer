@@ -189,6 +189,28 @@ class SnapshotReplacementTests(unittest.TestCase):
             self.assertEqual([i.model_dump() for i in actual.items], [i.model_dump() for i in expected[key].items], key)
             self.assertEqual(actual.has_more, expected[key].has_more, key)
 
+    def test_timeline_submillisecond_ties_and_until_match_sqlite(self):
+        from pipeline.timeline import timeline
+        with closing(self.fixture.connect()) as c:
+            c.execute("INSERT INTO raw_documents VALUES(8,'telegram','t/8','A',NULL,'2026-01-01T00:00:00.000400Z','내용',NULL,NULL,'[]',NULL)")
+            c.execute("INSERT INTO raw_documents VALUES(9,'telegram','t/9','B',NULL,'2026-01-01T00:00:00.000100Z','내용',NULL,NULL,'[]',NULL)")
+            c.execute("INSERT INTO telegram_channels VALUES('t','채널',1)")
+            c.execute("INSERT INTO channel_reads VALUES ('telegram:t','2026-01-01T00:00:00.000200Z',NULL)")
+            c.commit()
+            expected = [timeline(c, scope='sources', channel='telegram:t', size=1, page=page,
+                                 until='2026-01-01T00:00:00.000200Z') for page in (1, 2)]
+        self.load('2026-01-06T00:00:00+00:00')
+        reader = PostgreSQLTimelineSources(self.pg)
+        for page, wanted in enumerate(expected, 1):
+            actual = reader.timeline(scope='sources', channel='telegram:t', size=1, page=page,
+                                     until='2026-01-01T00:00:00.000200Z')
+            self.assertEqual([i.id for i in actual.items], [i.id for i in wanted.items])
+            self.assertEqual(actual.has_more, wanted.has_more)
+        from pipeline.timeline import channels
+        with closing(self.fixture.connect()) as c:
+            expected_channels = channels(c, until='2026-01-01T00:00:00.000200Z')
+        self.assertEqual(reader.channels(until='2026-01-01T00:00:00.000200Z').model_dump(), expected_channels.model_dump())
+
     def test_channel_directory_matches_sqlite_and_remains_readonly(self):
         from pipeline.timeline import channels
         with closing(self.fixture.connect()) as c:

@@ -75,6 +75,7 @@ CREATE TABLE timeline_source_projection (
     id TEXT PRIMARY KEY,
     document_id BIGINT NOT NULL REFERENCES document_projection(id),
     occurred_at TIMESTAMPTZ NOT NULL,
+    sort_millis BIGINT NOT NULL,
     channel TEXT NOT NULL,
     platform TEXT NOT NULL,
     topic_names TEXT[] NOT NULL,
@@ -82,16 +83,17 @@ CREATE TABLE timeline_source_projection (
     preview TEXT NOT NULL,
     document JSONB NOT NULL
 );
-CREATE INDEX timeline_source_order ON timeline_source_projection (occurred_at DESC, id DESC);
-CREATE INDEX timeline_source_channel ON timeline_source_projection (channel, occurred_at DESC, id DESC);
+CREATE INDEX timeline_source_order ON timeline_source_projection (sort_millis DESC, id DESC);
+CREATE INDEX timeline_source_channel ON timeline_source_projection (channel, sort_millis DESC, id DESC);
 
 CREATE TABLE timeline_system_projection (
     id TEXT PRIMARY KEY,
     occurred_at TIMESTAMPTZ NOT NULL,
+    sort_millis BIGINT NOT NULL,
     channel TEXT NOT NULL,
     topic TEXT,
     name TEXT NOT NULL,
     preview TEXT NOT NULL,
     item JSONB NOT NULL
 );
-CREATE INDEX timeline_system_order ON timeline_system_projection (occurred_at DESC, id DESC);
+CREATE INDEX timeline_system_order ON timeline_system_projection (sort_millis DESC, id DESC);

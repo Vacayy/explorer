@@ -144,7 +144,7 @@ def _timeline_source_rows(source, *, batch_size=250):
     from pipeline.timeline import _projection, _documents, utc
 
     query, params = _projection(source, scope='sources')
-    cursor = source.execute(query, params)
+    cursor = source.execute("SELECT *, CAST(ROUND((julianday(ts)-2440587.5)*86400000) AS INTEGER) sort_millis FROM (" + query + ") WHERE julianday(ts) IS NOT NULL", params)
     while rows := cursor.fetchmany(batch_size):
         ids = [row['ref'] for row in rows]
         documents = _documents(source, ids)
@@ -156,7 +156,7 @@ def _timeline_source_rows(source, *, batch_size=250):
             f'SELECT id,published_at FROM raw_documents WHERE id IN ({marks})', ids)}
         for row in rows:
             doc = documents[row['ref']]
-            yield (row['id'], row['ref'], utc(row['ts']), row['channel'], row['platform'],
+            yield (row['id'], row['ref'], utc(row['ts']), row['sort_millis'], row['channel'], row['platform'],
                    sorted(topics[row['ref']]), '게시' if published[row['ref']] else '수집',
                    row['preview'] or '', json.dumps(doc.model_dump(mode='json'), ensure_ascii=False))
 
@@ -165,14 +165,14 @@ def _timeline_system_rows(source):
     """Capture existing system-lane items without calling a generator or LLM."""
     from pipeline.timeline import _projection, timeline
     query, params = _projection(source, scope='system')
-    metadata = {r['id']: r for r in source.execute(query, params) if r['ts']}
+    metadata = {r['id']: r for r in source.execute("SELECT *, CAST(ROUND((julianday(ts)-2440587.5)*86400000) AS INTEGER) sort_millis FROM (" + query + ") WHERE julianday(ts) IS NOT NULL", params)}
     page = 1
     while True:
         result = timeline(source, scope='system', size=250, page=page,
                           until='9999-12-31T23:59:59+00:00')
         for item in result.items:
             row = metadata[item.id]
-            yield (item.id, item.occurred_at, row['channel'], row['topic'], row['name'] or '', row['preview'] or '',
+            yield (item.id, item.occurred_at, row['sort_millis'], row['channel'], row['topic'], row['name'] or '', row['preview'] or '',
                    json.dumps(item.model_dump(mode='json'), ensure_ascii=False))
         if not result.has_more:
             break
@@ -271,9 +271,9 @@ def load_snapshot(source, connection_factory, *, snapshot_at: str) -> dict:
                         feed_rows())
         _insert_batches(target, 'INSERT INTO document_filter_order VALUES (%s,%s,%s)',
                         _filter_orders(source, ordinal_keys))
-        _insert_batches(target, 'INSERT INTO timeline_source_projection VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)',
+        _insert_batches(target, 'INSERT INTO timeline_source_projection VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)',
                         _timeline_source_rows(source))
-        _insert_batches(target, 'INSERT INTO timeline_system_projection VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb)',
+        _insert_batches(target, 'INSERT INTO timeline_system_projection VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb)',
                         _timeline_system_rows(source))
         target.execute('INSERT INTO snapshot_metadata '
                        '(singleton,snapshot_at,source_observed_at,document_count,list_row_count) '

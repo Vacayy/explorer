@@ -21,21 +21,21 @@ class PostgreSQLTimelineSources:
             conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
             rows = conn.execute('''
                 SELECT id,document_id,occurred_at,time_label,payload,is_source FROM (
-                    SELECT id,document_id,occurred_at,time_label,document AS payload,TRUE AS is_source
+                    SELECT id,document_id,occurred_at,sort_millis,time_label,document AS payload,TRUE AS is_source
                     FROM timeline_source_projection
                     WHERE %s IN ('all','sources') AND %s='all'
                       AND (%s='all' OR platform=%s)
                       AND (%s::text IS NULL OR channel=%s)
                       AND (%s::text IS NULL OR %s=ANY(topic_names))
                     UNION ALL
-                    SELECT id,NULL::bigint,occurred_at,NULL::text,item,FALSE
+                    SELECT id,NULL::bigint,occurred_at,sort_millis,NULL::text,item,FALSE
                     FROM timeline_system_projection
                     WHERE %s IN ('all','system')
                       AND (%s='all' OR item->>'kind'=%s)
                       AND (%s::text IS NULL OR channel=%s)
                       AND (%s::text IS NULL OR topic=%s)
-                ) entries WHERE occurred_at <= %s::timestamptz
-                ORDER BY occurred_at DESC,id COLLATE "C" DESC LIMIT %s OFFSET %s
+                ) entries WHERE sort_millis <= FLOOR(EXTRACT(EPOCH FROM %s::timestamptz)*1000 + 0.5)
+                ORDER BY sort_millis DESC,id COLLATE "C" DESC LIMIT %s OFFSET %s
             ''', (scope, kind, source, source, channel, channel, topic, topic,
                   scope, kind, kind, channel, channel, topic, topic, until, size+1, (page-1)*size)).fetchall()
         items = []
@@ -59,19 +59,19 @@ class PostgreSQLTimelineSources:
             registries = conn.execute("SELECT table_name,row_data FROM legacy_snapshot_rows WHERE table_name IN ('telegram_channels','blog_sources','youtube_channels') ORDER BY row_ordinal").fetchall()
             rows = conn.execute("""
                 WITH updates AS (
-                  SELECT id,occurred_at,channel,platform,''::text AS name,preview FROM timeline_source_projection
+                  SELECT id,occurred_at,sort_millis,channel,platform,''::text AS name,preview FROM timeline_source_projection
                   UNION ALL
-                  SELECT id,occurred_at,channel,'system'::text,name,preview FROM timeline_system_projection
+                  SELECT id,occurred_at,sort_millis,channel,'system'::text,name,preview FROM timeline_system_projection
                 ), reads AS (
                   SELECT row_data->>'channel' AS channel, (row_data->>'read_until')::timestamptz AS read_until
                   FROM legacy_snapshot_rows WHERE table_name='channel_reads'
                 ), ranked AS (
                   SELECT u.*, count(*) OVER (PARTITION BY u.channel) AS count,
-                    sum(CASE WHEN u.occurred_at > COALESCE(r.read_until,
-                        (SELECT read_until FROM reads WHERE channel='*'), '1970-01-01'::timestamptz)
+                    sum(CASE WHEN u.sort_millis > FLOOR(EXTRACT(EPOCH FROM COALESCE(r.read_until,
+                        (SELECT read_until FROM reads WHERE channel='*'), '1970-01-01'::timestamptz))*1000 + 0.5)
                         THEN 1 ELSE 0 END) OVER (PARTITION BY u.channel) AS unread,
-                    row_number() OVER (PARTITION BY u.channel ORDER BY u.occurred_at DESC,u.id COLLATE "C" DESC) AS rank
-                  FROM updates u LEFT JOIN reads r ON r.channel=u.channel WHERE u.occurred_at <= %s::timestamptz
+                    row_number() OVER (PARTITION BY u.channel ORDER BY u.sort_millis DESC,u.id COLLATE "C" DESC) AS rank
+                  FROM updates u LEFT JOIN reads r ON r.channel=u.channel WHERE u.sort_millis <= FLOOR(EXTRACT(EPOCH FROM %s::timestamptz)*1000 + 0.5)
                 ) SELECT channel,platform,name,preview,occurred_at,count,unread FROM ranked WHERE rank=1
             """, (until,)).fetchall()
         registered = {}
