@@ -51,13 +51,28 @@ def classify_temporal(title: str, summary: str) -> dict:
     }
 
 
-def enrich(title: str, markdown: str) -> dict:
+def enrich(title: str, markdown: str, *, vocabulary_provider=None) -> dict:
     if llm_available():
+        # Explicit providers fail closed; never silently open the default DB.
+        vocabulary = _provided_vocabulary(vocabulary_provider)
         try:
-            return _enrich_llm(title, markdown)
+            if vocabulary_provider is None:
+                return _enrich_llm(title, markdown)
+            return _enrich_llm(title, markdown, vocabulary=vocabulary)
         except Exception as e:
             print(f"[enrich] LLM 실패, 키워드 fallback: {e}")
     return _enrich_keyword(title, markdown)
+
+
+def _provided_vocabulary(provider):
+    if provider is None:
+        return None
+    value = provider()
+    if not isinstance(value, (tuple, list)) or len(value) != 4:
+        raise ValueError('Vocabulary provider must return four lists')
+    if any(not isinstance(group, (tuple, list)) or any(not isinstance(x, str) for x in group) for group in value):
+        raise ValueError('Vocabulary provider must return four lists of strings')
+    return value
 
 
 def _enrich_keyword(title: str, markdown: str) -> dict:
@@ -141,11 +156,14 @@ def _foreign_company_vocab() -> list[str]:
         return []
 
 
-def _build_prompt(title: str, markdown: str) -> str:
+def _build_prompt(title: str, markdown: str, *, vocabulary=None) -> str:
     doc = f"{title}\n{(markdown or '')[:MAX_DOC_CHARS]}"
-    inds, tops = _live_vocab()
-    persons = _person_vocab()
-    companies = _foreign_company_vocab()
+    if vocabulary is None:
+        inds, tops = _live_vocab()
+        persons = _person_vocab()
+        companies = _foreign_company_vocab()
+    else:
+        inds, tops, persons, companies = vocabulary
     return (
         "다음 한국 투자 관련 문서를 분석해 JSON만 출력해. 설명·코드블록 금지.\n"
         '형식: {"stocks": [{"name": "정식 종목명", "as_written": "본문 표기", "listed": "KR|해외|비상장"}], '
@@ -225,8 +243,8 @@ def _normalize_llm_result(data: dict, model: str) -> dict:
     }
 
 
-def _enrich_llm(title: str, markdown: str) -> dict:
-    prompt = _build_prompt(title, markdown)
+def _enrich_llm(title: str, markdown: str, *, vocabulary=None) -> dict:
+    prompt = _build_prompt(title, markdown, vocabulary=vocabulary)
     result = llm.run(prompt, task="document.tag")
     raw = result.text
     return _normalize_llm_result(_parse_json(raw), result.label)
@@ -236,11 +254,14 @@ BATCH_MODEL = requested_model('document.tag_batch')  # existing cache/display fi
 BATCH_DOC_CHARS = 1500       # 배치는 문서당 발췌를 줄여 프롬프트 총량 통제
 
 
-def _build_batch_prompt(docs: list[dict]) -> str:
+def _build_batch_prompt(docs: list[dict], *, vocabulary=None) -> str:
     """문서 N건을 한 콜에 태깅 — 단건 프롬프트와 같은 스키마, 문서별 [i] 인덱스로 분리."""
-    inds, tops = _live_vocab()
-    persons = _person_vocab()
-    companies = _foreign_company_vocab()
+    if vocabulary is None:
+        inds, tops = _live_vocab()
+        persons = _person_vocab()
+        companies = _foreign_company_vocab()
+    else:
+        inds, tops, persons, companies = vocabulary
     body = "\n\n".join(
         f"[{i + 1}] 제목: {d['title']}\n{(d['markdown'] or '')[:BATCH_DOC_CHARS]}"
         for i, d in enumerate(docs))
@@ -270,12 +291,15 @@ def _build_batch_prompt(docs: list[dict]) -> str:
     )
 
 
-def enrich_batch(docs: list[dict]) -> dict[int, dict]:
+def enrich_batch(docs: list[dict], *, vocabulary_provider=None) -> dict[int, dict]:
     """배치 재태깅 (백필 전용, D-028) — docs: [{id, title, markdown}].
     반환: {doc_id: 표준 enrich dict}. 배치 전체 실패 시 예외 (호출자가 재시도 관리)."""
     if llm_engine() != "claude-code":
         raise RuntimeError("배치 재태깅은 claude-code 엔진 필요")
-    raw = llm.run(_build_batch_prompt(docs), task='document.tag_batch').text
+    vocabulary = _provided_vocabulary(vocabulary_provider)
+    prompt = (_build_batch_prompt(docs) if vocabulary_provider is None
+              else _build_batch_prompt(docs, vocabulary=vocabulary))
+    raw = llm.run(prompt, task='document.tag_batch').text
     data = _parse_json(raw)
     out: dict[int, dict] = {}
     for r in (data.get("results") or []):

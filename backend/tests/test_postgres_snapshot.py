@@ -722,6 +722,52 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
         finally:
             publisher.close()
 
+    def test_existing_enrichment_uses_isolated_graph_vocabulary(self):
+        from pipeline import enrich as enrichment
+        from pipeline.postgres_enrich_vocabulary_fixture import vocabulary_provider
+        from types import SimpleNamespace
+        with self.fixture.connect() as c:
+            c.execute('ALTER TABLE entities ADD COLUMN status TEXT')
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,epistemic_type TEXT,confidence REAL,source_doc_id INTEGER,valid_from TEXT)')
+            c.executemany('INSERT INTO entities VALUES (?,?,?,?,?)',[(8,'sector','합성 산업',None,None),(9,'theme','합성 주제',None,None),(10,'person','합성 인물',None,None),(11,'company','합성 기업',None,None),(12,'company','병합 회사',None,'merged')])
+            c.executemany('INSERT INTO entity_links VALUES (?,?,?,?)',[(1,8,'industry',1),(1,9,'topic',1),(1,10,'person',1),(1,11,'stock',1)])
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1]/'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            initialize_graph(c)
+        provider=vocabulary_provider(self.pg)
+        vocab=provider()
+        self.assertEqual((vocab[0][0],vocab[1][0],vocab[2],vocab[3]),('합성 산업','합성 주제',['합성 인물'],['합성 기업']))
+        with patch('database.get_connection',side_effect=self.fixture.connect):
+            industries,topics=enrichment._live_vocab()
+            self.assertEqual(vocab,(industries,topics,enrichment._person_vocab(),enrichment._foreign_company_vocab()))
+        answer=SimpleNamespace(text='{"summary":"합성 요약","topics":["합성 주제"]}',label='fake')
+        with patch('database.get_connection',side_effect=AssertionError('unexpected SQLite')), \
+             patch.object(enrichment,'llm_available',return_value=True), \
+             patch.object(enrichment.llm,'run',return_value=answer) as run:
+            result=enrichment.enrich('제목','본문',vocabulary_provider=provider)
+            self.assertEqual((result['summary'],result['model']),('합성 요약','fake'))
+            self.assertIn('합성 주제',run.call_args.args[0])
+            self.assertIn('합성 기업',run.call_args.args[0])
+            with self.pg() as c:
+                ident=store_document(c,source_type='note',source_id='enrich-provider-test',title='제목',markdown='본문')['id']
+            self.assertTrue(enrich_document(self.pg,ident,enrich=lambda title,body: enrichment.enrich(title,body,vocabulary_provider=provider)))
+            with self.pg() as c:
+                self.assertEqual(c.execute('SELECT summary,model FROM ingest_enrichments WHERE document_id=%s',(ident,)).fetchone(),('합성 요약','fake'))
+            with self.assertRaises(ValueError):
+                enrichment.enrich('제목','본문',vocabulary_provider=lambda:None)
+            with self.assertRaises(RuntimeError):
+                enrichment.enrich('제목','본문',vocabulary_provider=lambda: (_ for _ in ()).throw(RuntimeError('provider failed')))
+        batch=SimpleNamespace(text='{"results":[{"doc":1,"summary":"배치 요약"}]}')
+        with patch('database.get_connection',side_effect=AssertionError('unexpected SQLite')), \
+             patch.object(enrichment,'llm_engine',return_value='claude-code'), \
+             patch.object(enrichment.llm,'run',return_value=batch) as run:
+            result=enrichment.enrich_batch([{'id':1,'title':'제목','markdown':'본문'}],vocabulary_provider=provider)
+            self.assertEqual(result[1]['summary'],'배치 요약')
+            self.assertIn('합성 주제',run.call_args.args[0])
+
     def test_telegram_connector_collects_and_enriches_without_network(self):
         with self.fixture.connect() as c:
             c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
