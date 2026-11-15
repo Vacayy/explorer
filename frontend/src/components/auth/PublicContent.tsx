@@ -9,7 +9,7 @@ import { PublicFinancialSearch, PublicFinancialsPage } from '@/components/financ
 import { Link, useLocation, useMatch } from 'react-router-dom'
 import { PublicUsSectorPage } from '@/components/industry/PublicUsSectorPage'
 import IndustryMapPage from '@/components/industry/IndustryMapPage'
-import { MarketHero } from '@/components/home/MarketHero'
+import HomePage, { HomeKrPage, HomeUsPage } from '@/components/home/HomePage'
 import { PageContainer } from '@/components/shared/PageContainer'
 import { Button } from '@/components/ui/button'
 import { PublicDocumentPage } from '@/components/doc/PublicDocumentPage'
@@ -41,13 +41,9 @@ export function PublicContent() {
   if (document?.params.docId) return <PublicDocumentPage docId={document.params.docId} />
   if (sector?.params.ticker) return <PublicUsSectorPage ticker={sector.params.ticker} />
   if (pathname === '/industry') return <IndustryMapPage />
-  if (['/', '/home', '/home/kr', '/home/us'].includes(pathname)) {
-    const market = pathname === '/home/us' ? 'us' : 'kr'
-    return <PageContainer><h1 className="text-xl font-medium">{market === 'kr' ? '한국 시장' : '미국 시장'}</h1>
-      <Button variant="outline" asChild><Link to="/financials">기업 재무 조회</Link></Button>
-      <MarketHero market={market} />
-    </PageContainer>
-  }
+  if (pathname === '/' || pathname === '/home') return <HomePage />
+  if (pathname === '/home/kr') return <HomeKrPage />
+  if (pathname === '/home/us') return <HomeUsPage />
   return <PageContainer><h1 className="text-xl font-medium">아직 공개되지 않은 화면입니다</h1>
     <p className="text-sm text-ink-2">현재 공개된 시장 정보와 미국 산업 지도를 둘러보세요.</p>
     <Button asChild variant="outline"><Link to="/home/kr">시장으로 이동</Link></Button>

@@ -379,7 +379,7 @@ def read(day: str | None = None, slot: str | None = None) -> dict:
         conn.close()
 
 
-def read_snapshot(conn, day: str | None = None, slot: str | None = None) -> dict:
+def read_snapshot(conn, day: str | None = None, slot: str | None = None, *, include_links: bool = True) -> dict:
     """Read a prepared connection without schema changes, collection or model calls.
 
     This preserves the complete stored response; public callers must separately
@@ -393,14 +393,14 @@ def read_snapshot(conn, day: str | None = None, slot: str | None = None) -> dict
     if nxt is None and day < today:
         nxt = today            # 오늘은 회차가 아직 없어도 갈 수 있다
     nav = {"prev_date": prev, "next_date": nxt, "next_slot": _next_label() if day == today else None}
-    rows = conn.execute("SELECT * FROM market_today WHERE trade_date=? ORDER BY slot", (day,)).fetchall()
+    rows = conn.execute("SELECT id,trade_date,slot,created_at,items_json,sources_json,counts_json,market_json,window_start,window_end,doc_count,links_at FROM market_today WHERE trade_date=? ORDER BY slot", (day,)).fetchall()
     slots = [{"slot": r["slot"], "label": SLOT_LABEL[r["slot"]], "created_at": r["created_at"],
               "topics": len(json.loads(r["items_json"]))} for r in rows]
     pick = next((r for r in rows if r["slot"] == slot), rows[-1] if rows else None)
     current = None
     if pick:
         from pipeline.market_today_links import links_for_session
-        ready = pick["links_at"] is not None
+        ready = include_links and pick["links_at"] is not None
         links = links_for_session(conn, pick["id"]) if ready else {}
         sources = json.loads(pick["sources_json"])
         counts = json.loads(pick["counts_json"] or "{}")

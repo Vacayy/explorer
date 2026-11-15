@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom"
 import { DetailLink as Link } from "@/components/shared/DetailNavigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -9,7 +10,7 @@ import { FillState, FlowCard, NameLink, TurnoverCard } from "@/components/home/M
 import { tradeIsLagging } from "@/lib/trade"
 import { RegimeBadge, metricValue } from "@/components/retail/retailFormat"
 import { EventList, StageBadge, TrendEvidenceDialog } from "@/components/widgets/trend"
-import { SCHEDULE, TopicRow, kstToday, slotTime } from "@/components/widgets/marketToday"
+import { DayNav, SCHEDULE, TopicRow, kstToday, slotTime } from "@/components/widgets/marketToday"
 import { mmdd } from "@/components/follow/season/seasonUi"
 import { useUrlParam } from "@/hooks/useUrlParam"
 import { useKrMovers } from "@/hooks/useKrMovers"
@@ -35,6 +36,7 @@ const daysTo = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00
 export function MarketTodayCard() {
   const [slotParam, setSlot] = useUrlParam("mtslot", "")
   const [dateParam] = useUrlParam("mtdate", "")   // 지난 회차 열기('AI가 최근 만든 것'에서) — 없으면 오늘
+  const [, setParams] = useSearchParams()
   const latest = useMarketToday(null, dateParam || null)
   const q = useMarketToday(slotParam || null, dateParam || null)
   const d = q.data ?? latest.data
@@ -48,6 +50,12 @@ export function MarketTodayCard() {
   return <MarketCard band="summary" label="kr.today">
     <BlockHead section title="오늘 시장 이야기" info="장중 실시간 소스(텔레그램·뉴스)에서 주로 나온 얘기를 회차마다 정리합니다" sub={sub}
       actions={<Seg label="정리 회차" value={c?.slot ?? ""} items={items} onChange={v => setSlot(v === latest.data?.current?.slot ? "" : v)} />} />
+    {d && <DayNav day={d} onGo={value => setParams(previous => {
+      const next = new URLSearchParams(previous)
+      if (value) next.set("mtdate", value); else next.delete("mtdate")
+      next.delete("mtslot")
+      return next
+    }, { replace: true })} />}
     <AiLine>AI 요약{c ? ` · ${c.label} 정리` : d?.next_slot ? ` · 다음 정리 ${d.next_slot}` : ""}{!isToday && d?.trade_date ? ` · ${mdw(d.trade_date)}` : ""}</AiLine>
     <FillState data={d} isError={q.isError && latest.isError} error={q.error} onRetry={() => void q.refetch()} message="오늘 시장 이야기를 불러오지 못했습니다">{() => !c
       ? <FillNote>{isToday && d!.next_slot ? `오늘 첫 정리는 ${d!.next_slot}에 나와요.` : "이날은 장중 정리가 없어요."}</FillNote>

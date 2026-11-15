@@ -14,7 +14,7 @@
 
 ## 저장된 한국 브리핑 조회 분리
 
-`market_today.read_snapshot(conn, day, slot)`는 준비된 연결에서 기존 회차·본문·출처·내러티브 링크·날짜 탐색 응답을 읽는다. 연결 소유/스키마 준비/수집/모델 호출은 수행하지 않는다. private `read`는 기존 초기화 후 같은 함수를 사용한다. 이 함수 자체는 공개 투영이 아니며, 공개 연결에서는 출처 metadata와 연결 대상의 허용 범위를 별도로 적용해야 한다.
+`market_today.read_snapshot(conn, day, slot)`는 준비된 연결에서 기존 회차·본문·출처·내러티브 링크·날짜 탐색 응답을 읽는다. 연결 소유/스키마 준비/수집/모델 호출은 수행하지 않는다. private `read`는 기존 초기화 후 같은 함수를 사용한다. `security.public_market_today`가 공개 GET에 이 함수를 연결한다. 명시 준비된 market_today 컬럼만 readonly authorizer로 읽고 내러티브 조회를 끈다. 본문·회차·날짜 탐색은 유지하며 출처 링크는 현재 승인 문서 metadata로 재구성하고 그 외 출처/refs와 비공개 내러티브 링크를 제외한다. 집계는 해당 저장 브리핑의 생성 시점 기준이다. 공개 HomePage/HomeKrPage/HomeUsPage는 원래 컴포넌트를 사용하며 한국 브리핑 외 다른 블록의 공개 조회 연결은 아직 진행 중이다. 한국 시장 카드도 기존 DayNav를 공유하고 날짜 변경과 회차 초기화를 한 URL 갱신으로 처리한다.
 
 ## 공개 API 시작·종료 경계
 

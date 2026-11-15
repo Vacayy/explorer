@@ -72,7 +72,7 @@ export function MarketTodayBody({ w, h }: WidgetBodyProps) {
 }
 
 /** 날짜 넘기기 — ‹ 앞 날 · 보는 날 · 뒷 날 › (회차가 있는 날로만 이동, 오늘은 회차 전이어도 갈 수 있다) */
-function DayNav({ day, onGo }: { day: MarketToday; onGo: (d: string | null) => void }) {
+export function DayNav({ day, onGo }: { day: MarketToday; onGo: (d: string | null) => void }) {
   if (!day.trade_date) return null
   const today = day.trade_date === kstToday()
   return <div className="flex items-center gap-1 text-[12.5px] text-ink-2">
