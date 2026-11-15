@@ -311,13 +311,75 @@ class SnapshotReplacementTests(unittest.TestCase):
         def target(): return psycopg.connect(self.dsn, options=f'-c search_path={destination}')
         with target() as c:
             c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
-        with self.assertRaisesRegex(ValueError, 'Only note changes'):
+        with self.assertRaisesRegex(ValueError, 'Only same-content summary updates'):
             with self.pg() as c:
                 c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
                 copy_with_note_changes(c,self.schema,destination)
         with target() as c:
             self.assertEqual(c.execute('SELECT count(*) FROM document_projection').fetchone()[0],0)
         self.assertEqual(self.reader.list().total, 2)
+
+    def test_blog_summary_update_preserves_filters_links_and_timeline(self):
+        self.load('2026-01-03T00:00:00+00:00')
+        before = self.reader.get(1)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            job = claim_enrichment(c,document_id=1)
+            finish_enrichment(c,document_id=1,**job,summary='새 블로그 요약',model='fixture')
+            self.assertEqual(c.execute('SELECT count(*) FROM timeline_source_projection WHERE document_id=1').fetchone()[0],1)
+        destination = 'refactor_fixture_' + uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn,options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            copy_with_note_changes(c,self.schema,destination)
+        reader = PostgreSQLDocumentReader(target)
+        self.assertEqual(reader.get(1).summary,'새 블로그 요약')
+        self.assertEqual(reader.get(1).entities,before.entities)
+        self.assertEqual(reader.list(source='blog').items[0].summary,'새 블로그 요약')
+        with target() as c:
+            self.assertEqual(c.execute('SELECT document->>\'summary\' FROM timeline_source_projection WHERE document_id=1').fetchone()[0], '새 블로그 요약')
+        self.assertEqual(self.reader.get(1).summary,before.summary)
+
+    def test_youtube_summary_update_keeps_transcript_and_timeline(self):
+        transcript='합성 자막 ' * 30
+        with self.fixture.connect() as c:
+            c.execute("INSERT INTO raw_documents VALUES (10,'youtube','UCfixture/abc123def45','영상',"
+                      "'https://example.test','2026-01-01',?,?,'pending',NULL,NULL)",(transcript,transcript))
+            c.execute("INSERT INTO youtube_channels VALUES ('UCfixture','합성 채널',1)")
+        self.load('2026-01-03T00:00:00+00:00')
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            job=claim_enrichment(c,document_id=10)
+            finish_enrichment(c,document_id=10,**job,summary='영상 요약',model='fixture')
+        destination='refactor_fixture_'+uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn,options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            copy_with_note_changes(c,self.schema,destination)
+        reader=PostgreSQLDocumentReader(target)
+        detail=reader.get(10)
+        self.assertEqual((detail.summary,detail.transcript,detail.digest_status),('영상 요약',transcript,'pending'))
+        self.assertEqual(reader.list(source='youtube').items[0].summary,'영상 요약')
+        with target() as c:
+            self.assertEqual(c.execute('SELECT document->>\'summary\' FROM timeline_source_projection WHERE document_id=10').fetchone()[0],'영상 요약')
 
     def test_note_overlay_updates_summary_without_discarding_matching_vector(self):
         import struct

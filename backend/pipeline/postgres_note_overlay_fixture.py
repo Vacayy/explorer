@@ -30,10 +30,9 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                          'WHERE d.projection_version>d.projected_version ORDER BY d.id').fetchall()
     updates = []
     for ident,source,source_id,title,url,published,raw,markdown,media,status,digest,revision,summary,model in dirty:
-        if source != 'note':
-            raise ValueError('Only note changes are supported')
-        if conn.execute('SELECT 1 FROM timeline_source_projection WHERE document_id=%s', (ident,)).fetchone():
-            raise ValueError('Timeline changes are not supported')
+        if source not in ('note','blog','youtube'):
+            raise ValueError('Unsupported source change')
+        timeline_present = bool(conn.execute('SELECT 1 FROM timeline_source_projection WHERE document_id=%s', (ident,)).fetchone())
         prior = reader.get_in_transaction(conn, ident)
         media_changed = (prior.images if prior else []) != (media or [])
         if media_changed and media:
@@ -42,6 +41,10 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
             for path in media:
                 captured[path] = _read_file(root, path)
         same_revision = prior is not None and revision == 1
+        if source != 'note' and (not same_revision or media_changed):
+            raise ValueError('Only same-content summary updates are supported for this source')
+        if timeline_present and (source == 'note' or not same_revision or media_changed):
+            raise ValueError('Timeline content changes are not supported')
         if same_revision and media_changed and model is not None and (summary,model) != (prior.summary,prior.enrich_model):
             raise ValueError('Combined same-revision media and summary changes are ambiguous')
         if same_revision and not media_changed and model is None:
@@ -109,6 +112,10 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                           'enriched_at':'2026-01-01T00:00:00Z'}
             conn.execute("INSERT INTO legacy_snapshot_rows SELECT 'enrichments',COALESCE(max(row_ordinal)+1,0),%s "
                          "FROM legacy_snapshot_rows WHERE table_name='enrichments'", (Jsonb(enrichment),))
+            if same_revision:
+                conn.execute("UPDATE timeline_source_projection SET document=jsonb_set(jsonb_set(document,'{summary}',%s),'{enrich_model}',%s) "
+                             "WHERE document_id=%s", (Jsonb(summary),Jsonb(model),ident))
+                conn.execute('UPDATE timeline_source_metadata SET enrichment_id=%s WHERE document_id=%s', (next_id,ident))
     conn.execute('CREATE TEMP TABLE overlay_new_rows(old_ordinal bigint,document_id bigint,list_document jsonb) ON COMMIT DROP')
     conn.execute('INSERT INTO overlay_new_rows SELECT ordinal,document_id,list_document FROM overlay_old_list '
                  'WHERE NOT (document_id=ANY(%s))', (replaced_ids,))
@@ -125,8 +132,17 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                n.old_ordinal,n.document_id,n.list_document
         FROM overlay_new_rows n JOIN document_projection d ON d.id=n.document_id''')
     conn.execute('INSERT INTO document_list_projection SELECT ordinal,document_id,list_document FROM overlay_ord')
-    conn.execute("INSERT INTO document_filter_order SELECT f.filter_key,f.position,n.ordinal FROM overlay_old_filters f "
-                 "JOIN overlay_ord n ON n.old_ordinal=f.list_ordinal WHERE f.filter_key<>'note'")
+    conn.execute('''INSERT INTO document_filter_order
+        SELECT filter_key,row_number() OVER (PARTITION BY filter_key ORDER BY old_position,ordinal)-1,ordinal
+        FROM (
+            SELECT f.filter_key,f.position AS old_position,n.ordinal FROM overlay_old_filters f
+            JOIN overlay_ord n ON n.old_ordinal=f.list_ordinal WHERE f.filter_key<>'note'
+            UNION ALL
+            SELECT f.filter_key,min(f.position),n.ordinal FROM overlay_old_filters f
+            JOIN overlay_old_list l ON l.ordinal=f.list_ordinal
+            JOIN overlay_ord n ON n.document_id=l.document_id AND n.old_ordinal IS NULL
+            WHERE f.filter_key<>'note' GROUP BY f.filter_key,n.ordinal
+        ) membership''')
     conn.execute("INSERT INTO document_filter_order SELECT 'note',row_number() OVER (ORDER BY n.ordinal)-1,n.ordinal "
                  "FROM overlay_ord n JOIN document_projection d ON d.id=n.document_id WHERE d.source_type='note'")
     conn.execute("UPDATE legacy_snapshot_tables t SET row_count=(SELECT count(*) FROM legacy_snapshot_rows r WHERE r.table_name=t.table_name) "
