@@ -159,6 +159,26 @@ class SnapshotReplacementTests(unittest.TestCase):
             item=signals_items(c,since='2026-01-01',signal_type='mention_surge')[0]
             self.assertEqual(item.payload['count_7d'],3)
 
+    def test_transcript_detail_and_quarters_use_snapshot(self):
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE entity_keywords(entity_id INTEGER,keyword TEXT,status TEXT)')
+            c.execute('CREATE TABLE entity_relations(id INTEGER,src_id INTEGER,dst_id INTEGER,rel_type TEXT,effect_direction TEXT,source_doc_id INTEGER)')
+            c.execute("INSERT INTO transcripts VALUES (10,1,'TEST',2026,'Q1','저장된 정리','2026-01-01')")
+            c.execute("INSERT INTO transcript_follow VALUES ('TEST','합성 기업',1)")
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True)
+        from fastapi.testclient import TestClient
+        script=Path(__file__).resolve().parents[2]/'scripts/refactor_document_ui.py'
+        with patch.dict(os.environ,{'REFACTOR_FIXTURE_SCHEMA':self.schema}):
+            spec=importlib.util.spec_from_file_location('fixture_transcript_ui',script)
+            module=importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            with TestClient(module.app) as client:
+                detail=client.get('/api/spine/transcript/detail/10')
+                self.assertEqual(detail.status_code,200)
+                self.assertEqual((detail.json()['digest'],detail.json()['body']),('저장된 정리','원문'))
+                self.assertEqual(client.get('/api/spine/transcript/company/test').json()[0]['transcript_id'],10)
+                self.assertEqual(client.get('/api/spine/transcript/detail/999').status_code,404)
+
     def test_event_snapshot_keeps_calendar_order_and_company(self):
         with self.fixture.connect() as c:
             c.execute('CREATE TABLE catalysts(id INTEGER,stock_code TEXT,corp_code TEXT,event_type TEXT,event_date TEXT,title TEXT)')

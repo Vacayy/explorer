@@ -26,6 +26,8 @@ from pipeline.postgres_signals_fixture import signals_items, signals_summary, me
 from routers.spine_signals import SignalsSummary, MomentumResponse
 from pipeline.postgres_narrative_fixture import list_narratives, cached_narrative
 from routers.spine_narrative import NarrativeList, Narrative
+from pipeline.postgres_transcript_fixture import quarters, transcript_detail
+from routers.spine_transcript import QuarterRow, Detail
 from routers.spine_doc import DocClaims, RelatedDoc
 from pipeline.postgres_related_documents import CentroidIndex, related_documents
 from pipeline.postgres_us_sectors import us_map as postgres_us_map, us_sector_detail as postgres_us_sector_detail
@@ -92,6 +94,28 @@ def experimental_narrative_detail(topic: str):
     with factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         return cached_narrative(connection,topic)
+
+
+@app.get('/api/spine/transcript/company/{ticker}', response_model=list[QuarterRow])
+def experimental_transcript_quarters(ticker: str):
+    with factory() as connection:
+        connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        try:
+            return quarters(connection,ticker)
+        except ValueError as exc:
+            raise HTTPException(503,'컨콜 자료가 준비되지 않았습니다.') from exc
+
+
+@app.get('/api/spine/transcript/detail/{transcript_id}', response_model=Detail)
+def experimental_transcript_detail(transcript_id: int):
+    with factory() as connection:
+        connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        try:
+            result=transcript_detail(connection,transcript_id)
+        except ValueError as exc:
+            raise HTTPException(503,'컨콜 자료가 준비되지 않았습니다.') from exc
+        if result is None: raise HTTPException(404,'transcript 없음')
+        return result
 
 
 @app.get('/api/spine/feed', response_model=FeedResponse)
