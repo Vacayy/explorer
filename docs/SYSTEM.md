@@ -709,6 +709,8 @@ tail -f logs/ingest.log               # 수집 관찰
 
 `pipeline/document_read.py`는 기존 문서 상세의 SQLite 조회를 `SQLiteDocumentReader` 경계로 분리한다. 기존 API 응답 모델과 경로는 유지한다. `pipeline/postgres_document_read.py`와 `refactor_sql/document_projection.sql`은 동일한 문서 상세·일부 피드 목록 응답을 합성 PostgreSQL 자료로 비교하는 실험용 읽기 어댑터다. 목록 행은 기존 SQLite의 다중 요약 결합으로 같은 문서가 여러 번 나타날 수 있는 동작과 원본 문서 기준 총 건수를 각각 보존한다. 필터 전체, 수집·실제 DB 이관·쓰기·운영 연결은 구현하지 않았으며 이 구조를 최종 PostgreSQL 스키마로 확정하지 않는다. `psycopg[binary]`는 실험용 PostgreSQL 연결 의존성이다.
 
+`pipeline/postgres_search_snapshot.py`는 격리 fixture의 동일 PostgreSQL generation에서 문서·기존 벡터를 읽어 메모리 SQLite FTS5/sqlite-vec 색인을 만드는 검색 실험이다. 모델이 없을 때 lexical 검색을 제공하며, 실서비스 API·필터·페이지·generation 갱신에는 연결하지 않는다. 색인 재생성 시 동점 결과의 순서가 기존과 달라질 수 있다. 메모리 사용량과 운영 적합성은 미검증이다.
+
 `scripts/refactor_document_sample.py`는 읽기 전용 SQLite 단일 트랜잭션에서 최대 50개 목록 행과 선택한 소수 문서 상세를 읽고, 격리 테스트 PostgreSQL의 임시 schema에 응답을 넣어 비교한 뒤 schema를 삭제한다. 예제 목적의 fixture DB 외 연결을 거부하며 문서 내용·DSN을 출력하지 않는다. 이는 원본 전체 이관이나 최신 동기화 구현이 아니다.
 
 `pipeline/postgres_snapshot.py`는 격리 실험에서 query-only SQLite 단일 트랜잭션의 문서·저장 요약·첨부 참조·엔티티를 읽어 PostgreSQL 조회용 projection을 한 트랜잭션으로 교체한다. snapshot 시각은 요청 응답의 `as_of`와 별도 보관한다. 중간 실패 시 이전 projection을 유지한다. 목록과 문서 상세를 묶음 처리하지만 문서 ID·분류는 메모리에 보관하며 실제 전체 자료 성능·첨부 파일 전송·증분 동기화는 검증하지 않았다. 블로그·뉴스·기사·인물 필터는 SQLite의 기존 소스 분류·팔로우 규칙을 기준으로 합성 자료에서 비교한다. 검색과 나머지 필터는 아직 구현하지 않았다.
