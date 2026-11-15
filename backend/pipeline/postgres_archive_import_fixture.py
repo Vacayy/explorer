@@ -26,13 +26,16 @@ def import_archived_documents(conn):
                CASE WHEN COALESCE(row_data->>'media_json','')='' THEN NULL ELSE (row_data->>'media_json')::jsonb END,
                row_data->>'digest_status', COALESCE(row_data->>'content_hash','')
         FROM legacy_snapshot_rows WHERE table_name='raw_documents' ORDER BY row_ordinal''')
+    # Legacy detail displays the latest result even when it does not match the
+    # current document hash. Keep that display in the archive, but only treat a
+    # hash-matching result as current in the write ledger.
     conn.execute('''INSERT INTO ingest_enrichments(document_id,revision,summary,model)
-        SELECT DISTINCT ON ((row_data->>'doc_id')::bigint)
-               (row_data->>'doc_id')::bigint, 1, row_data->>'summary', row_data->>'model'
-        FROM legacy_snapshot_rows
-        WHERE table_name='enrichments' AND (row_data->>'doc_id')::bigint IN (SELECT id FROM ingest_documents)
-        ORDER BY (row_data->>'doc_id')::bigint, (row_data->>'enriched_at') COLLATE "C" DESC NULLS LAST,
-                 (row_data->>'id')::bigint DESC''')
+        SELECT DISTINCT ON (d.id) d.id, 1, e.row_data->>'summary', e.row_data->>'model'
+        FROM legacy_snapshot_rows e JOIN ingest_documents d ON d.id=(e.row_data->>'doc_id')::bigint
+        WHERE e.table_name='enrichments' AND d.content_hash <> ''
+              AND e.row_data->>'content_hash'=d.content_hash
+        ORDER BY d.id, (e.row_data->>'enriched_at') COLLATE "C" DESC NULLS LAST,
+                 (e.row_data->>'id')::bigint DESC''')
     conn.execute("INSERT INTO ingest_enrichment_jobs(document_id,revision,status) "
                  "SELECT d.id,1,CASE WHEN e.document_id IS NULL THEN 'pending' ELSE 'done' END "
                  "FROM ingest_documents d LEFT JOIN ingest_enrichments e ON e.document_id=d.id")

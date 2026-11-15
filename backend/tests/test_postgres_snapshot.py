@@ -78,13 +78,32 @@ class SnapshotReplacementTests(unittest.TestCase):
             self.assertEqual(import_archived_documents(c), 2)
             source_count = c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='raw_documents'").fetchone()[0]
             self.assertEqual(source_count, c.execute('SELECT count(*) FROM ingest_documents').fetchone()[0])
-            self.assertEqual(c.execute('SELECT summary FROM ingest_enrichments WHERE document_id=1').fetchone()[0], '저장된 요약')
+            self.assertIsNone(c.execute('SELECT summary FROM ingest_enrichments WHERE document_id=1').fetchone())
+            self.assertEqual(c.execute('SELECT status FROM ingest_enrichment_jobs WHERE document_id=1').fetchone()[0], 'pending')
             row = store_document(c, source_type='note', source_id='new', title='new', markdown='synthetic')
             self.assertGreater(row['id'], 2)
         with self.assertRaisesRegex(ValueError, 'nonempty ledger'):
             with self.pg() as c:
                 import_archived_documents(c)
         self.assertEqual(self.reader.list().total, 2)
+
+    def test_import_preserves_legacy_display_but_only_current_hash_is_complete(self):
+        with self.fixture.connect() as c:
+            c.execute('ALTER TABLE raw_documents ADD COLUMN content_hash TEXT')
+            c.execute('ALTER TABLE enrichments ADD COLUMN content_hash TEXT')
+            c.execute("UPDATE raw_documents SET content_hash='current' WHERE id=1")
+            c.execute("INSERT INTO enrichments(id,doc_id,summary,model,enriched_at,content_hash) "
+                      "VALUES (3,1,'현재 원문의 요약','fixture','2026-02-01','current')")
+            c.execute("INSERT INTO enrichments(id,doc_id,summary,model,enriched_at,content_hash) "
+                      "VALUES (4,1,'나중의 오래된 요약','fixture','2026-03-01','stale')")
+        self.load('2026-01-03T00:00:00+00:00')
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            self.assertEqual(c.execute('SELECT summary FROM ingest_enrichments WHERE document_id=1').fetchone()[0], '현재 원문의 요약')
+            self.assertEqual(c.execute('SELECT status FROM ingest_enrichment_jobs WHERE document_id=1').fetchone()[0], 'done')
+            self.assertEqual(c.execute('SELECT status FROM ingest_enrichment_jobs WHERE document_id=2').fetchone()[0], 'pending')
+        self.assertEqual(self.reader.get(1).summary, '나중의 오래된 요약')
 
     def test_ledger_detail_keeps_legacy_links_and_suppresses_stale_links(self):
         self.load('2026-01-03T00:00:00+00:00')
