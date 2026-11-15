@@ -21,6 +21,7 @@ from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
 from pipeline.postgres_rebuild_detail import rebuild_details
 from pipeline.postgres_timeline_sources import PostgreSQLTimelineSources
 from pipeline.postgres_rebuild_timeline import rebuild_source_timeline
+from pipeline.postgres_rebuild_system_timeline import rebuild_system_timeline
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -189,6 +190,34 @@ class SnapshotReplacementTests(unittest.TestCase):
             actual = reader.timeline(until='2026-01-06T00:00:00Z', **params)
             self.assertEqual([i.model_dump() for i in actual.items], [i.model_dump() for i in expected[key].items], key)
             self.assertEqual(actual.has_more, expected[key].has_more, key)
+
+    def test_rebuild_system_timeline_from_raw_and_rollback(self):
+        with closing(self.fixture.connect()) as c:
+            c.executescript("""
+            INSERT INTO source_digests VALUES (1,'person','인물','요약',2,'2026-01-01');
+            INSERT INTO transcript_follow VALUES ('MU','Micron',1);
+            INSERT INTO transcripts VALUES (1,1,'MU',2025,'Q4','통화 요약','2026-01-01');
+            INSERT INTO trade_follow VALUES ('1234','품목','그룹',1);
+            INSERT INTO trade_stats VALUES ('1234','2025-12','2026-01-01');
+            INSERT INTO narratives VALUES (1,'주제',1,'제목','본문',1,'2026-01-01');
+            INSERT INTO reports VALUES (1,'주제','보고서','본문','[]','2026-01-01');
+            INSERT INTO scenarios VALUES ('주제','답변',NULL,'2026-01-01');
+            """)
+            c.commit()
+        self.load('2026-01-06T00:00:00+00:00')
+        with self.pg() as c:
+            expected = c.execute('SELECT * FROM timeline_system_projection ORDER BY id').fetchall()
+            self.assertEqual(len(expected), 7)
+            c.execute('DELETE FROM timeline_system_projection')
+        self.assertEqual(rebuild_system_timeline(self.pg), len(expected))
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT * FROM timeline_system_projection ORDER BY id').fetchall(), expected)
+            c.execute("CREATE FUNCTION fail_system() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic failure'; END $$")
+            c.execute('CREATE TRIGGER fail_system BEFORE INSERT ON timeline_system_projection FOR EACH ROW EXECUTE FUNCTION fail_system()')
+        with self.assertRaises(psycopg.errors.RaiseException):
+            rebuild_system_timeline(self.pg)
+        with self.pg() as c:
+            self.assertEqual(c.execute('SELECT * FROM timeline_system_projection ORDER BY id').fetchall(), expected)
 
     def test_rebuild_source_timeline_from_raw_and_failure_rolls_back(self):
         self.load('2026-01-06T00:00:00+00:00')

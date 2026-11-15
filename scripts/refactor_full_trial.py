@@ -29,6 +29,7 @@ from pipeline.postgres_document_read import PostgreSQLDocumentReader
 from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
 from pipeline.postgres_timeline_sources import PostgreSQLTimelineSources
 from pipeline.postgres_rebuild_timeline import rebuild_source_timeline
+from pipeline.postgres_rebuild_system_timeline import rebuild_system_timeline
 from pipeline.timeline import timeline, channels
 from pipeline.postgres_snapshot import LEGACY_TABLES, load_snapshot
 from routers import spine_feed
@@ -46,7 +47,7 @@ def _feed(conn, *, source=None, page=1, size=20):
 
 
 def run(source_path: Path, media: Path, dsn: str, *, retain: bool = False,
-        retain_on_mismatch: bool = False, rebuild_source: bool = False) -> dict:
+        retain_on_mismatch: bool = False, rebuild_source: bool = False, rebuild_system: bool = False) -> dict:
     if os.getenv('REFACTOR_TEST_DISPOSABLE') != '1':
         raise ValueError('Disposable fixture opt-in required')
     params = psycopg.conninfo.conninfo_to_dict(dsn)
@@ -162,6 +163,16 @@ def run(source_path: Path, media: Path, dsn: str, *, retain: bool = False,
         new_channels = timeline_reader.channels(until=fixed_until)
         result['timeline_channels_match'] = old_channels.model_dump() == new_channels.model_dump()
         result['timeline_channel_count'] = len(old_channels.items)
+        if rebuild_system:
+            started = time.monotonic()
+            result['system_timeline_rebuilt_rows'] = rebuild_system_timeline(pg)
+            result['system_timeline_rebuild_seconds'] = round(time.monotonic()-started, 2)
+            result['system_timeline_rebuild_cases_match'] = {
+                name: ([i.model_dump() for i in timeline(source, until=fixed_until, **params).items] ==
+                       [i.model_dump() for i in timeline_reader.timeline(until=fixed_until, **params).items])
+                for name, params in system_cases.items()
+            }
+            result['system_rebuilt_channels_match'] = old_channels.model_dump() == timeline_reader.channels(until=fixed_until).model_dump()
         if rebuild_source:
             started = time.monotonic()
             result['source_timeline_rebuilt_rows'] = rebuild_source_timeline(pg)
@@ -234,6 +245,8 @@ def run(source_path: Path, media: Path, dsn: str, *, retain: bool = False,
                            all(result['system_timeline_cases_match'].values()), result['timeline_channels_match'],
                            not rebuild_source or (all(result['source_timeline_rebuild_cases_match'].values())
                                                   and result['rebuilt_timeline_channels_match']),
+                           not rebuild_system or (all(result['system_timeline_rebuild_cases_match'].values())
+                                                  and result['system_rebuilt_channels_match']),
                            result['raw_detail_samples_match'] or retain_on_mismatch)):
             result['fixture_schema'] = schema
             retain_completed = True
@@ -249,6 +262,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--media', type=Path, required=True)
+    parser.add_argument('--rebuild-system', action='store_true', help='rebuild system timeline from PG raw rows and compare')
     parser.add_argument('--rebuild-source', action='store_true', help='rebuild source timeline from PG raw rows and compare')
     parser.add_argument('--retain', action='store_true', help='retain a successful disposable fixture for UI testing')
     parser.add_argument('--retain-on-mismatch', action='store_true', help='retain a mismatched fixture only for local debugging')
@@ -257,7 +271,7 @@ def main():
         parser.error('--retain-on-mismatch requires --retain')
     try:
         result = run(args.source, args.media, os.environ['REFACTOR_POSTGRES_DSN'],
-                     retain=args.retain, retain_on_mismatch=args.retain_on_mismatch, rebuild_source=args.rebuild_source)
+                     retain=args.retain, retain_on_mismatch=args.retain_on_mismatch, rebuild_source=args.rebuild_source, rebuild_system=args.rebuild_system)
     except Exception as exc:
         frames = traceback.extract_tb(exc.__traceback__)
         location = [(Path(f.filename).name, f.name, f.lineno) for f in frames[-4:]]

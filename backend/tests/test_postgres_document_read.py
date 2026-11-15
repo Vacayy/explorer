@@ -178,7 +178,7 @@ class PostgreSQLDocumentReadTests(unittest.TestCase):
                 (media / 'fixtures/example.jpg').write_bytes(b'synthetic attachment')
                 before = fixture.path.read_bytes()
                 with patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
-                    result = module.run(fixture.path, media, self.dsn, rebuild_source=True)
+                    result = module.run(fixture.path, media, self.dsn, rebuild_source=True, rebuild_system=True)
                 self.assertTrue(result['source_table_counts_match'])
                 self.assertTrue(result['source_row_values_match'])
                 self.assertTrue(all(result['feed_cases_match'].values()))
@@ -186,6 +186,8 @@ class PostgreSQLDocumentReadTests(unittest.TestCase):
                 self.assertTrue(result['raw_detail_samples_match'])
                 self.assertTrue(all(result['source_timeline_rebuild_cases_match'].values()))
                 self.assertTrue(result['rebuilt_timeline_channels_match'])
+                self.assertTrue(all(result['system_timeline_rebuild_cases_match'].values()))
+                self.assertTrue(result['system_rebuilt_channels_match'])
                 self.assertEqual(result['attachment_bytes_compared'], 1)
                 self.assertEqual(fixture.path.read_bytes(), before)
         finally:
