@@ -146,8 +146,6 @@ def get_company_evidence(
     from fastapi import HTTPException
     from pipeline.company_evidence import company_evidence
     if getattr(request.state, "public_access", False):
-        if market != 'us':
-            raise HTTPException(404, 'Public market unavailable')
         from security.public_company_evidence import stored_evidence
         from routers.spine_transcript import _public_read
         try:
@@ -157,7 +155,7 @@ def get_company_evidence(
                 raise ValueError('시작일은 종료일보다 늦을 수 없습니다.')
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
-        return _public_read(lambda: stored_evidence(company, start=start, end=end, cutoff=cutoff,
+        return _public_read(lambda: stored_evidence(company, market=market, start=start, end=end, cutoff=cutoff,
             after=after, source=source, q=q, page=page, size=size))
     conn = get_connection()
     try:

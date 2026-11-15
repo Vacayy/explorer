@@ -50,6 +50,20 @@ class PublicEvidenceTests(unittest.TestCase):
         self.assertEqual(self.read(source='note')['total'],0)
         self.assertEqual(self.read(page=2,size=1)['items'],[])
 
+    def test_kr_code_and_approval_boundary(self):
+        kr=Path(self.tmp.name)/'kr.sqlite'
+        fp=self.service.capture(1).fingerprint
+        with closing(sqlite3.connect(kr)) as c, c:
+            c.executescript("CREATE TABLE companies(stock_code); INSERT INTO companies VALUES('005930'); CREATE TABLE public_company_evidence(stock_code,doc_id,fingerprint);")
+            c.execute("INSERT INTO public_company_evidence VALUES('005930',1,?)",(fp,))
+        def read():
+            return stored_evidence('005930',market='kr',path=kr,service=self.service,now=datetime(2026,11,15,tzinfo=timezone.utc))
+        self.assertEqual(read()['total'],1)
+        with self.assertRaises(LookupError): stored_evidence('NVDA',market='kr',path=kr,service=self.service)
+        with self.assertRaises(LookupError): stored_evidence('000000',market='kr',path=kr,service=self.service)
+        self.store.revoke(1,1,'test')
+        self.assertEqual(read()['total'],0)
+
     def test_revocation_removes_body_and_aggregates(self):
         self.store.revoke(1,1,'test');self.assert_empty()
 

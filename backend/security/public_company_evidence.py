@@ -6,11 +6,20 @@ from security.public_documents import PublicDocuments, DocumentUnavailable, Read
 from security.public_us_season import connection, _company
 
 
-def stored_evidence(company, *, path=None, service=None, q='', **filters):
-    with closing(connection(path)) as conn:
-        company = _company(conn, company)
-        links = conn.execute('''SELECT doc_id, fingerprint FROM public_company_evidence
-            WHERE ticker=? ORDER BY doc_id''', (company['ticker'],)).fetchall()
+def stored_evidence(company, *, market='us', path=None, service=None, q='', **filters):
+    if market == 'kr':
+        import re
+        from security.public_kr_season import connection as kr_connection
+        if not re.fullmatch(r'[0-9]{6}', company):
+            raise LookupError('Invalid stock code')
+        with closing(kr_connection(path)) as conn:
+            if not conn.execute('SELECT stock_code FROM companies WHERE stock_code=?', (company,)).fetchone():
+                raise LookupError('Unknown stock code')
+            links = conn.execute('SELECT doc_id, fingerprint FROM public_company_evidence WHERE stock_code=? ORDER BY doc_id', (company,)).fetchall()
+    else:
+        with closing(connection(path)) as conn:
+            company = _company(conn, company)
+            links = conn.execute('SELECT doc_id, fingerprint FROM public_company_evidence WHERE ticker=? ORDER BY doc_id', (company['ticker'],)).fetchall()
     service = service or PublicDocuments.from_environment()
     budget, candidates, fingerprints = ReadBudget(), [], {}
     needle = q.strip().lower()
@@ -33,4 +42,4 @@ def stored_evidence(company, *, path=None, service=None, q='', **filters):
     candidates = [row for row in candidates if
         (record := service.store.get(row['doc_id'])) and record['status'] == 'approved'
         and record['fingerprint'] == fingerprints[row['doc_id']]]
-    return evidence_response(candidates, market='us', **filters)
+    return evidence_response(candidates, market=market, **filters)
