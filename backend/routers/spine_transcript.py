@@ -7,7 +7,7 @@ import threading
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -73,6 +73,10 @@ class Detail(BaseModel):
     call_date: str | None
     digest: str | None
     body: str
+    content_status: Literal["published", "source_only"] = "published"
+    source_url: str | None = None
+    source_name: str | None = None
+    source_link_kind: Literal["provider", "article"] | None = None
     proxies: list = []   # stage 4에서 채움 (proxy_observations 델타)
     nodes: list = []          # 이 콜이 언급한 엔티티(노드) — 온톨로지 딥링크 (D-089)
     causal_edges: list = []   # 이 콜에서 추출된 인과 엣지 (source_doc_id, D-089)

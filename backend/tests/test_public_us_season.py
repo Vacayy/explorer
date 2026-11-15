@@ -165,6 +165,53 @@ class PublicUsSeasonTests(unittest.TestCase):
                 with self.assertRaises(LookupError): action()
         self.assertEqual(before,self.path.read_bytes())
 
+    def test_restricted_provider_text_and_digest_flags_are_not_published(self):
+        from routers.spine_transcript import Detail
+        for provider in ('fool', 'alphavantage'):
+            with closing(sqlite3.connect(self.path)) as conn:
+                conn.execute("UPDATE transcripts SET provider=?,fetched_at=datetime('now') WHERE id=1", (provider,))
+                conn.commit()
+            result=Detail(**public.stored_detail(1,path=self.path))
+            self.assertEqual(result.body,'')
+            self.assertIsNone(result.digest)
+            self.assertEqual(result.content_status,'source_only')
+            self.assertEqual(result.source_link_kind,'provider')
+            self.assertTrue(result.source_url.startswith('https://'))
+            self.assertFalse(public.stored_quarters('PUBLIC',path=self.path)[0]['has_digest'])
+            self.assertFalse(public.stored_recent(path=self.path)[0]['has_digest'])
+            self.assertFalse(public.stored_companies(path=self.path)[0]['latest']['has_digest'])
+
+    def test_restricted_derived_prose_is_removed_but_release_only_text_preserved(self):
+        import json
+        with closing(sqlite3.connect(self.path)) as conn:
+            conn.execute("UPDATE call_momentum SET reasons=?,summary='RESTRICTED_CANARY' WHERE ticker='PUBLIC'",
+                (json.dumps({'sources':['release','transcript'],'drivers':[{'name':'RESTRICTED_CANARY'}],
+                             'extra':'RESTRICTED_CANARY'}),))
+            conn.commit()
+        result=public.stored_momentum(path=self.path)
+        self.assertNotIn('RESTRICTED_CANARY',json.dumps(result))
+        row=result['candidates'][0]
+        self.assertEqual(row['score'],7)
+        self.assertTrue(row['text_withheld'])
+        self.assertEqual(row['drivers'],[])
+        with closing(sqlite3.connect(self.path)) as conn:
+            conn.execute("UPDATE call_momentum SET reasons=?,summary='Release source summary' WHERE ticker='PUBLIC'",
+                         (json.dumps({'sources':['release']}),))
+            conn.commit()
+        self.assertEqual(public.stored_momentum(path=self.path)['candidates'][0]['summary'],'Release source summary')
+
+    def test_removed_text_preserves_company_quarter_and_price_detail(self):
+        from routers.spine_transcript import Detail
+        with closing(sqlite3.connect(self.path)) as conn:
+            conn.execute("UPDATE transcripts SET provider='fool' WHERE id=1")
+            conn.execute('DELETE FROM public_transcript_text WHERE transcript_id=1')
+            conn.commit()
+        d=Detail(**public.stored_detail(1,path=self.path))
+        self.assertEqual(d.ticker,'PUBLIC')
+        self.assertEqual(d.content_status,'source_only')
+        self.assertTrue(public.stored_chain(1,path=self.path,today='2026-11-15')['history'])
+        self.assertEqual(len(public.stored_quarters('PUBLIC',path=self.path)),1)
+
     def test_public_call_http_routes_and_private_id_denial(self):
         app=FastAPI(); app.include_router(spine_transcript.router)
         paths=['/follow','/company/{ticker}','/detail/{transcript_id}','/chain/{transcript_id}','/chain/upcoming/{ticker}']

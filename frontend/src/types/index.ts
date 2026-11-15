@@ -1047,6 +1047,7 @@ export type WatchReason = Omit<HoldingThesis, 'warnings'> & { signals: string[] 
 export interface CallDriver { name: string; type: string; status: 'new' | 'accelerating' | 'steady' | 'decelerating'; magnitude?: string; quote: string; source: string }
 export interface CallGuidance { metric: string; direction: 'raised' | 'lowered' | 'maintained' | 'initiated' | 'unknown'; quote: string; source: string }   // unknown = 추출 모델이 방향을 못 정함(PANW 2026-10)
 export interface CallMomentumCandidate {
+  text_withheld?: boolean
   ticker: string; name: string | null; event_date: string; score: number; first_candidate_at: string | null
   summary?: string | null                      // AI 핵심 요약(이번 시즌 후보만, 근거 기반 sonnet) — 없으면 근거만
   drivers: CallDriver[]; guidance: CallGuidance[]; tone: number | null; prev_tone: number | null; sources: string[]; qa_focus: string[]

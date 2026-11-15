@@ -68,7 +68,7 @@ const usd = (v?: number | null) => v == null ? "–" : v >= 1e12 ? `$${(v / 1e12
 interface Quarter { transcript_id: number; fiscal_year: number | null; fiscal_period: string | null; cy?: string | null; call_date: string | null; has_digest: boolean }
 interface TxNode { id: number; name: string; type: string; link_type: string }
 interface TxEdge { rel_type: string; effect_direction: string | null; from: string; from_id: number; from_type: string; to: string; to_id: number; to_type: string }
-interface Detail { transcript_id: number; ticker: string; company_name: string; fiscal_year: number | null; fiscal_period: string | null; cy?: string | null; call_date: string | null; digest: string | null; body: string; nodes?: TxNode[]; causal_edges?: TxEdge[] }
+interface Detail { transcript_id: number; ticker: string; company_name: string; fiscal_year: number | null; fiscal_period: string | null; cy?: string | null; call_date: string | null; digest: string | null; body: string; content_status?: 'published' | 'source_only'; source_url?: string | null; source_name?: string | null; source_link_kind?: 'provider' | 'article' | null; nodes?: TxNode[]; causal_edges?: TxEdge[] }
 
 const NODE_LABEL: Record<string, string> = {
   company: "기업", sector: "섹터", theme: "테마", person: "인물",
@@ -426,8 +426,24 @@ function ReactionContent({ transcriptId, callDate }: { transcriptId: number; cal
   return PUBLIC_ACCESS ? <p className="text-sm text-muted-foreground">공개 근거가 확인된 시장 반응 해설을 준비 중입니다.</p> : <CallReaction transcriptId={transcriptId} callDate={callDate} />
 }
 
+const sourceOnly = (data: Detail) => PUBLIC_ACCESS && data.content_status === "source_only"
+
+function TranscriptSource({ data }: { data: Detail }) {
+  const article = data.source_link_kind === "article"
+  const url = data.source_url && /^https?:\/\//i.test(data.source_url) ? data.source_url : null
+  return <div className="flex flex-col gap-2 text-sm" data-transcript-source-only>
+    <p className="text-muted-foreground">{article
+      ? "이 자료는 제공사의 원문 페이지에서 확인할 수 있습니다."
+      : "이 자료는 제공사에서 확인할 수 있습니다. 개별 원문 주소는 아직 연결되지 않았습니다."}</p>
+    {url && <a href={url} target="_blank" rel="noopener noreferrer" className="self-start underline underline-offset-4">
+      {data.source_name ?? "제공사"} {article ? "원문 보기" : "제공사 페이지 보기"}
+    </a>}
+  </div>
+}
+
 /** 핵심 정리(컨콜 전체) — 없으면 생성 버튼(LLM) */
 function CallDigest({ data, transcriptId }: { data: Detail; transcriptId: number }) {
+  if (sourceOnly(data)) return <TranscriptSource data={data} />
   if (PUBLIC_ACCESS) return data.digest
     ? <div className="bg-muted/40 px-4 py-3"><Markdown>{data.digest}</Markdown></div>
     : <p className="text-sm text-muted-foreground">공개된 핵심 정리가 아직 없습니다. 원문 전문을 확인해 주세요.</p>
@@ -460,6 +476,7 @@ function PrivateCallDigest({ data, transcriptId }: { data: Detail; transcriptId:
 
 /** 온톨로지 연결(D-089) · 원문 전문 — 펼치기 줄 */
 function OntoAndBody({ data, hasOnto }: { data: Detail; hasOnto: boolean }) {
+  if (sourceOnly(data)) return <Fold label="제공사에서 확인"><TranscriptSource data={data} /></Fold>
   return (
     <>
       {hasOnto && (
@@ -659,12 +676,12 @@ function MobileCallDetail({ transcriptId, onSelect, rail }: { transcriptId: numb
         <h2 className={boxTitle}>컨콜 핵심</h2>
         {callPoints.length > 0
           ? <ul className="flex list-disc flex-col gap-1 pl-4 text-[13px] leading-[1.6] marker:text-ink-3">{callPoints.map((t, i) => <li key={i}>{clean(t)}</li>)}</ul>
-          : <p className="text-caption text-muted-foreground">아래 핵심 정리를 펼쳐 보세요.</p>}
+          : <p className="text-caption text-muted-foreground">{sourceOnly(data) ? "아래 제공사 안내를 펼쳐 보세요." : "아래 핵심 정리를 펼쳐 보세요."}</p>}
         {/* 전체 정리·원문은 카드 안에서 펼치지 않고 아래 시트로(상한 안 스크롤) — 시트 안 펼치기 줄은 제자리 */}
         <Sheet open={more} onOpenChange={setMore}>
-          <SheetTrigger className="self-start text-left text-[13px] font-medium text-ink">핵심 정리 전체 · 원문 ›</SheetTrigger>
+          <SheetTrigger className="self-start text-left text-[13px] font-medium text-ink">{sourceOnly(data) ? "제공사 안내 ›" : "핵심 정리 전체 · 원문 ›"}</SheetTrigger>
           <SheetContent side="bottom" className="max-h-[85dvh] gap-0">
-            <SheetHeader className="border-b"><SheetTitle>핵심 정리 전체 · 원문</SheetTitle><SheetDescription className="sr-only">컨콜 세부</SheetDescription></SheetHeader>
+            <SheetHeader className="border-b"><SheetTitle>{sourceOnly(data) ? "제공사 안내" : "핵심 정리 전체 · 원문"}</SheetTitle><SheetDescription className="sr-only">컨콜 세부</SheetDescription></SheetHeader>
             <ScrollArea className="min-h-0 flex-1" viewportClassName="max-h-[calc(85dvh-64px)] [&>div]:!block"><div className="p-4">
               <FoldInline.Provider value><DetailFolds data={data} transcriptId={transcriptId} /></FoldInline.Provider>
             </div></ScrollArea>

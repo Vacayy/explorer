@@ -196,7 +196,8 @@ export function PickedCandidate({ d, momentum }: { d: SeasonOverview; momentum: 
           <Cell label="수요 어조" value={c.tone != null ? `${c.prev_tone ?? "-"} → ${c.tone}` : "-"} />
         </div>
         {quoteAccel && <p className="text-sm"><Badge variant="secondary" className="mr-1 font-normal">원문</Badge>“{quoteAccel}”</p>}
-        {c.summary && <div className="bg-muted/50 px-3 py-2.5">
+        {c.text_withheld && <p className="text-sm text-muted-foreground">상세 해설은 제공 범위를 확인한 뒤 연결합니다.</p>}
+      {c.summary && <div className="bg-muted/50 px-3 py-2.5">
           <p className="text-caption text-hypothesis">AI 요약 · 아래 근거로 작성</p>
           <p className="mt-1 text-sm leading-relaxed">{c.summary}</p>
         </div>}

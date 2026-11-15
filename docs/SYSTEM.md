@@ -6,6 +6,10 @@
 > 유지 규칙: 구조(테이블·파이프라인·라우터·IA·의존성)가 바뀌는 커밋은 본 문서 갱신을 포함한다 (CLAUDE.md Context Discipline).
 > (구 ARCHITECTURE.md·PLAN.md는 초기 대시보드 시절 문서 — docs/private/archive/로 이동, 본 문서가 현행)
 
+## 외부 컨콜 자료 표시 경계
+
+공개 컨콜 상세의 `content_status`는 `published` 또는 `source_only`다. 준비된 원문이 없더라도 기업·회계분기·가격 상세는 유지하며 `source_only`로 응답한다. 현재 Fool/Alpha Vantage의 본문·digest는 public 조회에서 반환하지 않고 recent/company/follow의 `has_digest`도 false로 맞춘다. `source_url`·`source_name`·`source_link_kind`로 제공사 링크와 개별 기사 링크를 구분하며 기존 수집이 개별 URL을 보존하지 않은 자료는 제공사 홈페이지로만 안내한다. 다른 공개 가능한 준비 원문과 기존 승인 문서/첨부 경로는 유지한다. `call_momentum`의 sources에 transcript가 포함된 준비 행은 summary와 파생 산문 대신 수치 순위·식별 metadata 및 `text_withheld`를 반환한다. 외부용 SQLite 준비본에서도 해당 본문/산문을 제거하며 이 제한은 전체 서비스 자료 권리 승인을 대신하지 않는다. private 컨콜 조회·생성은 유지한다.
+
 ## 공개 미국 기업 상세의 저장 수치 조회
 
 공개 `/us/:ticker`는 기존 기업 헤더·시세 차트·실적 카드·재무 탭·손익 흐름·발표 이력을 사용한다. `security.public_us_dossier`는 공개 미국 기업 registry에 속한 티커만 같은 readonly snapshot의 `us_fundamentals`(준비된 수치 JSON·수집 시각), OHLCV, `us_quarterly`, `us_segments`에서 읽는다. 기존 `/api/spine/us/{ticker}`와 손익/분기 API, `/api/spine/feed/company-prices?market=us`의 공개 분기이며 get_fundamentals의 TTL 수집·갱신을 호출하지 않는다. 주가 응답은 `CompanyPriceResponse`로 소수점 OHLC를 보존한다. `income_flow`는 호출자 소유 연결을 받을 수 있으며 기존 분기/TTM·사업부 계산을 재사용한다. 자료 없는 기업은 재무 스냅샷 없음으로 표시한다. 개인 Watch/Save/수집/기술분석 실행은 마운트하지 않는다. 기업 설명·증거·Lens·월드모델의 공개 연결은 별도 후속이며 전체 기능 수용이나 원천 재배포 권리 승인을 뜻하지 않는다.

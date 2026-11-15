@@ -14,6 +14,12 @@ import sqlite3
 from models.earnings_season import SeasonOverview
 from pipeline import earnings_chain as ec
 
+# Provider pages are not individual article URLs. Existing imports did not retain article URLs.
+RESTRICTED_TRANSCRIPT_PROVIDERS = {
+    "fool": ("The Motley Fool", "https://www.fool.com/"),
+    "alphavantage": ("Alpha Vantage", "https://www.alphavantage.co/"),
+}
+
 DB_PATH = os.environ.get("EXPLORER_PUBLIC_US_SEASON_DB")
 COLUMNS = {
     "public_us_companies": {"ticker", "company_name", "sector", "market_cap", "fiscal_year_end"},
@@ -79,6 +85,16 @@ def stored_momentum(*, path=None):
     with closing(connection(path)) as conn:
         names = dict(conn.execute("SELECT ticker, company_name FROM public_us_companies"))
         data = cm.by_season(conn, company_names=names)
+        # Existing imports mix restricted transcripts into derived prose. Preserve
+        # numerical rankings and metadata while withholding that prose as a unit.
+        for rows in [data['candidates'], data['continuing'], *[h['candidates'] for h in data['history']]]:
+            for index, row in enumerate(rows):
+                if 'transcript' in row.get('sources', []):
+                    rows[index] = {**{key: row.get(key) for key in
+                        ('ticker','name','event_date','score','first_candidate_at','sources')},
+                        'summary':None, 'drivers':[], 'guidance':[], 'qa_focus':[],
+                        'beyond_expectation':[], 'tone':None, 'prev_tone':None,
+                        'accel':None, 'text_withheld':True}
         coverage = [dict(r) for r in conn.execute("SELECT ticker, has_release, extracted_docs, failed_docs FROM public_us_coverage") if r['ticker'] in names]
         transcripts = {r[0] for r in conn.execute("SELECT DISTINCT ticker FROM transcripts") if r[0] in names}
         comparable = {r[0] for r in conn.execute("SELECT DISTINCT ticker FROM call_momentum WHERE status!='first'") if r[0] in names}
@@ -98,7 +114,7 @@ def stored_recent(days=7, limit=40, *, path=None):
             "SELECT t.id transcript_id,t.ticker,c.company_name,t.fiscal_year,t.fiscal_period,t.call_date,t.provider,t.fetched_at,c.fiscal_year_end,x.digest "
             "FROM transcripts t JOIN public_us_companies c ON c.ticker=t.ticker LEFT JOIN public_transcript_text x ON x.transcript_id=t.id WHERE t.fetched_at >= datetime('now',?) "
             "ORDER BY t.fetched_at DESC LIMIT ?", (f'-{days} day', limit)).fetchall()
-        return [{**{k:r[k] for k in r.keys() if k != 'digest'}, "has_digest": bool(r['digest']), "cy": cy_label(r['fiscal_year'],r['fiscal_period'],r['fiscal_year_end'])} for r in rows]
+        return [{**{k:r[k] for k in r.keys() if k != 'digest'}, "has_digest": bool(r['digest']) and r['provider'] not in RESTRICTED_TRANSCRIPT_PROVIDERS, "cy": cy_label(r['fiscal_year'],r['fiscal_period'],r['fiscal_year_end'])} for r in rows]
 
 
 def stored_sector(key, season=None, *, path=None, today=None):
@@ -122,12 +138,12 @@ def _company(conn, ticker):
 
 def _quarters(conn, company):
     from pipeline.transcript import cy_label
-    rows = conn.execute('SELECT t.id,t.fiscal_year,t.fiscal_period,t.call_date,x.digest FROM transcripts t '
+    rows = conn.execute('SELECT t.id,t.fiscal_year,t.fiscal_period,t.call_date,t.provider,x.digest FROM transcripts t '
                         'LEFT JOIN public_transcript_text x ON x.transcript_id=t.id WHERE t.ticker=? '
                         'ORDER BY t.fiscal_year DESC,t.fiscal_period DESC', (company['ticker'],)).fetchall()
     return [{'transcript_id':r['id'],'fiscal_year':r['fiscal_year'],'fiscal_period':r['fiscal_period'],
              'cy':cy_label(r['fiscal_year'],r['fiscal_period'],company['fiscal_year_end']),
-             'call_date':r['call_date'],'has_digest':bool(r['digest'])} for r in rows]
+             'call_date':r['call_date'],'has_digest':bool(r['digest']) and r['provider'] not in RESTRICTED_TRANSCRIPT_PROVIDERS} for r in rows]
 
 
 def stored_quarters(ticker, *, path=None):
@@ -156,7 +172,7 @@ def stored_companies(*, path=None):
 
 
 def _transcript(conn, transcript_id):
-    row = conn.execute('SELECT id,ticker,fiscal_year,fiscal_period,call_date FROM transcripts WHERE id=?', (transcript_id,)).fetchone()
+    row = conn.execute('SELECT id,ticker,fiscal_year,fiscal_period,call_date,provider FROM transcripts WHERE id=?', (transcript_id,)).fetchone()
     if row is None:
         raise LookupError('Public transcript unavailable')
     return dict(row), _company(conn, row['ticker'])
@@ -167,12 +183,16 @@ def stored_detail(transcript_id, *, path=None):
     with closing(connection(path)) as conn:
         t, f = _transcript(conn, transcript_id)
         text = conn.execute('SELECT body,digest FROM public_transcript_text WHERE transcript_id=?', (transcript_id,)).fetchone()
-        if text is None:
-            raise LookupError('Public transcript text unavailable')
+        source = RESTRICTED_TRANSCRIPT_PROVIDERS.get(t['provider'])
+        published = text is not None and source is None
         return {'transcript_id':t['id'],'ticker':t['ticker'],'company_name':f['company_name'] or t['ticker'],
                 'fiscal_year':t['fiscal_year'],'fiscal_period':t['fiscal_period'], 'call_date':t['call_date'],
                 'cy':cy_label(t['fiscal_year'],t['fiscal_period'],f['fiscal_year_end']),
-                'body':text['body'],'digest':text['digest'],'nodes':[],'causal_edges':[],'proxies':[]}
+                'body':text['body'] if published else '', 'digest':text['digest'] if published else None,
+                'content_status':'published' if published else 'source_only',
+                'source_name':source[0] if source else None, 'source_url':source[1] if source else None,
+                'source_link_kind':'provider' if source else None,
+                'nodes':[],'causal_edges':[],'proxies':[]}
 
 
 def stored_chain(transcript_id, *, path=None, today=None):
