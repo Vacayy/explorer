@@ -2103,3 +2103,23 @@ export interface MemberPrincipleState { as_of: string | null; price_dates: strin
 
 /** Public KR sector market projection; no personal or publication fields. */
 export type KrSectorMarket = Omit<IndustrySectorDetail, 'narratives' | 'overview' | 'docs' | 'peer_groups' | 'data_links' | 'feed_industry' | 'entity_id'>
+
+/** Stored, source-reviewed public macro observations. */
+export interface PublicMacroSource { series_id: string; publisher: string; url: string; as_of: string | null }
+export interface PublicMacroIndicator extends MacroIndicator {
+  as_of: string
+  dated_series: [string, number][]
+  comparison_date: string | null
+  comparison_observations: number
+  sources: PublicMacroSource[]
+}
+export interface PublicMacroCoverage {
+  key: string
+  label: string
+  status: 'available' | 'missing' | 'source_review_pending' | 'invalid'
+}
+export interface PublicMacroResponse {
+  as_of: string | null
+  items: PublicMacroIndicator[]
+  coverage: PublicMacroCoverage[]
+}

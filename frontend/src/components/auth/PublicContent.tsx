@@ -1,3 +1,4 @@
+import { PublicMacroPage } from '@/components/home/PublicMacroPage'
 import { PublicCompanySummary } from '@/components/company/PublicCompanySummary'
 import { PublicKrSectorPage } from '@/components/industry/PublicKrSectorPage'
 import { PublicFinancialSearch, PublicFinancialsPage } from '@/components/financials/PublicFinancialsPage'
@@ -23,6 +24,7 @@ export function PublicContent() {
   const financial = useMatch('/analyze/:stockCode/financials')
   if (summary?.params.stockCode) return <PublicCompanySummary stockCode={summary.params.stockCode} />
   if (krSector?.params.sector) return <PublicKrSectorPage sector={krSector.params.sector} />
+  if (pathname === '/home/macro') return <PublicMacroPage />
   if (pathname === '/financials') return <PublicFinancialSearch />
   if (financial?.params.stockCode) return <PublicFinancialsPage stockCode={financial.params.stockCode} />
   if (pathname === '/chat') return <PublicTrialChatPage />

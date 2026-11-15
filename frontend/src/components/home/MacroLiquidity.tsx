@@ -39,7 +39,7 @@ export function fmtValue(m: MacroIndicator): string {
   return v.toLocaleString("en-US", { maximumFractionDigits: 2 })
 }
 
-function MiniSpark({ data }: { data: number[] }) {
+export function MiniSpark({ data }: { data: number[] }) {
   if (data.length < 2) return null
   const min = Math.min(...data), max = Math.max(...data)
   const span = max - min || 1

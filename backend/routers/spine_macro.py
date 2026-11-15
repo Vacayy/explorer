@@ -22,3 +22,11 @@ def macro():
 @router.post("/snapshot")
 def snapshot():
     return snapshot_macro()
+
+
+from models.public_macro import PublicMacroResponse
+
+@router.get('/public', response_model=PublicMacroResponse)
+def public_macro():
+    from security.public_macro import stored_macro
+    return stored_macro()

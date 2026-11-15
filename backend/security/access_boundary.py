@@ -49,6 +49,7 @@ PUBLIC_ROUTE_POLICIES = {
     ('POST', '/api/operator/publications/{doc_id}/revoke'): 'operator',
     ('GET', '/api/spine/industry/us/map'): 'public',
     ('GET', '/api/spine/industry/map'): 'public',
+    ('GET', '/api/spine/macro/public'): 'public',
     ('GET', '/api/spine/industry/{sector}/market'): 'public',
     ('GET', '/api/spine/industry/us/{ticker}/market'): 'public',
     ('GET', '/api/spine/market/{market}/overview'): 'public',

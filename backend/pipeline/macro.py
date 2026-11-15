@@ -259,7 +259,13 @@ def get_macro(with_signal: bool = True) -> dict:
     raw = {name: _series(conn, f"macro_{name}") for name in [*YF, *FRED]}
     raw.update({name: _series(conn, indicator_canon.CANONICAL[name]) for name in CANON_RATES})
     conn.close()
+    data = numeric_macro(raw)
+    return {**data, "signal": _read_signal(data["as_of"]) if with_signal else None,
+            "fred_enabled": bool(os.getenv("FRED_API_KEY"))}
 
+
+def numeric_macro(raw: dict) -> dict:
+    """Pure existing numeric projection, independent of DB, credentials and signal cache."""
     series_of = dict(raw)
     series_of["net_liq"] = _net_liquidity_series(raw)   # 파생 (십억$)
 
@@ -286,6 +292,4 @@ def get_macro(with_signal: bool = True) -> dict:
 
     as_of = max((s[-1][0] for s in series_of.values() if s), default=None)
     return {"as_of": as_of, "items": items, "degraded": degraded,
-            "interpretation": _interpret(items) if items else None,   # 결정적 폴백/LLM 입력
-            "signal": _read_signal(as_of) if with_signal else None,    # 신호등 산문(sonnet)
-            "fred_enabled": bool(os.getenv("FRED_API_KEY"))}
+            "interpretation": _interpret(items) if items else None}
