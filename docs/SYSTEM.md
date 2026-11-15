@@ -369,6 +369,7 @@ Claude Code가 선택되지 않은 경우 `ANTHROPIC_API_KEY`가 있으면 API �
 | `tracker_conditions` | 종목 추적의 내 원칙 조건([stock-tracker](specs/stock-tracker.md)) | id PK·stock_code(국내 6자리 또는 미국 티커)·role(entry·exit·check)·kind(price_below·price_above·close_below_ma·close_above_ma·manual)·level(미국은 달러)·ma·label·note·done·updated_at. 추적 종목 자체는 관심 묶음 멤버의 `stock_group_members.tracked=1`만(D-293, 2026-11-05 개편 3d부터 홈 위젯 옛 원천은 읽지 않음) |
 | `stock_groups` / `stock_group_members` / `watch_rules` / `watch_evaluations` | 종목 묶음·감시(D-185, docs/specs/portfolio-watch.md) | 묶음(kind watch\|portfolio)·멤버(확신도·목표가·논지, 레거시 `watchlist` 이관. **관심 종목의 진실원천** — ★·내 목록·/follow 종목·Universe 팔로우·비교가 모두 기본 관심 묶음 '관심 종목'을 읽고 쓴다, 서버 읽기는 모든 watch 묶음 합집합)·규칙(기본=stock_code NULL, 종목별 덮어쓰기, 카탈로그 조건 `{strategy_id, params, within_days}`, 저장 전략 출처)·평가(규칙×종목×기준일 UNIQUE, pass\|fail\|unavailable). 스키마는 `pipeline/watch_rules.SCHEMA`. **멤버는 국내 종목코드 또는 미국 티커**(미국은 관심 묶음만, 시세 `us_prices`, 기준일은 시장별) · **`stock_group_members.tracked`**(INTEGER DEFAULT 0, ALTER 추가) = 추적(알림 대상) 표시 — 관심 묶음의 국내 종목·미국 티커(D-293, 미국은 2026-11-05부터) |
 | `portfolio_transactions` | 포트폴리오 거래 원장(D-212, docs/specs/portfolio-ledger.md) | 묶음(kind=portfolio)·거래일·유형(buy\|sell\|deposit\|withdraw)·종목·**원화 금액(로컬 전용, 어떤 GET에도 미노출)**·체결가. 보유·평단·현금은 원장 재생으로 계산하고 묶음 멤버에는 종목·편입일만(수량·평단 NULL) | 실현 손익은 원장 재생 중 매도마다 (매도가 − 평단) × 수량으로 계산해 원금 대비 %·청산 내역(비율·가격)만 응답한다(`realized_trades`, D-226).
+
 | `retail_flows` / `retail_snapshots` | 개인 투자 열기(D-231, docs/specs/retail-heat.md) | 영업일별 신용거래융자(전체·유가·코스닥)·투자자예탁금·미수금·반대매매·KOSPI/KOSDAQ 거래대금·시가총액(금융투자협회, 1999~) + 개인/전체 매수·매도·레버리지/인버스 ETF 거래대금(한국거래소, 계정 있을 때) / 과열 구간별 스냅샷 |
 | `dashboard_layouts` | 옛 홈 위젯 배치(2026-10-16) | 이름(UNIQUE)별 배치 한 벌 — `layout_json`·`updated_at`. **읽고 쓰는 API·화면 없음**(`/api/dashboard`는 2026-11-05 개편 7단계에서 제거). 표만 남김 — 백업 후 삭제 대상 |
 | `home_boards` | 옛 홈 메뉴(2026-10-21) | id PK·label·sort·layout_json(위젯 params 포함). **화면·API 없음**(개편 3a에서 화면, 7단계에서 `/api/dashboard/boards` 제거). 추적은 3d부터 이 표를 읽지 않는다. 읽는 곳은 일회 이관 스크립트 `scripts/migrate_tracking_to_groups.py`(`stock_tracker.widget_codes`, `track.stock` 위젯 → 관심 종목 추적 표시)와 `init_db`의 옛 프리셋 1회 이관뿐. 실사용 이관 확인 뒤 백업하고 삭제 대상 |
@@ -712,6 +713,8 @@ tail -f logs/ingest.log               # 수집 관찰
 `pipeline/postgres_search_snapshot.py`는 격리 fixture의 동일 PostgreSQL generation에서 문서·기존 벡터를 읽어 메모리 SQLite FTS5/sqlite-vec 색인을 만드는 검색 실험이다. `postgres_search_feed.py`와 `scripts/refactor_document_ui.py`는 이 색인을 격리 피드 API의 검색어·소스·날짜·엔티티 필터, 최신순 및 페이지에 연결하며, 모델이 없을 때 lexical 검색을 제공하고 generation 교체 시 색인을 다시 만든다. 실서비스에는 연결하지 않는다. 색인 재생성 시 동점 결과의 순서가 기존과 달라질 수 있다. 실제 사본에서 초기 색인 생성 약7초·프로세스 최대 약511MiB 및 대표 필터·정렬을 확인했으나 전체 조합, 동시 부하와 운영 적합성은 미검증이다.
 
 같은 격리 API의 검색어 없는 피드는 `PostgreSQLDocumentReader`의 목록 조회를 사용하며 소스·엔티티·날짜 조건을 지원한다. 실제 리허설 사본에서 대표 조건의 목록과 총 건수를 기존 API와 비교했으나 모든 조건 조합과 동점 순서는 보장하지 않는다.
+
+포트폴리오 읽기 계산은 `SQLitePortfolioReadSource` 경계와 거래·이력·요약 계산으로 분리되어 기존 SQLite 사용자 동작을 유지한다. 이는 회원 소유권, PostgreSQL 원장 이관이나 쓰기 기능을 구현한 것이 아니다.
 
 실제 리허설 사본을 한 격리 PostgreSQL generation에 문서·검색 벡터·논점·관련 벡터·첨부·국내 산업 자료를 함께 적재한 뒤 기본 피드, 검색, 타임라인, 산업 지도, Peer, 상세, 논점, 관련 자료와 첨부의 대표 HTTP 요청을 확인했다. Peer 파일과 첨부는 DB와 원자적 snapshot이 아니며 이는 최신 원본 이전이나 전체 화면·동시 부하 확인이 아니다. 공개 서비스에는 연결하지 않았다.
 

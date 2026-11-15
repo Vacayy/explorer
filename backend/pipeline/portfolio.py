@@ -333,9 +333,12 @@ def delete_transaction(conn: sqlite3.Connection, tx_id: int) -> None:
 
 def transactions(conn: sqlite3.Connection) -> list[dict]:
     """거래 내역 — 금액·수량 없이."""
-    gid = group_id(conn)
-    txs = _txs(conn, gid)
-    names = _names(conn, {t["stock_code"] for t in txs if t["stock_code"]})
+    return transactions_from_source(SQLitePortfolioReadSource(conn))
+
+
+def transactions_from_source(source) -> list[dict]:
+    txs = source.transactions()
+    names = source.names({t["stock_code"] for t in txs if t["stock_code"]})
     return [{"id": t["id"], "trade_date": t["trade_date"], "kind": t["kind"], "stock_code": t["stock_code"],
              "name": names.get(t["stock_code"], t["stock_code"]) if t["stock_code"] else None, "price": t["price"]}
             for t in reversed(txs)]
@@ -347,6 +350,21 @@ def _priced(conn: sqlite3.Connection, txs: list[dict], ledger: Ledger):
     prices = _prices(conn, codes, txs[0]["trade_date"])
     live = _live(conn, set(ledger.positions), prices)
     return _with_live(prices, live), live
+
+
+class SQLitePortfolioReadSource:
+    """Existing single-user reads; group selection remains unchanged."""
+    def __init__(self, conn):
+        self.conn = conn
+
+    def transactions(self):
+        return _txs(self.conn, group_id(self.conn))
+
+    def prices(self, txs, ledger):
+        return _priced(self.conn, txs, ledger)
+
+    def names(self, codes):
+        return _names(self.conn, codes)
 
 
 def refresh_now(conn: sqlite3.Connection, force: bool = True) -> dict:
@@ -364,25 +382,31 @@ def refresh_now(conn: sqlite3.Connection, force: bool = True) -> dict:
 
 
 def history(conn: sqlite3.Connection) -> list[dict]:
-    gid = group_id(conn)
-    txs = _txs(conn, gid)
+    return history_from_source(SQLitePortfolioReadSource(conn))
+
+
+def history_from_source(source) -> list[dict]:
+    txs = source.transactions()
     if not txs:
         return []
-    prices, _ = _priced(conn, txs, replay(txs))
+    prices, _ = source.prices(txs, replay(txs))
     return valuation(txs, prices)
 
 
 def summary(conn: sqlite3.Connection) -> dict:
     """현황 — 비율·가격만."""
-    gid = group_id(conn)
-    txs = _txs(conn, gid)
+    return summary_from_source(SQLitePortfolioReadSource(conn))
+
+
+def summary_from_source(source) -> dict:
+    txs = source.transactions()
     if not txs:
         return {"as_of": None, "total_return_pct": None, "day_return_pct": None, "cash_weight_pct": None, "holdings": [], "quoted_at": None,
                 "realized_pct": None, "unrealized_pct": None, "closed": []}
     ledger = replay(txs)
-    prices, live = _priced(conn, txs, ledger)
+    prices, live = source.prices(txs, ledger)
     hist = valuation(txs, prices)
-    names = _names(conn, set(ledger.positions))
+    names = source.names(set(ledger.positions))
     entries = entry_weights(txs, prices)
     rows, total, unrealized = [], ledger.cash, 0.0
     for code, pos in ledger.positions.items():
@@ -410,14 +434,14 @@ def summary(conn: sqlite3.Connection) -> dict:
             "cash_weight_pct": round(ledger.cash / total * 100, 2) if total > EPS else None,
             "holdings": holdings,
             "quoted_at": max((v["at"] for v in live.values()), default=None),
-            **_realized_summary(conn, txs, unrealized)}
+            **_realized_summary(source, txs, unrealized)}
 
 
-def _realized_summary(conn: sqlite3.Connection, txs: list[dict], unrealized: float) -> dict:
+def _realized_summary(source, txs: list[dict], unrealized: float) -> dict:
     """실현·미실현 손익을 원금(순입금) 대비 %로 — 원화는 내보내지 않는다. 계좌 수익률(TWR)과는 별개의 단순 비율."""
     closed, gain = realized_trades(txs)
     principal = sum(t["amount"] for t in txs if t["kind"] == "deposit") - sum(t["amount"] for t in txs if t["kind"] == "withdraw")
-    names = _names(conn, {c["code"] for c in closed})
+    names = source.names({c["code"] for c in closed})
     pct = (lambda v: round(v / principal * 100, 2)) if principal > EPS else (lambda v: None)
     return {"realized_pct": pct(gain), "unrealized_pct": pct(unrealized),
             "closed": [{**c, "name": names.get(c["code"], c["code"])} for c in reversed(closed)]}
