@@ -62,3 +62,13 @@ CREATE TABLE sector_market_narratives (
     ordinal BIGINT PRIMARY KEY, id BIGINT NOT NULL, topic TEXT, title TEXT,
     core_question TEXT, doc_count INTEGER, created_at TEXT
 );
+CREATE TABLE sector_market_entities (id BIGINT PRIMARY KEY, type TEXT, name TEXT, status TEXT);
+CREATE INDEX sector_market_entity_name ON sector_market_entities(type, name);
+CREATE TABLE sector_market_company_entities (entity_id BIGINT NOT NULL, stock_code TEXT NOT NULL);
+CREATE INDEX sector_market_company_entity_code ON sector_market_company_entities(stock_code);
+CREATE TABLE sector_market_documents (id BIGINT PRIMARY KEY, source_type TEXT, source_id TEXT, title TEXT, published_at TEXT);
+CREATE TABLE sector_market_document_links (id BIGINT PRIMARY KEY, doc_id BIGINT, entity_id BIGINT, link_type TEXT);
+CREATE INDEX sector_market_document_link_entity ON sector_market_document_links(entity_id, id);
+-- The original query has no ORDER BY. Preserve its observed scan policy so
+-- equal-time document ties keep their existing order for this snapshot.
+CREATE TABLE sector_market_doc_scan (id_count INTEGER PRIMARY KEY, document_first BOOLEAN NOT NULL);

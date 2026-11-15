@@ -33,7 +33,9 @@ def load_sector_market(source, destination, *, peer_runtime=None):
                             'sector_market_groups, sector_market_peer_links, '
                             'sector_market_benchmarks, sector_market_benchmark_prices, sector_market_index, '
                             'sector_market_peer_runtime, sector_market_sector_names, '
-                            'sector_market_themes, sector_market_narratives')
+                            'sector_market_themes, sector_market_narratives, sector_market_entities, '
+                            'sector_market_company_entities, sector_market_documents, sector_market_document_links, '
+                            'sector_market_doc_scan')
         with destination.cursor().copy(
             'COPY sector_market_prices (' + ', '.join(_COLUMNS) + ') FROM STDIN'
         ) as copy:
@@ -65,6 +67,9 @@ def load_sector_market(source, destination, *, peer_runtime=None):
             ('sector_market_index', 'sector, trade_date, value', 'sector_index'),
             ('sector_market_sector_names', 'sector_name, group_name', 'sector_map'),
             ('sector_market_themes', 'group_name, themes_json', 'value_chains'),
+            ('sector_market_entities', 'id, type, name, status', 'entities'),
+            ('sector_market_documents', 'id, source_type, source_id, title, published_at', 'raw_documents'),
+            ('sector_market_document_links', 'id, doc_id, entity_id, link_type', 'entity_links'),
         ):
             with destination.cursor().copy(f'COPY {target} ({columns}) FROM STDIN') as copy:
                 for row in source.execute(f'SELECT {columns} FROM {table}'):
@@ -74,6 +79,24 @@ def load_sector_market(source, destination, *, peer_runtime=None):
             for ordinal, row in enumerate(source.execute('''SELECT id, topic, title, core_question, doc_count,
                 created_at FROM narratives WHERE superseded_at IS NULL ORDER BY created_at DESC''')):
                 copy.write_row((ordinal, *row))
+        with destination.cursor().copy('COPY sector_market_company_entities (entity_id, stock_code) FROM STDIN') as copy:
+            for row in source.execute('''SELECT e.id, c.stock_code FROM entities e JOIN companies c
+                ON c.corp_code = json_extract(e.meta_json, '$.corp_code')
+                WHERE e.type = 'company' AND c.stock_code IS NOT NULL'''):
+                copy.write_row(tuple(row))
+        with destination.cursor().copy('COPY sector_market_doc_scan (id_count, document_first) FROM STDIN') as copy:
+            for n in range(1, 201):
+                q = ("EXPLAIN QUERY PLAN SELECT el.doc_id, el.entity_id, d.source_type, d.title, d.published_at "
+                     "FROM entity_links el JOIN raw_documents d ON d.id = el.doc_id WHERE el.entity_id IN ("
+                     + ','.join('?' * n) + ") AND d.published_at >= ? AND d.source_type IN (?,?,?,?)")
+                plan = [r[3] for r in source.execute(q, [*([0] * n), '2000-01-01', 'blog', 'scrap', 'web', 'youtube'])]
+                doc_first = (len(plan) == 2 and 'sqlite_autoindex_raw_documents_1' in plan[0]
+                             and 'sqlite_autoindex_entity_links_1' in plan[1])
+                link_first = (len(plan) == 2 and 'idx_entity_links_entity' in plan[0]
+                              and 'INTEGER PRIMARY KEY' in plan[1])
+                if not (doc_first or link_first):
+                    raise ValueError('Unsupported SQLite document scan plan')
+                copy.write_row((n, doc_first))
         if peer_runtime is not None:
             from psycopg.types.json import Jsonb
             destination.execute('INSERT INTO sector_market_peer_runtime (payload) VALUES (%s)',
@@ -114,6 +137,26 @@ class PostgreSQLSectorSource:
         return [dict(zip(columns, row)) for row in self.conn.execute(
             'SELECT id, topic, title, core_question, doc_count, created_at '
             'FROM sector_market_narratives ORDER BY ordinal')]
+
+    def topic_entity_ids(self, keywords):
+        return [r[0] for r in self.conn.execute("SELECT id FROM sector_market_entities "
+                "WHERE type IN ('sector', 'theme') AND name = ANY(%s)", (sorted(keywords),))]
+
+    def stock_entity_ids(self, codes):
+        return [r[0] for r in self.conn.execute('SELECT entity_id FROM sector_market_company_entities '
+                                                'WHERE stock_code = ANY(%s)', (codes,))]
+
+    def document_links(self, entity_ids, since, types):
+        policy = self.conn.execute('SELECT document_first FROM sector_market_doc_scan WHERE id_count=%s',
+                                   (len(entity_ids),)).fetchone()
+        if policy is None:
+            raise ValueError('Document scan size not captured')
+        order = ('d.source_type COLLATE "C", d.source_id COLLATE "C" NULLS FIRST, d.id, '
+                 'el.entity_id, el.link_type COLLATE "C" NULLS FIRST, el.id') if policy[0] else 'el.entity_id, el.id'
+        return list(self.conn.execute('''SELECT el.doc_id, el.entity_id, d.source_type, d.title, d.published_at
+            FROM sector_market_document_links el JOIN sector_market_documents d ON d.id = el.doc_id
+            WHERE el.entity_id = ANY(%s) AND d.published_at >= %s AND d.source_type = ANY(%s)
+            ORDER BY ''' + order, (entity_ids, since, list(types))))
 
     def peer_runtime(self):
         """Return the bundle committed with this snapshot, or None if absent."""

@@ -14,7 +14,7 @@ from pipeline.postgres_sector_market import PostgreSQLSectorSource, load_sector_
 from pipeline.sector_rs import SQLiteSectorSource, build_sector_map, group_members_from_source
 from pipeline.sector_peers import sector_peers
 from pipeline.sector_view import (industry_map, industry_map_from_source, sector_members_from_source,
-                                  sector_narratives, sector_narratives_from_source,
+                                  sector_docs, sector_docs_from_source, sector_narratives, sector_narratives_from_source,
                                   sector_peer_list, sector_peer_list_from_source)
 
 
@@ -37,7 +37,7 @@ class SectorMarketTest(unittest.TestCase):
                 trade_date TEXT NOT NULL, open INTEGER, high INTEGER, low INTEGER,
                 close INTEGER, volume INTEGER, market_cap INTEGER, shares INTEGER, fetched_at TEXT,
                 UNIQUE(stock_code, trade_date));
-            CREATE TABLE companies(stock_code TEXT, sector TEXT, corp_name TEXT);
+            CREATE TABLE companies(stock_code TEXT, sector TEXT, corp_name TEXT, corp_code TEXT);
             CREATE TABLE sector_map(sector_name TEXT, group_name TEXT);
             CREATE TABLE sector_overrides(stock_code TEXT, sector TEXT);
             CREATE TABLE sector_peer_map(sector TEXT, peer_group_id TEXT, sort INTEGER,
@@ -48,10 +48,15 @@ class SectorMarketTest(unittest.TestCase):
             CREATE TABLE value_chains(group_name TEXT, themes_json TEXT);
             CREATE TABLE narratives(id INTEGER, topic TEXT, title TEXT, core_question TEXT,
                                     doc_count INTEGER, created_at TEXT, superseded_at TEXT);
-            CREATE TABLE entities(id INTEGER, type TEXT, aliases TEXT, name TEXT);
+            CREATE TABLE entities(id INTEGER, type TEXT, aliases TEXT, name TEXT, status TEXT, meta_json TEXT);
             CREATE TABLE entity_relations(src_id INTEGER, dst_id INTEGER, rel_type TEXT);
+            CREATE TABLE raw_documents(id INTEGER PRIMARY KEY, source_type TEXT, source_id TEXT, title TEXT, published_at TEXT,
+                                       UNIQUE(source_type,source_id));
+            CREATE TABLE entity_links(id INTEGER PRIMARY KEY, doc_id INTEGER, entity_id INTEGER, link_type TEXT,
+                                      UNIQUE(doc_id,entity_id,link_type));
+            CREATE INDEX idx_entity_links_entity ON entity_links(entity_id);
             INSERT INTO sector_map VALUES ('source-a','A'),('source-b','B');
-            INSERT INTO companies VALUES ('001','source-a','one'),('002','source-b','two'),('003','source-a','three');
+            INSERT INTO companies VALUES ('001','source-a','one','c1'),('002','source-b','two','c2'),('003','source-a','three','c3');
             INSERT INTO sector_overrides VALUES ('003','B');
             INSERT INTO sector_peer_map VALUES ('A','g',0,0,NULL,'seed');
             INSERT INTO sector_benchmarks VALUES ('A','AAA','ETF A','index',NULL),('B',NULL,NULL,NULL,NULL);
@@ -59,6 +64,10 @@ class SectorMarketTest(unittest.TestCase):
             INSERT INTO sector_index VALUES ('B','2026-01-09',120.0);
             INSERT INTO value_chains VALUES ('A','["theme-a"]');
             INSERT INTO narratives VALUES (1,'theme-a','title',NULL,2,'2026-01-09',NULL);
+            INSERT INTO entities VALUES (1,'theme',NULL,'theme-a','active',NULL);
+            INSERT INTO entities VALUES (2,'company',NULL,'one','active','{"corp_code":"c1"}');
+            INSERT INTO raw_documents VALUES (1,'blog','b1','theme-a report','2026-01-09');
+            INSERT INTO entity_links VALUES (1,1,1,'sector'),(2,1,2,'stock');
             INSERT INTO stock_prices(stock_code,trade_date,close,market_cap) VALUES
                 ('001','2025-10-01',100,900),('002','2025-10-01',100,600),
                 ('003','2025-10-01',200,100),('001','2026-01-02',150,900),
@@ -102,6 +111,8 @@ class SectorMarketTest(unittest.TestCase):
                              sector_members_from_source(SQLiteSectorSource(self.db), 'A', '2026-01-09'))
             self.db.row_factory = sqlite3.Row
             self.assertEqual(sector_narratives_from_source(pgsource, 'A'), sector_narratives(self.db, 'A'))
+            self.assertEqual(sector_docs_from_source(pgsource, 'A', ['001'], '2026-01-09'),
+                             sector_docs(self.db, 'A', ['001'], '2026-01-09'))
             prices = SimpleNamespace(asOf='2026-01-09', model_dump=lambda **_: {
                 'dates': [], 'prices': {}, 'asOf': '2026-01-09', 'qualityIssues': []})
             runtime = SimpleNamespace(catalog=SimpleNamespace(

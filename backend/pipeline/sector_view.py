@@ -282,8 +282,7 @@ def sector_narratives(conn, sector: str) -> list[dict]:
              "docs": r["doc_count"], "updated_at": r["created_at"]} for r in rows if sector in topic_sectors(r["topic"], primary, themes)]
 
 
-def sector_narratives_from_source(source, sector: str) -> list[dict]:
-    """기존 내러티브 연결 규칙을 별도 저장소의 원천 분류에 적용한다."""
+def _source_sector_keywords(source):
     from pipeline.market_today_links import GENERIC_TAGS
     names, theme_rows = source.sector_names(), source.sector_themes()
     sectors = {group for _, group in names}
@@ -303,6 +302,12 @@ def sector_narratives_from_source(source, sector: str) -> list[dict]:
                 for theme in json.loads(encoded or '[]'):
                     words.update(set(_clean_theme(theme)) - other)
         themes[group] = {word for word in words if len(word) >= 2 and word not in GENERIC_TAGS} - own
+    return primary, themes
+
+
+def sector_narratives_from_source(source, sector: str) -> list[dict]:
+    """기존 내러티브 연결 규칙을 별도 저장소의 원천 분류에 적용한다."""
+    primary, themes = _source_sector_keywords(source)
     return [{'id': r['id'], 'topic': r['topic'], 'title': r['title'] or r['topic'],
              'core_question': r['core_question'], 'docs': r['doc_count'], 'updated_at': r['created_at']}
             for r in source.active_narratives() if sector in topic_sectors(r['topic'], primary, themes)]
@@ -325,14 +330,31 @@ def sector_docs(conn, sector: str, codes_by_cap: list[str], latest: str) -> list
     ids = topic_ids + stock_ids
     ph3 = ",".join("?" * len(ids))
     tp = ",".join("?" * len(DOC_TYPES))
+    rows = conn.execute(f"""SELECT el.doc_id, el.entity_id, d.source_type, d.title, d.published_at FROM entity_links el
+            JOIN raw_documents d ON d.id = el.doc_id
+            WHERE el.entity_id IN ({ph3}) AND d.published_at >= ? AND d.source_type IN ({tp})""",
+                          [*ids, since, *DOC_TYPES])
+    return _sector_docs_from_rows(kws, topic_ids, stock_ids, rows)
+
+
+def sector_docs_from_source(source, sector: str, codes_by_cap: list[str], latest: str) -> list[dict]:
+    primary, themes = _source_sector_keywords(source)
+    kws = primary.get(sector, set()) | themes.get(sector, set())
+    topic_ids = source.topic_entity_ids(kws)
+    stock_ids = source.stock_entity_ids(codes_by_cap[:TOP_STOCKS_FOR_DOCS])
+    if not topic_ids and not stock_ids:
+        return []
+    since = (date.fromisoformat(latest) - timedelta(days=DOC_DAYS)).isoformat()
+    rows = source.document_links(topic_ids + stock_ids, since, DOC_TYPES)
+    return _sector_docs_from_rows(kws, topic_ids, stock_ids, rows)
+
+
+def _sector_docs_from_rows(kws, topic_ids, stock_ids, rows):
     weight = {i: 2 for i in topic_ids} | {i: 1 for i in stock_ids if i not in topic_ids}
     score: dict[int, int] = {}
     topic_hit: dict[int, bool] = {}
     meta: dict[int, dict] = {}
-    for r in conn.execute(f"""SELECT el.doc_id, el.entity_id, d.source_type, d.title, d.published_at FROM entity_links el
-            JOIN raw_documents d ON d.id = el.doc_id
-            WHERE el.entity_id IN ({ph3}) AND d.published_at >= ? AND d.source_type IN ({tp})""",
-                          [*ids, since, *DOC_TYPES]):
+    for r in rows:
         score[r[0]] = score.get(r[0], 0) + weight[r[1]]
         if weight[r[1]] == 2:
             topic_hit[r[0]] = True
