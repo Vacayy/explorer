@@ -1,7 +1,7 @@
-"""Apply all pending note changes to a freshly copied fixture projection.
+"""Apply supported changes to a freshly copied fixture projection.
 
-Not an operational publisher: unsupported changes fail the transaction. Only
-the note feed and document search are updated; no model or file is accessed.
+Not an operational publisher: unsupported changes fail the transaction. New
+notes and existing blog/video changes are limited to the documented cases.
 """
 import json
 import hashlib
@@ -12,6 +12,7 @@ from models.spine import FeedDocument
 from pipeline.postgres_projection_copy_fixture import copy_projection
 from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
 from pipeline.postgres_generation_media import _read_file
+from pipeline.youtube_digest import fields_from_job
 
 
 def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=None):
@@ -41,9 +42,13 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
             for path in media:
                 captured[path] = _read_file(root, path)
         same_revision = prior is not None and revision == 1
-        if source != 'note' and (not same_revision or media_changed):
-            raise ValueError('Only same-content summary updates are supported for this source')
-        if timeline_present and (source == 'note' or not same_revision or media_changed):
+        if source != 'note' and (prior is None or media_changed):
+            raise ValueError('New documents or attachment changes are unsupported for this source')
+        if source != 'note' and not same_revision:
+            original = conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='raw_documents' AND row_data->>'id'=%s", (str(ident),)).fetchone()[0]
+            if (original.get('source_id') or '') != source_id or (original.get('url') or '') != url or (original.get('published_at') or '') != published:
+                raise ValueError('Source identity, URL or date changes are unsupported')
+        if timeline_present and (source == 'note' or media_changed):
             raise ValueError('Timeline content changes are not supported')
         if same_revision and media_changed and model is not None and (summary,model) != (prior.summary,prior.enrich_model):
             raise ValueError('Combined same-revision media and summary changes are ambiguous')
@@ -56,10 +61,18 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
         else:
             doc = doc.model_copy(update={'title':title,'url':url,'published_at':published,'content':markdown or raw,
                                          'images':media or [],'summary':summary,'enrich_model':model,'entities':[]})
+            if source == 'youtube':
+                job = conn.execute('SELECT transcript,status,updated_at,error FROM ingest_youtube_jobs WHERE document_id=%s AND revision=%s',
+                                   (ident,revision)).fetchone()
+                job = dict(zip(('transcript','status','updated_at','error'),job)) if job else None
+                doc = doc.model_copy(update=fields_from_job({'source_type':source,'digest_status':status,
+                                                            'markdown':markdown,'raw_content':raw},job))
         old_list = conn.execute('SELECT list_document FROM document_list_projection WHERE document_id=%s ORDER BY ordinal LIMIT 1', (ident,)).fetchone()
         list_content = old_list[0].get('content') if same_revision and old_list else markdown
         list_doc = doc.model_copy(update={'content':list_content})
-        updates.append((ident,source_id,title,url,published,raw,markdown,media,status,digest,summary,model,
+        if source == 'youtube':
+            list_doc = list_doc.model_copy(update={'digest_status':None,'digest_error':None,'video_digest':None,'transcript':None})
+        updates.append((ident,source,source_id,title,url,published,raw,markdown,media,status,digest,summary,model,
                         doc,list_doc,prior is not None,same_revision,media_changed))
     conn.execute(sql.SQL('SET LOCAL search_path TO {}').format(sql.Identifier(target_schema)))
     if captured:
@@ -75,7 +88,7 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
     conn.execute('DELETE FROM document_filter_order')
     conn.execute('DELETE FROM document_list_projection')
     replaced_ids = [row[0] for row in updates if not (row[-2] and row[-1])]
-    for ident,source_id,title,url,published,raw,markdown,media,status,digest,summary,model,doc,list_doc,existing,same_revision,media_changed in updates:
+    for ident,source,source_id,title,url,published,raw,markdown,media,status,digest,summary,model,doc,list_doc,existing,same_revision,media_changed in updates:
         if existing:
             if not same_revision:
                 conn.execute('DELETE FROM document_entity_order WHERE document_id=%s', (ident,))
@@ -96,7 +109,7 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
                          (ident,'note',published,Jsonb(doc.model_dump(mode='json'))))
             old = {}
         if not same_revision:
-            old.update({'id':ident,'source_type':'note','source_id':source_id,'title':title,'url':url,
+            old.update({'id':ident,'source_type':source,'source_id':source_id,'title':title,'url':url,
                         'published_at':published,'raw_content':raw,'markdown':markdown,'content_hash':digest,
                         'media_json':json.dumps(media,ensure_ascii=False) if media else None,'digest_status':status})
         if same_revision and media_changed:
@@ -106,16 +119,22 @@ def copy_with_note_changes(conn, source_schema, target_schema, *, media_root=Non
         else:
             conn.execute("INSERT INTO legacy_snapshot_rows SELECT 'raw_documents',COALESCE(max(row_ordinal)+1,0),%s "
                          "FROM legacy_snapshot_rows WHERE table_name='raw_documents'", (Jsonb(old),))
+        next_id = None
         if model is not None and not (same_revision and media_changed):
             next_id = conn.execute("SELECT COALESCE(max((row_data->>'id')::bigint),0)+1 FROM legacy_snapshot_rows WHERE table_name='enrichments'").fetchone()[0]
             enrichment = {'id':next_id,'doc_id':ident,'summary':summary,'model':model,'content_hash':digest,
                           'enriched_at':'2026-01-01T00:00:00Z'}
             conn.execute("INSERT INTO legacy_snapshot_rows SELECT 'enrichments',COALESCE(max(row_ordinal)+1,0),%s "
                          "FROM legacy_snapshot_rows WHERE table_name='enrichments'", (Jsonb(enrichment),))
-            if same_revision:
-                conn.execute("UPDATE timeline_source_projection SET document=jsonb_set(jsonb_set(document,'{summary}',%s),'{enrich_model}',%s) "
-                             "WHERE document_id=%s", (Jsonb(summary),Jsonb(model),ident))
-                conn.execute('UPDATE timeline_source_metadata SET enrichment_id=%s WHERE document_id=%s', (next_id,ident))
+        if existing and not same_revision:
+            conn.execute("UPDATE timeline_source_projection SET document=%s || jsonb_build_object('published_at',document->'published_at'), "
+                         "preview=left(COALESCE(NULLIF(%s,''),NULLIF(%s,''),''),180),topic_names=ARRAY[]::text[] WHERE document_id=%s",
+                         (Jsonb(list_doc.model_dump(mode='json')),title,markdown,ident))
+            conn.execute("UPDATE timeline_source_metadata SET enrichment_id=%s,entity_order='[]'::jsonb WHERE document_id=%s", (next_id,ident))
+        elif same_revision and not media_changed and model is not None:
+            conn.execute("UPDATE timeline_source_projection SET document=jsonb_set(jsonb_set(document,'{summary}',%s),'{enrich_model}',%s) "
+                         "WHERE document_id=%s", (Jsonb(summary),Jsonb(model),ident))
+            conn.execute('UPDATE timeline_source_metadata SET enrichment_id=%s WHERE document_id=%s', (next_id,ident))
     conn.execute('CREATE TEMP TABLE overlay_new_rows(old_ordinal bigint,document_id bigint,list_document jsonb) ON COMMIT DROP')
     conn.execute('INSERT INTO overlay_new_rows SELECT ordinal,document_id,list_document FROM overlay_old_list '
                  'WHERE NOT (document_id=ANY(%s))', (replaced_ids,))

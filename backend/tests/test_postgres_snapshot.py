@@ -300,7 +300,7 @@ class SnapshotReplacementTests(unittest.TestCase):
         with self.pg() as c:
             c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
             import_archived_documents(c)
-            store_document(c,source_type='blog',source_id='synthetic',title='changed',markdown='changed')
+            store_document(c,source_type='telegram',source_id='synthetic',title='changed',markdown='changed')
         destination = 'refactor_fixture_' + uuid.uuid4().hex
         with psycopg.connect(self.dsn) as c:
             c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
@@ -311,7 +311,7 @@ class SnapshotReplacementTests(unittest.TestCase):
         def target(): return psycopg.connect(self.dsn, options=f'-c search_path={destination}')
         with target() as c:
             c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
-        with self.assertRaisesRegex(ValueError, 'Only same-content summary updates'):
+        with self.assertRaisesRegex(ValueError, 'Unsupported source change'):
             with self.pg() as c:
                 c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
                 copy_with_note_changes(c,self.schema,destination)
@@ -380,6 +380,98 @@ class SnapshotReplacementTests(unittest.TestCase):
         self.assertEqual(reader.list(source='youtube').items[0].summary,'영상 요약')
         with target() as c:
             self.assertEqual(c.execute('SELECT document->>\'summary\' FROM timeline_source_projection WHERE document_id=10').fetchone()[0],'영상 요약')
+
+    def test_existing_blog_content_change_updates_feed_and_timeline(self):
+        self.load('2026-01-03T00:00:00+00:00')
+        before=self.reader.get(1)
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            store_document(c,source_type='blog',source_id='synthetic',title='새 블로그 제목',
+                           url='https://example.test/article',published_at='2026-01-01',
+                           markdown='변경된 블로그 본문',raw_content='변경된 블로그 본문',media=['fixtures/example.jpg'])
+        destination='refactor_fixture_'+uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn,options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            copy_with_note_changes(c,self.schema,destination)
+        reader=PostgreSQLDocumentReader(target)
+        detail=reader.get(1)
+        self.assertEqual((detail.title,detail.content,detail.summary,detail.entities),('새 블로그 제목','변경된 블로그 본문',None,[]))
+        self.assertEqual(reader.list(source='blog').items[0].content,'변경된 블로그 본문')
+        with target() as c:
+            document=c.execute('SELECT document FROM timeline_source_projection WHERE document_id=1').fetchone()[0]
+            self.assertEqual((document['content'],document['summary'],document['entities']),('변경된 블로그 본문',None,[]))
+        self.assertEqual(self.reader.get(1).model_dump(),before.model_dump())
+
+    def test_existing_youtube_digest_change_keeps_transcript_and_timeline(self):
+        transcript='원본 자막 '*30
+        with self.fixture.connect() as c:
+            c.execute("INSERT INTO raw_documents VALUES (10,'youtube','UCfixture/abc123def45','영상',"
+                      "'https://example.test','2026-01-01',?,?,'pending',NULL,NULL)",(transcript,transcript))
+            c.execute("INSERT INTO youtube_channels VALUES ('UCfixture','합성 채널',1)")
+        self.load('2026-01-03T00:00:00+00:00')
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            job=queue_video(c,10)
+            finish_video(c,10,revision=job['revision'],token=job['token'],digest='영상 정리본')
+        destination='refactor_fixture_'+uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn,options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            copy_with_note_changes(c,self.schema,destination)
+        reader=PostgreSQLDocumentReader(target)
+        detail=reader.get(10)
+        self.assertEqual((detail.transcript,detail.digest_status),(transcript,'ok'))
+        self.assertIn('영상 정리본',detail.video_digest)
+        self.assertIsNone(reader.list(source='youtube').items[0].transcript)
+        with target() as c:
+            document=c.execute('SELECT document FROM timeline_source_projection WHERE document_id=10').fetchone()[0]
+            self.assertIn('영상 정리본',document['content'])
+            self.assertIsNone(document['transcript'])
+        self.assertEqual(self.reader.get(10).digest_status,'pending')
+
+    def test_blog_url_change_is_rejected_and_original_remains(self):
+        self.load('2026-01-03T00:00:00+00:00')
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            store_document(c,source_type='blog',source_id='synthetic',title='변경',url='https://other.test',
+                           published_at='2026-01-01',markdown='변경',media=['fixtures/example.jpg'])
+        destination='refactor_fixture_'+uuid.uuid4().hex
+        with psycopg.connect(self.dsn) as c:
+            c.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(destination)))
+        def cleanup():
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(destination)))
+        self.addCleanup(cleanup)
+        def target(): return psycopg.connect(self.dsn,options=f'-c search_path={destination}')
+        with target() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/document_projection.sql').read_text())
+        with self.assertRaisesRegex(ValueError,'identity, URL or date'):
+            with self.pg() as c:
+                c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+                copy_with_note_changes(c,self.schema,destination)
+        with target() as c:
+            self.assertEqual(c.execute('SELECT count(*) FROM document_projection').fetchone()[0],0)
+        self.assertEqual(self.reader.list().total,2)
 
     def test_note_overlay_updates_summary_without_discarding_matching_vector(self):
         import struct
