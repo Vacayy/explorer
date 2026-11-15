@@ -234,6 +234,22 @@ class SnapshotReplacementTests(unittest.TestCase):
         with self.pg() as c:
             self.assertEqual(c.execute('SELECT * FROM timeline_source_projection ORDER BY id').fetchall(), expected)
 
+    @unittest.expectedFailure
+    def test_snapshot_replacement_does_not_repeat_prior_page(self):
+        """Known gap: until is a time bound, not a snapshot generation token."""
+        with closing(self.fixture.connect()) as c:
+            c.execute("INSERT INTO raw_documents VALUES(3,'blog','b3','이전 글','https://example.test/old','2025-12-31','본문',NULL,NULL,'[]',NULL)")
+            c.commit()
+        self.load('2026-01-05T00:00:00+00:00')
+        reader = PostgreSQLTimelineSources(self.pg)
+        first = reader.timeline(scope='sources', size=1, page=1, until='2026-01-06T00:00:00Z')
+        with closing(self.fixture.connect()) as c:
+            c.execute("INSERT INTO raw_documents VALUES(4,'blog','b4','늦게 들어온 글','https://example.test/new','2026-01-02','본문',NULL,NULL,'[]',NULL)")
+            c.commit()
+        self.load('2026-01-07T00:00:00+00:00')
+        second = reader.timeline(scope='sources', size=1, page=2, until=first.until)
+        self.assertNotEqual(first.items[0].id, second.items[0].id)
+
     def test_timeline_submillisecond_ties_and_until_match_sqlite(self):
         from pipeline.timeline import timeline
         with closing(self.fixture.connect()) as c:
