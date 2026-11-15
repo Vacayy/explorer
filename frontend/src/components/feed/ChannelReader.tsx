@@ -194,8 +194,8 @@ export function ChannelReader() {
           {timeline.isLoading && <div role="status" aria-label="게시물 불러오는 중" className="space-y-4 pt-4">{[1, 2, 3].map(i => <Skeleton key={i} className="h-48 w-full" />)}</div>}
           {timeline.isError && <ErrorState message={generationExpired ? '조회하던 자료가 갱신됐습니다. 새로 시작해 주세요.' : timeline.data ? '갱신에 실패했습니다. 이전 자료를 표시합니다.' : '게시물을 불러오지 못했습니다.'} onRetry={generationExpired ? restart : () => void timeline.refetch()} />}
           {timeline.data?.items.map(item => item.document
-            ? <DocumentCard key={item.id} doc={item.document} timeLabel={item.time_label} generation={activeGeneration} onChipFilter={tag => navigate(`/feed?view=documents&q=${encodeURIComponent(tag.name)}`)} />
-            : <SystemPost key={item.id} item={item} variant="row" presentation="reading" generation={activeGeneration} />)}
+            ? <DocumentCard key={item.id} doc={item.document} timeLabel={item.time_label} generation={activeGeneration} archived={!!activeGeneration && timeline.data?.archived !== false} onChipFilter={tag => navigate(`/feed?view=documents&q=${encodeURIComponent(tag.name)}`)} />
+            : <SystemPost key={item.id} item={item} variant="row" presentation="reading" generation={activeGeneration} archived={!!activeGeneration && timeline.data?.archived !== false} />)}
           {timeline.data?.items.length === 0 && <EmptyState message={topic ? `‘${topic}’ 주제의 게시물이 없습니다.` : channel ? '이 소스에 저장된 게시물이 없습니다.' : '아직 저장된 업데이트가 없습니다.'} />}
           {timeline.data && <nav className="flex flex-wrap items-center justify-between gap-3 border-t pt-5" aria-label="게시물 페이지">
             <Button variant="outline" size="sm" disabled={page === 1} onClick={() => paginate(page - 1)}><ChevronLeft aria-hidden="true" />이전</Button>

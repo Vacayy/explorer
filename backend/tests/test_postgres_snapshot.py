@@ -271,6 +271,21 @@ class SnapshotReplacementTests(unittest.TestCase):
         second = reader.timeline(scope='sources', size=1, page=2, until=first.until, generation=first.generation)
         self.assertNotEqual(first.items[0].id, second.items[0].id)
         self.assertEqual(second.generation, first.generation)
+        self.assertTrue(second.archived)
+        self.assertTrue(details.get_with_generation_state(1, generation=first.generation)[1])
+        self.assertFalse(details.get_with_generation_state(1)[1])
+        from fastapi.testclient import TestClient
+        script = Path(__file__).resolve().parents[2] / 'scripts/refactor_document_ui.py'
+        spec = importlib.util.spec_from_file_location('refactor_archived_ui', script)
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict(os.environ, {'REFACTOR_FIXTURE_SCHEMA': self.schema}):
+            spec.loader.exec_module(module)
+        with TestClient(module.app) as client:
+            old_doc = client.get('/api/spine/doc/1', params={'generation': first.generation})
+            self.assertEqual(old_doc.status_code, 200)
+            self.assertEqual(old_doc.headers['x-explorer-archived'], '1')
+            old_feed = client.get('/api/spine/feed/timeline', params={'generation': first.generation})
+            self.assertTrue(old_feed.json()['archived'])
         self.assertEqual(reader.channels(until=first.until, include_owner_read_state=True, generation=first.generation).model_dump(), old_channels)
         self.assertEqual(details.get(1, generation=first.generation).model_dump(), old_detail)
         self.assertNotEqual(details.get(1).title, old_detail['title'])
@@ -339,6 +354,8 @@ class SnapshotReplacementTests(unittest.TestCase):
                 pinned = client.get(path, params={'generation': active_generation})
                 self.assertEqual(pinned.status_code, 200)
                 self.assertEqual(pinned.headers['x-explorer-generation'], active_generation)
+                if path.startswith('/api/spine/doc/'):
+                    self.assertEqual(pinned.headers['x-explorer-archived'], '0')
 
     def test_channel_directory_matches_sqlite_and_remains_readonly(self):
         from pipeline.timeline import channels

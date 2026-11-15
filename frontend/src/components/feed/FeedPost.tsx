@@ -32,8 +32,8 @@ function preview(text: string) {
 
 /** 피드 리더의 글 카드(D-325, 옛 ChannelReader) — 분류 · 소스 · 시각 / 제목 / 요약(기본) · '원문 보기'로 원문 펼침 / 태그 · 스터디로 읽기 · 스터디에 추가 · 자료 상세 · 원문 사이트.
  *  요약이 없으면 원문을 바로 보인다. 펼친 원문은 높이 상한 안에서 스크롤한다(§4.34). */
-export function DocumentCard({ doc, onChipFilter, timeLabel = '게시', generation }: {
-  doc: FeedDocument; onChipFilter: (tag: EntityTag) => void; timeLabel?: string; generation?: string
+export function DocumentCard({ doc, onChipFilter, timeLabel = '게시', generation, archived = false }: {
+  doc: FeedDocument; onChipFilter: (tag: EntityTag) => void; timeLabel?: string; generation?: string; archived?: boolean
 }) {
   const docHref = `/doc/${doc.id}${generation ? `?generation=${encodeURIComponent(generation)}` : ''}`
   const excerpt = preview(doc.summary || doc.content || '')
@@ -56,13 +56,13 @@ export function DocumentCard({ doc, onChipFilter, timeLabel = '게시', generati
         <h3 className="text-card-title font-semibold text-pretty break-words">
           <Link to={docHref} className={focusLink}>{doc.title || excerpt.slice(0, 90) || '제목 없는 게시물'}</Link>
         </h3>
-        <DocumentBody doc={doc} reading={hasSummary ? 'summary' : 'original'} mediaSize="preview" />
+        <DocumentBody doc={doc} reading={hasSummary ? 'summary' : 'original'} mediaSize="preview" archived={archived} />
         {hasSummary && hasOriginal && <>
           <Button variant="ghost" size="sm" className="-ml-2 text-caption text-ink-2" aria-expanded={showOriginal} onClick={() => { if (!showOriginal) track('open', 'feed.original', { entity: doc.id }); setShowOriginal(v => !v) }}>
             {showOriginal ? '원문 접기' : '원문 보기'}<ChevronDown aria-hidden="true" className={`size-3 transition-transform ${showOriginal ? 'rotate-180' : ''}`} />
           </Button>
           {showOriginal && <BoundedArea size="md" className="rounded-lg border border-line bg-surface-2/50" viewportClassName="p-3">
-            <DocumentBody doc={doc} reading="original" mediaSize="preview" />
+            <DocumentBody doc={doc} reading="original" mediaSize="preview" archived={archived} />
           </BoundedArea>}
         </>}
         <div className="flex flex-wrap items-center gap-2">
@@ -76,7 +76,7 @@ export function DocumentCard({ doc, onChipFilter, timeLabel = '게시', generati
   )
 }
 
-export function SystemPost({ item, variant = 'card', presentation = 'preview', generation }: { item: TimelineItem; variant?: PostVariant; presentation?: 'preview' | 'reading'; generation?: string }) {
+export function SystemPost({ item, variant = 'card', presentation = 'preview', generation, archived = false }: { item: TimelineItem; variant?: PostVariant; presentation?: 'preview' | 'reading'; generation?: string; archived?: boolean }) {
   const [open, setOpen] = useState(false)
   return (
     <article aria-label={item.title} className={variant === 'row' ? 'feed-post-row' : undefined}>
@@ -90,7 +90,7 @@ export function SystemPost({ item, variant = 'card', presentation = 'preview', g
           <Collapsible open={presentation === 'reading' || open} onOpenChange={setOpen}>
             {presentation === 'preview' && !open && <p className="line-clamp-3 break-words text-sm leading-relaxed text-muted-foreground">{preview(item.body)}</p>}
             <CollapsibleContent>
-              <div tabIndex={0} aria-label="업데이트 내용" className="break-words text-reading"><Markdown className="text-[length:var(--text-reading)] leading-[var(--text-reading--line-height)] [&_h2]:text-[length:var(--text-section)] [&_h3]:text-[length:var(--text-card-title)] [overflow-wrap:anywhere] [&_pre]:overflow-x-auto">{item.body}</Markdown></div>
+              <div tabIndex={0} aria-label="업데이트 내용" className="break-words text-reading"><Markdown className="text-[length:var(--text-reading)] leading-[var(--text-reading--line-height)] [&_h2]:text-[length:var(--text-section)] [&_h3]:text-[length:var(--text-card-title)] [overflow-wrap:anywhere] [&_pre]:overflow-x-auto" components={archived ? { img: () => null } : undefined}>{item.body}</Markdown></div>
             </CollapsibleContent>
             <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted-foreground">
               <span className={item.ai_generated ? 'text-hypothesis' : 'text-fact'}>{item.ai_generated ? 'AI 요약 · 해석' : '수집 업데이트'}</span>
@@ -102,6 +102,8 @@ export function SystemPost({ item, variant = 'card', presentation = 'preview', g
               <Link to={item.to} className={`ml-auto inline-flex items-center gap-1 text-xs ${focusLink}`}>상세 보기<ArrowUpRight aria-hidden="true" className="size-3" /></Link>
             </div>
           </Collapsible>
+          {archived && <p className="text-caption text-muted-foreground">연결된 시스템 상세는 현재 자료입니다.</p>}
+          {archived && /!\[/.test(item.body) && <p className="text-caption text-muted-foreground">이전 자료의 이미지는 표시하지 않습니다.</p>}
           {item.links.length > 0 && <div className="flex flex-wrap gap-x-3 gap-y-2 border-t pt-2">{item.links.map(link => <Link key={link.to} to={generation && /^\/doc\/\d+$/.test(link.to) ? `${link.to}?generation=${encodeURIComponent(generation)}` : link.to} className={`inline-flex items-center gap-1 text-caption text-muted-foreground ${focusLink}`}><FileText aria-hidden="true" className="size-3" />{link.label}</Link>)}</div>}
       </PostSurface>
     </article>

@@ -15,14 +15,18 @@ class PostgreSQLRawDocumentReader:
         self.connection_factory = connection_factory
 
     def get(self, doc_id: int, *, generation=None) -> FeedDocument | None:
+        return self.get_with_generation_state(doc_id, generation=generation)[0]
+
+    def get_with_generation_state(self, doc_id: int, *, generation=None) -> tuple[FeedDocument | None, bool]:
+        """Return document and whether it came from an archived generation."""
         with self.connection_factory() as conn:
             conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
             if generation is not None:
                 requested, archived = resolve_generation(conn, generation)
                 if archived:
                     row = conn.execute('SELECT detail_document FROM archived_document_details WHERE generation_id=%s AND id=%s', (requested, doc_id)).fetchone()
-                    return FeedDocument.model_validate(row[0]) if row else None
-            return self.get_in_transaction(conn, doc_id)
+                    return (FeedDocument.model_validate(row[0]) if row else None), True
+            return self.get_in_transaction(conn, doc_id), False
 
     def get_in_transaction(self, conn, doc_id: int) -> FeedDocument | None:
         """Read using the caller-owned transaction, without altering it."""

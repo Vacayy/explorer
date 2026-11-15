@@ -735,6 +735,7 @@ export interface AiActivityItem {
 
 export interface TimelineResponse {
   generation?: string
+  archived?: boolean
   items: TimelineItem[]
   page: number
   size: number

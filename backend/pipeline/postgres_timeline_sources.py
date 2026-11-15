@@ -13,6 +13,7 @@ class GenerationExpired(Exception):
 
 class GenerationTimelineResponse(TimelineResponse):
     generation: str
+    archived: bool
 
 
 def resolve_generation(conn, generation):
@@ -75,7 +76,7 @@ class PostgreSQLTimelineSources:
                 title=doc.title, subject=doc.channel or doc.source_type,
                 time_label=label, to=f'/doc/{doc_id}', document=doc))
         return GenerationTimelineResponse(items=items, page=page, size=size,
-                                has_more=len(rows)>size, until=until, as_of=now, generation=str(requested))
+                                has_more=len(rows)>size, until=until, as_of=now, generation=str(requested), archived=archived)
 
     def channels(self, *, until=None, include_owner_read_state=False, generation=None):
         """Omit the legacy owner's read state unless explicitly requested."""
