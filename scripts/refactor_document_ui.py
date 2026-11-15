@@ -16,6 +16,7 @@ from models.industry import IndustryMapResponse, SectorDetailResponse, SectorPee
 from models.peers import PeerRuntime
 from models.sector_peers import SectorPeersResponse
 from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
+from pipeline.postgres_document_read import PostgreSQLDocumentReader
 from pipeline.postgres_timeline_sources import PostgreSQLTimelineSources, GenerationTimelineResponse, GenerationExpired, resolve_generation
 from pipeline.postgres_sector_market import PostgreSQLSectorSource
 from pipeline.postgres_search_snapshot import SearchSnapshot
@@ -36,6 +37,7 @@ if (os.getenv('REFACTOR_TEST_DISPOSABLE') != '1' or
 
 factory = lambda: psycopg.connect(dsn, options=f'-c search_path={schema}')
 reader = PostgreSQLRawDocumentReader(factory)
+list_reader = PostgreSQLDocumentReader(factory)
 timeline_reader = PostgreSQLTimelineSources(factory)
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 search_lock = threading.RLock()
@@ -44,7 +46,7 @@ related_index = None
 
 
 @app.get('/api/spine/feed', response_model=FeedResponse)
-def experimental_search_feed(response: Response, q: str = Query(..., min_length=1, max_length=200),
+def experimental_search_feed(response: Response, q: str | None = Query(None, max_length=200),
                              source: str | None = None, page: int = Query(1, ge=1),
                              size: int = Query(20, ge=1, le=100), stock: str | None = None,
                              industry: str | None = None, topic: str | None = None,
@@ -53,8 +55,10 @@ def experimental_search_feed(response: Response, q: str = Query(..., min_length=
     # Serializing rebuilds and queries prevents a replaced generation from
     # closing an index while another request is using it. Fixture only.
     global search_index
-    if not q.strip():
-        raise HTTPException(501, '검색어 없는 피드 조회는 아직 지원하지 않습니다.')
+    if not q or not q.strip():
+        if stock or industry or topic or days:
+            raise HTTPException(501, '검색어 없는 필터 조회는 아직 지원하지 않습니다.')
+        return list_reader.list(page=page, size=size, source=source)
     with search_lock, factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         generation = connection.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
