@@ -53,7 +53,7 @@ from pipeline.postgres_signals_fixture import signals_items
 from pipeline.postgres_signal_compute_fixture import compute_mention_signals
 from pipeline.postgres_calendar_fixture import calendar_events
 from pipeline.postgres_home_fixture import market_highlights, watchlist_updates
-from pipeline.postgres_ingest_cycle_fixture import run_cycle, run_exclusive_cycle, run_periodic, CYCLE_LOCK
+from pipeline.postgres_ingest_cycle_fixture import run_cycle, run_exclusive_cycle, run_periodic, run_periodic_sources, CYCLE_LOCK
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -1029,6 +1029,34 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
                 repeated=run_exclusive_cycle(connector,self.pg,enrich=existing_enricher(self.pg))
                 self.assertEqual(repeated['enriched'],0)
                 self.assertEqual(repeated['unchanged'],0 if connector is youtube else 1)
+            post['content'] += ' 수정'
+            def target(schema): return psycopg.connect(self.dsn,options=f'-c search_path={schema}')
+            publisher=FixturePublisher(self.pg,self.schema,target)
+            stop=threading.Event(); rounds=[]; errors=[]; attempts=[]; telegram_round=[]
+            def telegram_factory():
+                telegram_round.append(1)
+                if len(telegram_round)==2:
+                    raise RuntimeError('fixture source failure')
+                return telegram
+            def publish():
+                attempts.append(1)
+                if len(attempts)==1:
+                    raise RuntimeError('fixture publish failure')
+                publisher.publish()
+            def completed(results,published):
+                rounds.append((results,published))
+                if len(rounds)==3: stop.set()
+            try:
+                run_periodic_sources([('blog',lambda:blog),('telegram',telegram_factory),('youtube',lambda:youtube)],
+                    self.pg,enrich=existing_enricher(self.pg),stop=stop,interval_seconds=0.01,
+                    publish=publish,on_round=completed,on_error=lambda name,exc:errors.append(name))
+                self.assertEqual([item[1] for item in rounds],[False,True,False])
+                self.assertEqual(errors,['publish','telegram'])
+                self.assertEqual(rounds[0][0]['blog']['updated'],1)
+                self.assertEqual(set(rounds[1][0]),{'blog','youtube'})
+                self.assertEqual(set(rounds[2][0]),{'blog','telegram','youtube'})
+            finally:
+                publisher.close()
         with self.pg() as c:
             rows=c.execute("SELECT d.source_type,e.summary FROM ingest_documents d JOIN ingest_enrichments e ON e.document_id=d.id WHERE e.model='fake' ORDER BY d.source_type").fetchall()
             self.assertEqual(rows,[(name,'기존 요약 함수 결과') for name in ('blog','telegram','youtube')])

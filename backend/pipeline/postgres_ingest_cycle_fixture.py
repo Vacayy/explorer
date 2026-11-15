@@ -70,3 +70,40 @@ def run_periodic(connector_factory, factory, *, enrich, stop, interval_seconds, 
             on_cycle(result)
         if stop.wait(interval_seconds):
             return
+
+
+def run_periodic_sources(sources, factory, *, enrich, stop, interval_seconds, publish, on_round, on_error):
+    """Run explicitly supplied fixture sources serially; never schedules itself."""
+    sources = tuple(sources)
+    if (not sources or len({name for name, _ in sources}) != len(sources) or
+            any(not isinstance(name, str) or not name or not callable(make) for name, make in sources)):
+        raise ValueError('Sources require unique names and connector factories')
+    if interval_seconds <= 0:
+        raise ValueError('interval_seconds must be positive')
+    needs_publish = False
+    while not stop.is_set():
+        results = {}
+        changed = False
+        for name, make in sources:
+            if stop.is_set():
+                break
+            try:
+                result = run_exclusive_cycle(make(), factory, enrich=enrich)
+            except Exception as exc:
+                on_error(name, exc)
+            else:
+                results[name] = result
+                changed = changed or bool(result['new'] or result['updated'] or result['enriched'])
+        published = False
+        needs_publish = needs_publish or changed
+        if needs_publish:
+            try:
+                publish()
+            except Exception as exc:
+                on_error('publish', exc)
+            else:
+                published = True
+                needs_publish = False
+        on_round(results, published)
+        if stop.wait(interval_seconds):
+            return
