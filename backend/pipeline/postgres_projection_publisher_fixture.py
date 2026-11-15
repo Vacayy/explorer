@@ -18,6 +18,7 @@ class FixturePublisher:
         self.index_factory=index_factory
         self.lock=threading.RLock()
         self.active=None
+        self.pending_cleanup=set()
 
     def _drop(self, schema):
         with self.factory() as conn:
@@ -28,6 +29,7 @@ class FixturePublisher:
         schema='refactor_fixture_'+uuid.uuid4().hex
         index=None
         with self.lock:
+            self.cleanup_retired()
             try:
                 with self.factory() as conn:
                     _guard(conn)
@@ -47,7 +49,11 @@ class FixturePublisher:
                 self.active=(schema,index)
                 if previous:
                     previous[1].close()
-                    self._drop(previous[0])
+                    self.pending_cleanup.add(previous[0])
+                    try:
+                        self.cleanup_retired()
+                    except Exception:
+                        pass  # Remains visible in pending_cleanup; next publish retries.
                 return result['generation']
             except BaseException:
                 if index is not None and (self.active is None or self.active[1] is not index):
@@ -55,6 +61,12 @@ class FixturePublisher:
                 if self.active is None or self.active[0] != schema:
                     self._drop(schema)
                 raise
+
+    def cleanup_retired(self):
+        with self.lock:
+            for schema in tuple(self.pending_cleanup):
+                self._drop(schema)
+                self.pending_cleanup.remove(schema)
 
     def get(self, ident):
         with self.lock:
@@ -74,4 +86,5 @@ class FixturePublisher:
                 schema,index=self.active
                 self.active=None
                 index.close()
-                self._drop(schema)
+                self.pending_cleanup.add(schema)
+            self.cleanup_retired()

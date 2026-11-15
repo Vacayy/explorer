@@ -503,6 +503,15 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
                 publisher.publish()
             self.assertEqual(publisher.get(ident).summary,'# 정기 문서 변경')
             self.assertIn(ident,[row.id for row in publisher.search('변경').items])
+            publisher.index_factory=SearchSnapshot
+            with patch.object(publisher,'_drop',side_effect=RuntimeError('cleanup failure')):
+                publisher.publish()
+                self.assertEqual(len(publisher.pending_cleanup),1)
+                self.assertEqual(publisher.get(ident).summary,'# 정기 문서 변경')
+                with self.assertRaisesRegex(RuntimeError,'cleanup failure'):
+                    publisher.publish()
+            publisher.cleanup_retired()
+            self.assertFalse(publisher.pending_cleanup)
             publisher.close()
         self.assertEqual([(r['new'],r['updated'],r['enriched']) for r in results],[(1,0,1),(0,1,1)])
         with self.pg() as c:
