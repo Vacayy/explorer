@@ -1,5 +1,6 @@
 """Compare an isolated PostgreSQL sector snapshot with its SQLite source."""
 import os
+import importlib.util
 import sqlite3
 import unittest
 import uuid
@@ -164,6 +165,26 @@ class SectorMarketTest(unittest.TestCase):
             PostgreSQLSectorSource(self.pg).generation()
         self.pg.execute('UPDATE snapshot_metadata SET generation_id=%s', (expected,))
         self.assertEqual(PostgreSQLSectorSource(self.pg).generation(), (expected, True))
+
+    def test_detail_header_only_for_linked_document_generation(self):
+        from fastapi.testclient import TestClient
+        generation = uuid.uuid4()
+        self.pg.execute('CREATE TABLE snapshot_metadata (singleton BOOLEAN PRIMARY KEY, generation_id UUID NOT NULL)')
+        self.pg.execute('INSERT INTO snapshot_metadata VALUES (TRUE, %s)', (generation,))
+        load_sector_market(self.db, self.pg, document_generation=generation)
+        script = Path(__file__).resolve().parents[2] / 'scripts/refactor_document_ui.py'
+        with patch.dict(os.environ, {'REFACTOR_FIXTURE_SCHEMA': self.schema}):
+            spec = importlib.util.spec_from_file_location('sector_fixture_app', script)
+            app = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(app)
+            client = TestClient(app.app)
+            response = client.get('/api/spine/industry/A')
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers['x-explorer-generation'], str(generation))
+            load_sector_market(self.db, self.pg)
+            response = client.get('/api/spine/industry/A')
+            self.assertEqual(response.status_code, 200)
+            self.assertNotIn('x-explorer-generation', response.headers)
 
 
 if __name__ == '__main__':

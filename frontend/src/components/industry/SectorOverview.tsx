@@ -141,7 +141,7 @@ function DocsCard({ q }: { q: Q }) {
     <Seg label="자료 종류" value={f} items={DOC_FILTERS.map(x => ({ key: x.key, label: x.label }))} onChange={setF} className="shrink-0 self-start" />
     <State q={q} rows={10} message="주요 자료를 불러오지 못했습니다">{() => !docs.length
       ? <FillNote>최근 10일 이 섹터 자료가 없습니다.</FillNote>
-      : <FillArea aria-label="주요 자료">{docs.map(x => <Link key={x.id} to={`/doc/${x.id}`}
+      : <FillArea aria-label="주요 자료">{docs.map(x => <Link key={x.id} to={`/doc/${x.id}${d?._documentGeneration ? `?generation=${encodeURIComponent(d._documentGeneration)}` : ''}`}
         className="grid grid-cols-[52px_minmax(0,1fr)_40px] items-baseline gap-2 border-b py-[9px] hover:bg-surface-2">
         <Chip className="justify-center text-[11px] font-normal">{DOC_KIND[x.type]}</Chip>
         <span className="line-clamp-2 text-[13px] leading-normal">{x.title}</span>

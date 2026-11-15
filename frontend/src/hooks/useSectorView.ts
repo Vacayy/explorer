@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { apiQuery, STALE } from "@/api/query"
+import api from "@/api/client"
 import type { IndustryMap, IndustrySectorDetail, SectorPeerList, UsIndustryMap, UsSectorDetail } from "@/types"
 
 /** 섹터 지도 — 섹터마다 대표지수·RS·61거래일 선 (GET, 저장분만 · 서버 15분 메모리 캐시) */
@@ -9,7 +10,16 @@ export function useIndustryMap() {
 
 /** 섹터 화면 머리·개요·종목 (GET, 저장분만) */
 export function useSectorDetail(sector: string) {
-  return useQuery(apiQuery<IndustrySectorDetail>({ key: ["spine", "industry", sector], url: `/api/spine/industry/${encodeURIComponent(sector)}`, staleTime: STALE.medium, enabled: !!sector }))
+  return useQuery({
+    queryKey: ["spine", "industry", sector],
+    queryFn: async ({ signal }): Promise<IndustrySectorDetail & { _documentGeneration?: string }> => {
+      const response = await api.get<IndustrySectorDetail>(`/api/spine/industry/${encodeURIComponent(sector)}`, { signal })
+      const generation = response.headers['x-explorer-generation']
+      return { ...response.data, _documentGeneration: typeof generation === 'string' ? generation : undefined }
+    },
+    staleTime: STALE.medium,
+    enabled: !!sector,
+  })
 }
 
 /** 섹터의 하위 Peer 그룹 — 종목 수·20·60거래일 중앙값 (GET) */

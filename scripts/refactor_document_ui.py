@@ -84,14 +84,16 @@ def sector_peers(sector: str):
 
 
 @app.get('/api/spine/industry/{sector}', response_model=SectorDetailResponse)
-def sector_detail(sector: str):
+def sector_detail(sector: str, response: Response):
     with factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         source = PostgreSQLSectorSource(connection)
-        source.generation()
+        generation, linked = source.generation()
         result = sector_detail_from_source(source, sector, source.peer_runtime())
     if result is None:
         raise HTTPException(404, '없는 섹터입니다.')
+    if linked:
+        response.headers['X-Explorer-Generation'] = str(generation)
     return result
 
 
