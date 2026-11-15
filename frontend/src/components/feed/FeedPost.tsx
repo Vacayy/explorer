@@ -39,10 +39,9 @@ export function DocumentCard({ doc, onChipFilter, timeLabel = '게시' }: {
   const hasSummary = !!doc.summary?.trim()
   const hasOriginal = !!doc.content?.trim() || doc.images.length > 0
   const [showOriginal, setShowOriginal] = useState(false)
-  return (
-    <article aria-label={doc.title || '소스 게시물'} className="feed-post-row">
-      <div className="space-y-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
+  return <DocumentCardView title={doc.title || excerpt.slice(0, 90) || '제목 없는 게시물'}
+    label={doc.title || '소스 게시물'} to={`/doc/${doc.id}`}
+    header={<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
           <SourceBadge sourceType={doc.source_type} />
           {doc.channel_kind && doc.channel_key ? (
             <Link to={`/source?kind=${doc.channel_kind}&key=${encodeURIComponent(doc.channel_key)}`}
@@ -51,10 +50,8 @@ export function DocumentCard({ doc, onChipFilter, timeLabel = '게시' }: {
           <time className="ml-auto shrink-0 text-caption" dateTime={doc.published_at} title={doc.published_at}>
             {formatRelativeTime(doc.published_at)} {timeLabel}
           </time>
-        </div>
-        <h3 className="text-card-title font-semibold text-pretty break-words">
-          <Link to={`/doc/${doc.id}`} className={focusLink}>{doc.title || excerpt.slice(0, 90) || '제목 없는 게시물'}</Link>
-        </h3>
+        </div>}
+    body={<>
         <DocumentBody doc={doc} reading={hasSummary ? 'summary' : 'original'} mediaSize="preview" />
         {hasSummary && hasOriginal && <>
           <Button variant="ghost" size="sm" className="-ml-2 text-caption text-ink-2" aria-expanded={showOriginal} onClick={() => { if (!showOriginal) track('open', 'feed.original', { entity: doc.id }); setShowOriginal(v => !v) }}>
@@ -64,15 +61,27 @@ export function DocumentCard({ doc, onChipFilter, timeLabel = '게시' }: {
             <DocumentBody doc={doc} reading="original" mediaSize="preview" />
           </BoundedArea>}
         </>}
-        <div className="flex flex-wrap items-center gap-2">
+    </>}
+    actions={<>
           {doc.entities.slice(0, 4).map(tag => <EntityChip key={`${tag.entity_id}-${tag.link_type}`} tag={tag} onFilter={onChipFilter} />)}
           <StudyButton documentId={doc.id} /><AddToStudy documentId={doc.id} />
           <Button asChild variant="ghost" size="sm" className="ml-auto"><Link to={`/doc/${doc.id}`}>자료 상세<ArrowUpRight aria-hidden="true" /></Link></Button>
           {/^https?:\/\//i.test(doc.url) && <Button asChild variant="outline" size="sm"><a href={doc.url} target="_blank" rel="noreferrer"><span>원문<span className="max-md:hidden"> 사이트</span></span><ArrowUpRight aria-hidden="true" /></a></Button>}
-        </div>
-      </div>
-    </article>
-  )
+    </>} />
+}
+
+/** Shared original card markup. Data adapters supply only their permitted body and actions. */
+export function DocumentCardView({ title, label = title, to, header, body, actions }: {
+  title: string; label?: string; to: string; header: ReactNode; body: ReactNode; actions: ReactNode
+}) {
+  return <article aria-label={label} className="feed-post-row">
+    <div className="space-y-3">
+      {header}
+      <h3 className="text-card-title font-semibold text-pretty break-words"><Link to={to} className={focusLink}>{title}</Link></h3>
+      {body}
+      <div className="flex flex-wrap items-center gap-2">{actions}</div>
+    </div>
+  </article>
 }
 
 export function SystemPost({ item, variant = 'card', presentation = 'preview' }: { item: TimelineItem; variant?: PostVariant; presentation?: 'preview' | 'reading' }) {

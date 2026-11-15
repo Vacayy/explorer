@@ -6,6 +6,10 @@
 > 유지 규칙: 구조(테이블·파이프라인·라우터·IA·의존성)가 바뀌는 커밋은 본 문서 갱신을 포함한다 (CLAUDE.md Context Discipline).
 > (구 ARCHITECTURE.md·PLAN.md는 초기 대시보드 시절 문서 — docs/private/archive/로 이동, 본 문서가 현행)
 
+## 기존 피드 화면 재사용
+
+`FeedFrame`/`FeedHeaderView`, `ChannelReaderFrame`, `DocumentCardView`는 기존 피드의 레이아웃·헤더·2열/모바일 틀·카드 마크업을 명시 입력으로 재사용한다. private 진입점의 채널 조회·읽음 변경·개인 도구는 그대로 유지한다. `PublishedDocumentCard`는 승인 문서 API와 `PublishedDocumentBody`만 조합하고 재검증 중/실패/철회/오프라인에는 캐시 본문을 숨긴다. 아직 공개 피드 라우트에 연결하지 않았으며, 실제 승인 소스 디렉터리·채널 선택/페이지와 연결해야 공개 피드 복원이 성립한다.
+
 ## 공개 API 시작·종료 경계
 
 `EXPLORER_ACCESS_MODE=public`도 전체 main 라우터를 유지하지만 init_db·Telegram bot·analysis/discovery worker·개인 observe 기록/flush를 시작하지 않는다. `security.public_startup`은 명시 준비된 앱/identity/login/publication/quota/macro와 설정을 readonly로 확인하고 미준비 시 listen 전에 실패한다. 전체 복원 무결성·스키마·소유권 gate는 별도 배포 절차이며 이 가벼운 검사가 대신하지 않는다. IPC socket 부재는 채팅 요청503으로 남겨 조회 API 시작과 분리한다. private의 기존 초기화·worker 동작은 유지한다.

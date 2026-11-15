@@ -8,7 +8,7 @@ import { PageContainer } from '@/components/shared/PageContainer'
 import { EmptyState, ErrorState } from '@/components/shared/ErrorState'
 import { Markdown } from '@/components/shared/Markdown'
 import { Button } from '@/components/ui/button'
-import type { PublishedAttachment } from '@/types'
+import type { PublishedAttachment, PublishedDocument } from '@/types'
 
 function DocumentContainer({ children }: { children: ReactNode }) {
   const [params] = useSearchParams()
@@ -19,7 +19,7 @@ function DocumentContainer({ children }: { children: ReactNode }) {
   </PageContainer>
 }
 
-function safeExternalUrl(value: string | null | undefined): string | null {
+export function safeExternalUrl(value: string | null | undefined): string | null {
   if (!value || !/^https?:\/\//i.test(value) || /[\u0000-\u0020\\]/.test(value)) return null
   try {
     const url = new URL(value)
@@ -50,8 +50,6 @@ export function PublicDocumentPage({ docId }: { docId: string }) {
   if (!query.data || query.isFetching) return <DocumentContainer><p role="status">공개 문서를 불러오는 중…</p></DocumentContainer>
   const document = query.data
   const sourceUrl = safeExternalUrl(document.url)
-  const attachments = document.attachments.filter(attachment => Number.isSafeInteger(attachment.id) && attachment.id >= 0
-    && attachment.url === `/api/public/documents/${id}/attachments/${attachment.id}`)
   return <DocumentContainer>
     <header className="space-y-2">
       <h1 className="text-xl font-medium">{document.title || '제목 없는 문서'}</h1>
@@ -60,6 +58,16 @@ export function PublicDocumentPage({ docId }: { docId: string }) {
       <Button asChild variant="outline" size="sm"><Link to={`/chat?doc=${id}`}>이 문서로 체험 채팅</Link></Button>
       {sourceUrl && <Button asChild variant="outline" size="sm"><a href={sourceUrl} target="_blank" rel="noopener noreferrer">출처 페이지</a></Button>}
     </header>
+    <PublishedDocumentBody document={document} />
+  </DocumentContainer>
+}
+
+/** Approved text and document-bound attachments; never resolves raw /media or private document tools. */
+export function PublishedDocumentBody({ document }: { document: PublishedDocument }) {
+  const id = document.id
+  const attachments = document.attachments.filter(attachment => Number.isSafeInteger(attachment.id) && attachment.id >= 0
+    && attachment.url === `/api/public/documents/${id}/attachments/${attachment.id}`)
+  return <>
     <section aria-label="보관된 본문" className="min-w-0 space-y-3">
       <h2 className="text-sm font-medium text-ink-2">보관된 본문</h2>
       {document.content.trim() ? document.content_kind === 'stored_markdown'
@@ -77,5 +85,5 @@ export function PublicDocumentPage({ docId }: { docId: string }) {
       <h2 className="text-sm font-medium text-ink-2">공개 첨부</h2>
       {attachments.map((attachment, index) => <Attachment key={`${id}:${attachment.id}`} attachment={attachment} index={index} />)}
     </section>}
-  </DocumentContainer>
+  </>
 }

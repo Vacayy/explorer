@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from 'react'
+import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, RefreshCw, Search, Sparkles, X } from 'lucide-react'
@@ -117,8 +117,7 @@ export function ChannelReader() {
   // '모두 읽음'(D-301) = 지금 종류 칩 범위. 소스를 고르면 그 소스는 열 때 읽음 처리되므로 두지 않는다
   const markScope = !channel && !topic && platform !== 'system' ? platform : null
 
-  return <div className="grid min-h-0 border bg-card md:flex-1 md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)]">
-    <aside aria-label="피드 소스 목록" className={cn('flex min-h-0 min-w-0 flex-col md:border-r', readerOpen && 'max-md:hidden')}>
+  return <ChannelReaderFrame readerOpen={readerOpen} directory={<>
       <div className="flex-none space-y-2 border-b p-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-section font-semibold">내 피드</h2>
@@ -151,9 +150,8 @@ export function ChannelReader() {
         </> : entries.map(item => <ChannelEntry key={item.id} item={item} selected={channel === item.id} onSelect={() => select(item.id)} />)}
         {directory.data && entries.length === 0 && <EmptyState message={query || platform !== 'all' ? '조건에 맞는 소스가 없습니다.' : '팔로우한 소스가 아직 없습니다.'} />}
       </div>
-    </aside>
+    </>}>
 
-    <section aria-labelledby="reader-title" className={cn('flex min-h-0 min-w-0 flex-col', !readerOpen && 'max-md:hidden')}>
       <header className="flex flex-none flex-wrap items-center gap-x-3 gap-y-2 border-b px-4 py-3">
         <Button variant="ghost" size="icon" className="shrink-0 md:hidden" aria-label="소스 목록으로" onClick={() => { focusTarget.current = 'list'; patch({ reader_open: '0' }) }}><ArrowLeft aria-hidden="true" /></Button>
         <div className="min-w-0 flex-1">
@@ -192,6 +190,19 @@ export function ChannelReader() {
           </nav>}
         </div>
       </div>
+  </ChannelReaderFrame>
+}
+
+/** The original two-column/mobile reader shell; no private queries or mutations. */
+export function ChannelReaderFrame({ readerOpen, directory, children }: {
+  readerOpen: boolean; directory: ReactNode; children: ReactNode
+}) {
+  return <div className="grid min-h-0 border bg-card md:flex-1 md:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)]">
+    <aside aria-label="피드 소스 목록" className={cn('flex min-h-0 min-w-0 flex-col md:border-r', readerOpen && 'max-md:hidden')}>
+      {directory}
+    </aside>
+    <section aria-labelledby="reader-title" className={cn('flex min-h-0 min-w-0 flex-col', !readerOpen && 'max-md:hidden')}>
+      {children}
     </section>
   </div>
 }
