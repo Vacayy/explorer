@@ -1,3 +1,4 @@
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { afterEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -5,6 +6,10 @@ import type { PublicMacroResponse } from '@/types'
 
 const state = vi.hoisted(() => ({ query: {} as Record<string, unknown> }))
 vi.mock('@/hooks/usePublicMacro', () => ({ usePublicMacro: () => state.query }))
+vi.mock('@/hooks/useRisk', async importOriginal => ({
+  ...await importOriginal<typeof import('@/hooks/useRisk')>(),
+  useRiskTiles: () => ({ data: { items: [] }, isPending: false, isError: false }),
+}))
 vi.mock('@/hooks/useMacro', () => ({ useMacro: () => { throw new Error('private macro mounted') } }))
 const { PublicMacroPage } = await import('@/components/home/PublicMacroPage')
 const data: PublicMacroResponse = {
@@ -16,7 +21,7 @@ const data: PublicMacroResponse = {
   coverage: [{ key: 'us10y', label: '미국 10년 금리', status: 'available' }, { key: 'us2y', label: '미국 2년 금리', status: 'missing' }, { key: 'm2', label: 'M2', status: 'source_review_pending' }, { key: 'invalid', label: '검증 지표', status: 'invalid' }],
 }
 const ready = (value: unknown = data) => ({ data: value, error: null, isPending: false, isFetching: false, fetchStatus: 'idle', refetch: vi.fn() })
-function show() { return render(<MemoryRouter initialEntries={['/home/macro']}><PublicMacroPage /></MemoryRouter>) }
+function show() { return render(<MemoryRouter initialEntries={['/home/macro']}><TooltipProvider><PublicMacroPage /></TooltipProvider></MemoryRouter>) }
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 it('shows numeric observations, real dates, comparison count and source attribution without private macro hooks', () => {
   state.query = ready(); show()
@@ -68,4 +73,12 @@ it('shows loading and retryable errors, preserving data after a refresh failure'
   state.query = { ...ready(), error: new Error('failed') }; show()
   expect(screen.getByText(/이전 결과를 표시합니다/)).toBeTruthy()
   expect(screen.getByText('4.25%')).toBeTruthy()
+})
+
+it('keeps original risk block independent of macro failure without a dead overlay link', () => {
+  state.query = { ...ready(), data: undefined, error: new Error('macro unavailable'), isError: true }
+  show()
+  expect(document.querySelector('[data-macro-block="risk"]')).toBeTruthy()
+  expect(screen.getByText('리스크 지표')).toBeTruthy()
+  expect(document.querySelector('a[href="#overlay"]')).toBeNull()
 })
