@@ -552,6 +552,33 @@ def sector_detail(conn, sector: str, runtime=None) -> dict | None:
     return _cached(f"detail:{sector}:{runtime is not None}", latest, build)
 
 
+def sector_detail_from_source(source, sector: str, runtime=None) -> dict | None:
+    """같은 자료 시점의 원천을 조합해 기존 섹터 상세 계약을 반환한다."""
+    from pipeline.sector_rs import build_sector_map
+    rs = build_sector_map(source)
+    group = next((item for item in rs['groups'] if item['name'] == sector), None)
+    if group is None:
+        return None
+    latest = rs['as_of']
+    bench = source.benchmarks().get(sector)
+    series = source.benchmark_series(sector, bench)
+    kospi = dict(source.kospi_series())
+    members = sector_members_from_source(source, sector, latest)
+    peers = sector_peer_list_from_source(source, sector, runtime) if runtime is not None else None
+    return {
+        'as_of': latest, 'name': sector, 'benchmark': bench_out(bench), **quote(series),
+        'rs_long': group['rs_long'], 'rs_short': group['rs_short'], 'chg_5d': group['chg_5d'],
+        'trail': group['trail'], 'market_cap': group['market_cap'], 'stocks': group['stocks'],
+        'series': [{'d': day, 'v': value, 'k': kospi.get(day)} for day, value in series],
+        'top_weights': members[:8], 'constituents': members,
+        'narratives': sector_narratives_from_source(source, sector), 'overview': source.overview(sector),
+        'docs': sector_docs_from_source(source, sector, [m['stock_code'] for m in members], latest),
+        'peer_groups': len(peers['groups']) if peers is not None else None,
+        'data_links': data_links_from_source(source, sector, {m['stock_code']: m['market_cap'] or 0 for m in members}),
+        **source.sector_entity(sector),
+    }
+
+
 def sector_peer_list(conn, sector: str, runtime) -> dict | None:
     sectors = {r[0] for r in conn.execute("SELECT DISTINCT group_name FROM sector_map")}
     if sector not in sectors:

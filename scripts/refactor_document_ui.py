@@ -11,11 +11,11 @@ import uvicorn
 
 from models.spine import FeedDocument
 from models.timeline import TimelineResponse, TimelineChannelsResponse
-from models.industry import IndustryMapResponse, SectorPeerListResponse
+from models.industry import IndustryMapResponse, SectorDetailResponse, SectorPeerListResponse
 from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
 from pipeline.postgres_timeline_sources import PostgreSQLTimelineSources, GenerationTimelineResponse, GenerationExpired
 from pipeline.postgres_sector_market import PostgreSQLSectorSource
-from pipeline.sector_view import industry_map_from_source, sector_peer_list_from_source
+from pipeline.sector_view import industry_map_from_source, sector_detail_from_source, sector_peer_list_from_source
 
 
 dsn = os.environ['REFACTOR_POSTGRES_DSN']
@@ -49,6 +49,17 @@ def sector_peers(sector: str):
         if runtime is None:
             raise HTTPException(503, 'Peer 저장 자료를 읽거나 검증하지 못했습니다.')
         result = sector_peer_list_from_source(source, sector, runtime)
+    if result is None:
+        raise HTTPException(404, '없는 섹터입니다.')
+    return result
+
+
+@app.get('/api/spine/industry/{sector}', response_model=SectorDetailResponse)
+def sector_detail(sector: str):
+    with factory() as connection:
+        connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        source = PostgreSQLSectorSource(connection)
+        result = sector_detail_from_source(source, sector, source.peer_runtime())
     if result is None:
         raise HTTPException(404, '없는 섹터입니다.')
     return result

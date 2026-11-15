@@ -80,3 +80,6 @@ CREATE INDEX sector_market_trade_stats_lookup ON sector_market_trade_stats(hs_co
 CREATE TABLE sector_market_taiwan_revenue (code TEXT, ym TEXT, yoy_pct DOUBLE PRECISION);
 CREATE INDEX sector_market_taiwan_revenue_lookup ON sector_market_taiwan_revenue(ym, code);
 CREATE TABLE sector_market_season_themes (id BIGINT PRIMARY KEY, season TEXT, sector TEXT, verdict TEXT, body_json TEXT);
+CREATE TABLE sector_market_overviews (
+    sector TEXT PRIMARY KEY, question TEXT, bullets_json TEXT, narrative_ids TEXT, model TEXT, generated_at TEXT
+);

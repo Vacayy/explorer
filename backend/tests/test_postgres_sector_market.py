@@ -13,7 +13,8 @@ from psycopg import sql
 from pipeline.postgres_sector_market import PostgreSQLSectorSource, load_sector_market
 from pipeline.sector_rs import SQLiteSectorSource, build_sector_map, group_members_from_source
 from pipeline.sector_peers import sector_peers
-from pipeline.sector_view import (data_links, data_links_from_source, industry_map, industry_map_from_source, sector_members_from_source,
+from pipeline.sector_view import (data_links, data_links_from_source, industry_map, industry_map_from_source, sector_detail,
+                                  sector_detail_from_source, sector_members_from_source,
                                   sector_docs, sector_docs_from_source, sector_narratives, sector_narratives_from_source,
                                   sector_peer_list, sector_peer_list_from_source)
 
@@ -52,6 +53,7 @@ class SectorMarketTest(unittest.TestCase):
             CREATE TABLE trade_stats(id INTEGER, hs_code TEXT, period TEXT, export_usd REAL);
             CREATE TABLE tw_monthly_revenue(code TEXT, ym TEXT, yoy_pct REAL);
             CREATE TABLE season_themes(id INTEGER, season TEXT, sector TEXT, verdict TEXT, body_json TEXT);
+            CREATE TABLE sector_overviews(sector TEXT, question TEXT, bullets_json TEXT, narrative_ids TEXT, model TEXT, generated_at TEXT);
             CREATE TABLE entities(id INTEGER, type TEXT, aliases TEXT, name TEXT, status TEXT, meta_json TEXT);
             CREATE TABLE entity_relations(src_id INTEGER, dst_id INTEGER, rel_type TEXT);
             CREATE TABLE raw_documents(id INTEGER PRIMARY KEY, source_type TEXT, source_id TEXT, title TEXT, published_at TEXT,
@@ -73,6 +75,8 @@ class SectorMarketTest(unittest.TestCase):
             INSERT INTO narratives VALUES (1,'theme-a','title',NULL,2,'2026-01-09',NULL);
             INSERT INTO entities VALUES (1,'theme',NULL,'theme-a','active',NULL);
             INSERT INTO entities VALUES (2,'company',NULL,'one','active','{"corp_code":"c1"}');
+            INSERT INTO entities VALUES (3,'sector',NULL,'A','active',NULL);
+            INSERT INTO sector_overviews VALUES ('A','question','["bullet"]','1','fixture','2026-01-09');
             INSERT INTO raw_documents VALUES (1,'blog','b1','theme-a report','2026-01-09');
             INSERT INTO entity_links VALUES (1,1,1,'sector'),(2,1,2,'stock');
             INSERT INTO stock_prices(stock_code,trade_date,close,market_cap) VALUES
@@ -134,6 +138,10 @@ class SectorMarketTest(unittest.TestCase):
             self.assertIsNone(sector_peer_list_from_source(pgsource, 'missing', runtime))
             with patch('pipeline.sector_rs.compute_sector_map', return_value=expected):
                 self.assertEqual(industry_map_from_source(pgsource, runtime), industry_map(self.db, runtime))
+                with patch('pipeline.sector_rs.group_members_rs',
+                           side_effect=lambda group, limit: group_members_from_source(SQLiteSectorSource(self.db), group, limit)):
+                    self.assertEqual(sector_detail_from_source(pgsource, 'A', runtime), sector_detail(self.db, 'A', runtime))
+            self.assertIsNone(sector_detail_from_source(pgsource, 'missing', runtime))
         self.pg.execute('''CREATE FUNCTION reject_price() RETURNS trigger LANGUAGE plpgsql AS $$
                         BEGIN RAISE EXCEPTION 'fixture failure'; END $$''')
         self.pg.execute('CREATE TRIGGER reject_price BEFORE INSERT ON sector_market_prices '

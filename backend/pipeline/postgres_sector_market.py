@@ -36,7 +36,7 @@ def load_sector_market(source, destination, *, peer_runtime=None):
                             'sector_market_themes, sector_market_narratives, sector_market_entities, '
                             'sector_market_company_entities, sector_market_documents, sector_market_document_links, '
                             'sector_market_doc_scan, sector_market_trade_follow, sector_market_trade_stats, '
-                            'sector_market_taiwan_revenue, sector_market_season_themes')
+                            'sector_market_taiwan_revenue, sector_market_season_themes, sector_market_overviews')
         with destination.cursor().copy(
             'COPY sector_market_prices (' + ', '.join(_COLUMNS) + ') FROM STDIN'
         ) as copy:
@@ -74,6 +74,7 @@ def load_sector_market(source, destination, *, peer_runtime=None):
             ('sector_market_trade_stats', 'id, hs_code, period, export_usd', 'trade_stats'),
             ('sector_market_taiwan_revenue', 'code, ym, yoy_pct', 'tw_monthly_revenue'),
             ('sector_market_season_themes', 'id, season, sector, verdict, body_json', 'season_themes'),
+            ('sector_market_overviews', 'sector, question, bullets_json, narrative_ids, model, generated_at', 'sector_overviews'),
         ):
             with destination.cursor().copy(f'COPY {target} ({columns}) FROM STDIN') as copy:
                 for row in source.execute(f'SELECT {columns} FROM {table}'):
@@ -170,6 +171,24 @@ class PostgreSQLSectorSource:
         return [dict(zip(columns, row)) for row in self.conn.execute(
             'SELECT id, topic, title, core_question, doc_count, created_at '
             'FROM sector_market_narratives ORDER BY ordinal')]
+
+    def sector_entity(self, sector):
+        for part in sector.split('·'):
+            row = self.conn.execute("SELECT id, name FROM sector_market_entities WHERE type='sector' "
+                                    "AND name=%s AND status='active' ORDER BY id LIMIT 1", (part,)).fetchone()
+            if row:
+                return {'feed_industry': row[1], 'entity_id': row[0]}
+        return {'feed_industry': None, 'entity_id': None}
+
+    def overview(self, sector):
+        import json
+        row = self.conn.execute('SELECT question, bullets_json, narrative_ids, model, generated_at '
+                                'FROM sector_market_overviews WHERE sector = %s', (sector,)).fetchone()
+        if not row:
+            return None
+        question, bullets, ids, model, generated = row
+        return {'question': question, 'bullets': json.loads(bullets), 'model': model,
+                'generated_at': generated, 'narrative_ids': [int(x) for x in (ids or '').split(',') if x]}
 
     def topic_entity_ids(self, keywords):
         return [r[0] for r in self.conn.execute("SELECT id FROM sector_market_entities "
