@@ -20,6 +20,14 @@ from models.kr_season import KrSeasonOverview
 router = APIRouter(prefix="/api/spine/transcript", tags=["spine"])
 
 
+def _public_read(action):
+    from routers.public_documents import perform
+    try:
+        return perform(action)
+    except LookupError:
+        raise HTTPException(404, "Public transcript data unavailable") from None
+
+
 class LatestCall(BaseModel):
     transcript_id: int
     fiscal_year: int | None
@@ -78,7 +86,10 @@ class FollowReq(BaseModel):
 
 
 @router.get("/follow", response_model=list[FollowRow])
-def list_follow():
+def list_follow(request: Request):
+    if getattr(request.state, "public_access", False):
+        from security.public_us_season import stored_companies
+        return _public_read(stored_companies)
     conn = get_connection()
     from pipeline.call_momentum import season
     from pipeline.sec_filings import industry_label
@@ -289,8 +300,11 @@ def season_sector(request: Request, key: str, season: str | None = Query(None, p
 
 
 @router.get("/chain/upcoming/{ticker}", response_model=UpcomingChain)
-def chain_upcoming(ticker: str):
+def chain_upcoming(request: Request, ticker: str):
     """콜 상세의 다가오는 분기 — 발표 전 기대·오늘까지의 주가·최근 30일 목표가 변경·분기별 기록. 저장된 행만 읽는다(LLM 0). 없으면 404."""
+    if getattr(request.state, "public_access", False):
+        from security.public_us_season import stored_upcoming
+        return _public_read(lambda: stored_upcoming(ticker))
     from pipeline.earnings_chain import upcoming_detail
     try:
         return upcoming_detail(ticker.upper())
@@ -299,8 +313,11 @@ def chain_upcoming(ticker: str):
 
 
 @router.get("/chain/{transcript_id}", response_model=ChainDetail)
-def chain(transcript_id: int):
+def chain(request: Request, transcript_id: int):
     """콜 상세의 체인 — 발표 전 기대·반응 구조화·주가/거래량/언급량 시계열·분기별 기록. LLM 0."""
+    if getattr(request.state, "public_access", False):
+        from security.public_us_season import stored_chain
+        return _public_read(lambda: stored_chain(transcript_id))
     from pipeline.earnings_chain import chain_detail
     try:
         return chain_detail(transcript_id)
@@ -350,7 +367,10 @@ def refresh_earnings_calendar():
 
 
 @router.get("/company/{ticker}", response_model=list[QuarterRow])
-def list_quarters(ticker: str):
+def list_quarters(request: Request, ticker: str):
+    if getattr(request.state, "public_access", False):
+        from security.public_us_season import stored_quarters
+        return _public_read(lambda: stored_quarters(ticker))
     conn = get_connection()
     rows = conn.execute(
         "SELECT id, fiscal_year, fiscal_period, call_date, digest FROM transcripts "
@@ -395,8 +415,11 @@ def _build_detail(conn, row) -> "Detail":
 
 
 @router.get("/detail/{transcript_id}", response_model=Detail)
-def detail(transcript_id: int):
+def detail(request: Request, transcript_id: int):
     """빠른 조회 — 원문+메타+저장된 정리(없으면 null). 정리 생성은 POST /digest로 분리(수 분 소요)."""
+    if getattr(request.state, "public_access", False):
+        from security.public_us_season import stored_detail
+        return _public_read(lambda: stored_detail(transcript_id))
     conn = get_connection()
     row = _detail_row(conn, transcript_id)
     if not row:

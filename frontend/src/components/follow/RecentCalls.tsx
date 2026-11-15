@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import { QueryState } from "@/components/shared/QueryState"
 import { FileAudio } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -15,7 +16,7 @@ export function RecentCalls({ onSelect, selectedId }: { onSelect: (id: number) =
     return (
       <ProposalPanel icon={FileAudio} title="최근 받은 컨콜" subtitle="지난 7일 · 받은 순" count={items.length} maxHeight="16rem" maxWidth="100%" contentClassName="px-0 divide-y [contain:inline-size]">
         {items.length === 0
-          ? <p className="px-4 py-4 text-sm text-muted-foreground">지난 7일간 새로 받은 컨콜이 없습니다. 매일 07:20에 수집합니다.</p>
+          ? <p className="px-4 py-4 text-sm text-muted-foreground">{PUBLIC_ACCESS ? "공개 자료에 최근 7일간 저장된 컨콜이 없습니다." : "지난 7일간 새로 받은 컨콜이 없습니다. 매일 07:20에 수집합니다."}</p>
           : items.map(c => (
             <Button key={c.transcript_id} variant="ghost" onClick={() => onSelect(c.transcript_id)}
               className={`h-auto w-full justify-start gap-2 rounded-none px-4 py-1.5 font-normal ${selectedId === String(c.transcript_id) ? "bg-muted/60" : ""}`}>

@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 // 콜 상세의 실적 체인 섹션 — 발표 전 → 컨콜 → 시장 반응 → 그 뒤 (docs/specs/earnings-season.md §콜 상세)
 // 데이터는 GET /chain/{id} 하나. 정성(기대·반응 구조화)이 없으면 칸마다 '없음'의 이유를 쓴다(Partial).
 import { useState, type ReactNode } from "react"
@@ -29,14 +30,9 @@ const FOLLOW: Record<string, string> = { 유지: "유지됐다", 확대: "더 �
 /* ---------- 헤더: 섹터 링크 + 핵심 표시·고정 ---------- */
 export function ChainHeaderLinks({ chain }: { chain: ChainDetail }) {
   const season = useSeason()
-  const pin = usePinCore()
   const core = season.data?.core.tickers.find((t) => t.ticker === chain.ticker)
   const pinned = !!core?.reasons.includes("pinned")
   const criteria = season.data?.core.criteria
-  const toggle = () => pin.mutate({ ticker: chain.ticker, pinned: !pinned }, {
-    onSuccess: () => toast.success(pinned ? `${chain.ticker} 핵심 고정을 풀었습니다` : `${chain.ticker}를 핵심으로 고정했습니다`),
-    onError: (e) => toast.error(e.message),
-  })
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
       <Link to={`/follow/transcripts?view=season&sector=${encodeURIComponent(chain.sector)}`} className="text-[13px] text-ink-2 hover:text-ink hover:underline whitespace-nowrap"
@@ -47,14 +43,21 @@ export function ChainHeaderLinks({ chain }: { chain: ChainDetail }) {
           핵심 · {core.reasons.map((r) => SHORT_REASON[r]).join(" · ")}
         </Badge>
       )}
-      {season.data && (
-        <Button variant="ghost" size="xs" onClick={toggle} disabled={pin.isPending}
-          title="핵심 종목은 발표 전 기대(D-7·D-1)와 시장 반응 정리가 자동으로 만들어집니다">
-          {pin.isPending && <Spinner className="size-3" />}{pinned ? "고정 해제" : "핵심 고정"}
-        </Button>
-      )}
+      {!PUBLIC_ACCESS && season.data && <PinCoreAction ticker={chain.ticker} pinned={pinned} />}
     </span>
   )
+}
+
+function PinCoreAction({ ticker, pinned }: { ticker: string; pinned: boolean }) {
+  const pin = usePinCore()
+  const toggle = () => pin.mutate({ ticker: ticker, pinned: !pinned }, {
+    onSuccess: () => toast.success(pinned ? `${ticker} 핵심 고정을 풀었습니다` : `${ticker}를 핵심으로 고정했습니다`),
+    onError: (e) => toast.error(e.message),
+  })
+  return <Button variant="ghost" size="xs" onClick={toggle} disabled={pin.isPending}
+    title="핵심 종목은 발표 전 기대(D-7·D-1)와 시장 반응 정리가 자동으로 만들어집니다">
+    {pin.isPending && <Spinner className="size-3" />}{pinned ? "고정 해제" : "핵심 고정"}
+  </Button>
 }
 
 /* ---------- 발표 창 차트: D−6 ~ D+3 누적 수익률 (시안 Call-Detail · Mobile-Call) ----------
@@ -144,7 +147,7 @@ export function ChainCharts({ chain }: { chain: ChainDetail }) {
   const year = Number((ev ?? series[0].date).slice(0, 4))
   const evMonth = Number((ev ?? series[0].date).slice(5, 7))
   const yearOf = (mm: number) => (mm - evMonth > 6 ? year - 1 : evMonth - mm > 6 ? year + 1 : year)
-  const menIso = new Map(mentions.map((m) => [`${yearOf(Number(m.day.slice(0, 2)))}-${m.day}`, m.n]))
+  const menIso = new Map((PUBLIC_ACCESS ? [] : mentions).map((m) => [`${yearOf(Number(m.day.slice(0, 2)))}-${m.day}`, m.n]))
   const byDate = new Map(series.map((s) => [s.date, s]))
   const first = [series[0].date, ...menIso.keys()].sort()[0]
   const last = [series[series.length - 1].date, ...menIso.keys()].sort().slice(-1)[0]
@@ -171,7 +174,7 @@ export function ChainCharts({ chain }: { chain: ChainDetail }) {
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={rows} syncId="chain" margin={CHART_MARGIN}>
           {band}{evLine(ev ? `발표 ${mmdd(ev)}` : undefined)}
-          {xAxis(false)}
+          {xAxis(PUBLIC_ACCESS && !hasVol)}
           <YAxis tick={AXIS_TICK} width={40} domain={["auto", "auto"]} tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v}`} />
           <ReferenceLine y={0} stroke="var(--muted-foreground)" strokeOpacity={0.5} />
           <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(d) => mmdd(String(d))} formatter={(v) => formatPercent(Number(v))} />
@@ -184,7 +187,7 @@ export function ChainCharts({ chain }: { chain: ChainDetail }) {
         <ResponsiveContainer width="100%" height={110}>
           <BarChart data={rows} syncId="chain" margin={CHART_MARGIN}>
             {band}{evLine()}
-            {xAxis(false)}
+            {xAxis(PUBLIC_ACCESS)}
             <YAxis tick={AXIS_TICK} width={40} />
             <Tooltip contentStyle={TOOLTIP_STYLE} labelFormatter={(d) => mmdd(String(d))} formatter={(v) => [`${Number(v).toFixed(1)}백만 주`, "거래량"]} />
             <Bar dataKey="vol" radius={2} isAnimationActive={false}>
@@ -195,6 +198,7 @@ export function ChainCharts({ chain }: { chain: ChainDetail }) {
           </BarChart>
         </ResponsiveContainer>
       </>}
+      {!PUBLIC_ACCESS && <>
       {title(hasMen ? "내 자료 언급 (건/일, 한국 시각)" : "내 자료 언급 — 이 기간 자료 없음")}
       <ResponsiveContainer width="100%" height={hasMen ? 110 : 28}>
         <BarChart data={rows} syncId="chain" margin={{ ...CHART_MARGIN, top: hasMen ? 18 : 0 }}>
@@ -207,6 +211,7 @@ export function ChainCharts({ chain }: { chain: ChainDetail }) {
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+      </>}
       <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 text-caption text-muted-foreground">
         <span className="inline-flex items-center gap-1.5"><i className="inline-block h-0.5 w-4 bg-foreground" />{chain.ticker}</span>
         <span className="inline-flex items-center gap-1.5"><i className="inline-block w-4 border-t-2 border-dashed border-series" />{chain.etf} (비교)</span>
@@ -270,7 +275,7 @@ export function StagesCard({ chain, transcriptId, onMore }: { chain: ChainDetail
       </Cell4>
       <Cell4 step={3} title="시장 반응" badge={interim && <Badge variant="warn">진행 중{chain.event_date ? ` · 발표 ${daysSince(chain.event_date)}일째` : ""}</Badge>}
         onMore={onMore && (() => onMore("reaction", "시장 반응 정리 · 출처"))}>
-        {rm?.react_points?.length ? <Dots items={rm.react_points.slice(0, 2).map(clean)} /> : <Meta>아래 '시장 반응 정리'에서 정리를 만드세요.</Meta>}
+        {rm?.react_points?.length ? <Dots items={rm.react_points.slice(0, 2).map(clean)} /> : <Meta>{PUBLIC_ACCESS ? "공개 근거가 확인된 시장 반응 해설을 준비 중입니다." : "아래 '시장 반응 정리'에서 정리를 만드세요."}</Meta>}
       </Cell4>
       <Cell4 step={4} title="그 뒤" onMore={onMore && (() => onMore("after", "그 뒤 · 수익률과 목표가 변경"))}>{after.length ? after : <Meta>첫 거래일이 아직 반영되지 않았습니다.</Meta>}</Cell4>
     </div>
@@ -282,14 +287,14 @@ function BeforeBody({ ex }: { ex: ChainDetail["expectation"] }) {
   return ex?.points?.length ? <Dots items={ex.points.slice(0, 2).map(clean)} />
     : ex?.positioning ? <span>{clean(ex.positioning)}</span>
     : <>
-      <Meta>발표 전 기대 정리가 없습니다.</Meta>
+      <Meta>{PUBLIC_ACCESS ? "공개 근거가 확인된 발표 전 기대 자료를 준비 중입니다." : "발표 전 기대 정리가 없습니다."}</Meta>
       {ex?.quant && <QuantFacts q={ex.quant} />}
     </>
 }
 
 /* ---------- 다가오는 분기 — 칸 넷 중 '발표 전'만 채우고 나머지는 발표 뒤 ---------- */
 /** 실제 일정: 매일 07:20 회차가 발표 8~5일 전(d7)과 발표 당일 아침(d1)에 만든다(pipeline/earnings_chain.py daily) */
-const SCHEDULE_TIP = "핵심 종목은 시장이 주목하는 쟁점까지, 나머지는 컨센서스·주가·목표가 숫자만 정리합니다. 발표 당일 아침에 한 번 더 갱신합니다."
+const SCHEDULE_TIP = PUBLIC_ACCESS ? "공개 근거가 확인된 저장 자료를 사용합니다. 아직 준비되지 않은 결과는 이후 연결됩니다." : "핵심 종목은 시장이 주목하는 쟁점까지, 나머지는 컨센서스·주가·목표가 숫자만 정리합니다. 발표 당일 아침에 한 번 더 갱신합니다."
 export function UpcomingStagesCard({ chain, onMore }: { chain: UpcomingChain; onMore?: StageMore }) {
   const ex = chain.expectation
   const later = <Meta>발표 후 채워집니다.</Meta>
@@ -297,7 +302,7 @@ export function UpcomingStagesCard({ chain, onMore }: { chain: UpcomingChain; on
     <div className="grid grid-cols-1 items-stretch pr-px pb-px md:grid-cols-2">
       <Cell4 step={1} title="발표 전" badge={ex && <Badge variant="hyp">{ex.snapshot === "d1" ? "전날" : "일주일 전"} 정리</Badge>}
         onMore={ex && onMore ? () => onMore("before", "발표 전 시장이 주목한 내용") : undefined}>
-        {ex ? <BeforeBody ex={ex} /> : <span className="inline-flex items-center gap-1 text-ink-2">발표 전 정리는 D-8~D-5 아침에 만들어집니다.
+        {ex ? <BeforeBody ex={ex} /> : <span className="inline-flex items-center gap-1 text-ink-2">{PUBLIC_ACCESS ? "공개 기대 자료를 준비 중입니다." : "발표 전 정리는 D-8~D-5 아침에 만들어집니다."}
           <InfoTip label="발표 전 정리 일정">{SCHEDULE_TIP}</InfoTip></span>}
       </Cell4>
       <Cell4 step={2} title="컨콜">{later}</Cell4>

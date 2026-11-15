@@ -47,6 +47,11 @@ class PublicUsSeasonTests(unittest.TestCase):
                 CREATE TABLE public_us_coverage(ticker TEXT,has_release INTEGER,extracted_docs INTEGER,failed_docs INTEGER);
                 INSERT INTO public_us_coverage VALUES ('PUBLIC',1,2,0),('PRIVATE',1,9999,9999);
                 CREATE TABLE call_momentum(ticker TEXT,event_date TEXT,score REAL,status TEXT,reasons TEXT,first_candidate_at TEXT,summary TEXT,computed_at TEXT);
+                CREATE TABLE public_transcript_text(transcript_id INTEGER PRIMARY KEY,body TEXT,digest TEXT);
+                INSERT INTO public_transcript_text VALUES (1,'Public transcript body','Stored transcript summary'),(2,'Private canary','Private canary');
+                CREATE TABLE public_us_calendar(ticker TEXT,last_report_date TEXT,next_report_date TEXT,checked_at TEXT,latest_results_date TEXT);
+                INSERT INTO public_us_calendar VALUES ('PUBLIC','2026-11-01','2026-12-01','2026-11-02','2026-11-01');
+                INSERT INTO earnings_events VALUES ('PUBLIC',2026,'Q4','2026-12-01','2026Q3',0,NULL);
             ''')
             conn.executemany('INSERT INTO call_momentum VALUES (?,?,7,?,\'{}\',NULL,?,?)', [
                 ('PUBLIC',date.today().isoformat(),'candidate','Public summary','2026-11-01'),
@@ -116,7 +121,7 @@ class PublicUsSeasonTests(unittest.TestCase):
              patch.object(ec, 'core_map', side_effect=AssertionError('private core')):
             sector = public.stored_sector('semis','2026Q3',path=self.path,today='2026-11-15')
             SectorDetail(**sector)
-            self.assertEqual([c['ticker'] for c in sector['companies']], ['PUBLIC'])
+            self.assertEqual({c['ticker'] for c in sector['companies']}, {'PUBLIC'})
             self.assertEqual(sector['companies'][0]['d1'],10)
             momentum = public.stored_momentum(path=self.path)
             MomentumResponse(**momentum)
@@ -128,6 +133,47 @@ class PublicUsSeasonTests(unittest.TestCase):
             recent=public.stored_recent(3650,40,path=self.path)
             for row in recent: RecentCall(**row)
             self.assertEqual([r['ticker'] for r in recent],['PUBLIC'])
-            self.assertFalse(recent[0]['has_digest'])
+            self.assertTrue(recent[0]['has_digest'])
+            self.assertNotIn('digest',recent[0])
             self.assertNotIn('Private canary',str((sector,momentum,recent)))
         self.assertEqual(before,self.path.read_bytes())
+
+    def test_public_transcript_text_history_upcoming_and_missing_private_ids(self):
+        from models.earnings_chain import ChainDetail, UpcomingChain
+        from routers.spine_transcript import Detail, FollowRow, QuarterRow
+        before = self.path.read_bytes()
+        with patch.object(ec,'get_connection',side_effect=AssertionError('private connection')), \
+             patch.object(ec,'follows',side_effect=AssertionError('private follows')), \
+             patch.object(ec,'latest_expectation',side_effect=AssertionError('private expectation')):
+            rows=public.stored_companies(path=self.path)
+            for row in rows: FollowRow(**row)
+            self.assertEqual([r['ticker'] for r in rows],['PUBLIC'])
+            self.assertEqual(rows[0]['n_calls'],1)
+            for row in public.stored_quarters('PUBLIC',path=self.path): QuarterRow(**row)
+            d=Detail(**public.stored_detail(1,path=self.path))
+            self.assertEqual(d.body,'Public transcript body')
+            self.assertEqual(d.digest,'Stored transcript summary')
+            chain=ChainDetail(**public.stored_chain(1,path=self.path,today='2026-11-15'))
+            self.assertEqual(chain.mentions,[])
+            self.assertIsNone(chain.expectation)
+            self.assertEqual(chain.history[0].d1,10)
+            upcoming=UpcomingChain(**public.stored_upcoming('PUBLIC',path=self.path,today='2026-11-15'))
+            self.assertEqual(upcoming.event_date,'2026-12-01')
+            self.assertEqual(upcoming.days_to_event,16)
+            self.assertIsNone(upcoming.expectation)
+            for action in (lambda:public.stored_detail(2,path=self.path), lambda:public.stored_chain(2,path=self.path),lambda:public.stored_quarters('PRIVATE',path=self.path)):
+                with self.assertRaises(LookupError): action()
+        self.assertEqual(before,self.path.read_bytes())
+
+    def test_public_call_http_routes_and_private_id_denial(self):
+        app=FastAPI(); app.include_router(spine_transcript.router)
+        paths=['/follow','/company/{ticker}','/detail/{transcript_id}','/chain/{transcript_id}','/chain/upcoming/{ticker}']
+        app.add_middleware(PublicAccessBoundary,routes=app.router.routes,
+                           policies={('GET','/api/spine/transcript'+p):'public' for p in paths})
+        with TestClient(app,base_url='https://beta.example') as client,patch.object(public,'DB_PATH',self.path):
+            for path in ('/follow','/company/PUBLIC','/detail/1','/chain/1'):
+                response=client.get('/api/spine/transcript'+path)
+                self.assertEqual(response.status_code,200,response.text)
+            self.assertEqual(client.get('/api/spine/transcript/detail/2').status_code,404)
+            self.assertEqual(client.get('/api/spine/transcript/chain/2').status_code,404)
+            self.assertEqual(client.post('/api/spine/transcript/detail/1/digest').status_code,404)

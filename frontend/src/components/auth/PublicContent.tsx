@@ -1,3 +1,4 @@
+import TranscriptPage from "@/components/follow/TranscriptPage"
 import { SeasonView } from "@/components/follow/season/SeasonView"
 import { SectorView } from "@/components/follow/season/SectorView"
 import RetailHeatPage from "@/components/retail/RetailHeatPage"
@@ -39,6 +40,7 @@ export function PublicContent() {
     const sectorKey = params.get('sector')
     return <PageContainer>{sectorKey ? <SectorView sectorKey={sectorKey} /> : <SeasonView tabs={null} />}</PageContainer>
   }
+  if (pathname === '/follow/transcripts') return <TranscriptPage />
   if (pathname === '/follow/trade' || trade?.params.hs) return <PublicTradePage hsCode={trade?.params.hs} />
   if (summary?.params.stockCode) return <PublicCompanySummary stockCode={summary.params.stockCode} />
   if (krSector?.params.sector) return <PublicKrSectorPage sector={krSector.params.sector} />

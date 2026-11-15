@@ -5,6 +5,7 @@ The operational database is not a valid snapshot: its follow/core tables and
 private-document-derived interpretations must never be copied wholesale.
 """
 from contextlib import closing
+from datetime import date
 import os
 from pathlib import Path
 import re
@@ -24,6 +25,9 @@ COLUMNS = {
     "us_prices": {"stock_code", "trade_date", "close", "volume"},
     "call_momentum": {"ticker", "event_date", "score", "status", "reasons", "first_candidate_at", "summary", "computed_at"},
     "public_us_coverage": {"ticker", "has_release", "extracted_docs", "failed_docs"},
+    "public_transcript_text": {"transcript_id", "body", "digest"},
+    "public_us_calendar": {"ticker", "last_report_date", "next_report_date", "checked_at", "latest_results_date"},
+    "us_pt_changes": {"ticker", "graded_at", "firm", "pt_from", "pt_to"},
 }
 
 
@@ -88,10 +92,10 @@ def stored_recent(days=7, limit=40, *, path=None):
         raise ValueError("Invalid recent call range")
     with closing(connection(path)) as conn:
         rows = conn.execute(
-            "SELECT t.id transcript_id,t.ticker,c.company_name,t.fiscal_year,t.fiscal_period,t.call_date,t.provider,t.fetched_at,c.fiscal_year_end "
-            "FROM transcripts t JOIN public_us_companies c ON c.ticker=t.ticker WHERE t.fetched_at >= datetime('now',?) "
+            "SELECT t.id transcript_id,t.ticker,c.company_name,t.fiscal_year,t.fiscal_period,t.call_date,t.provider,t.fetched_at,c.fiscal_year_end,x.digest "
+            "FROM transcripts t JOIN public_us_companies c ON c.ticker=t.ticker LEFT JOIN public_transcript_text x ON x.transcript_id=t.id WHERE t.fetched_at >= datetime('now',?) "
             "ORDER BY t.fetched_at DESC LIMIT ?", (f'-{days} day', limit)).fetchall()
-        return [{**dict(r), "has_digest": False, "cy": cy_label(r['fiscal_year'],r['fiscal_period'],r['fiscal_year_end'])} for r in rows]
+        return [{**{k:r[k] for k in r.keys() if k != 'digest'}, "has_digest": bool(r['digest']), "cy": cy_label(r['fiscal_year'],r['fiscal_period'],r['fiscal_year_end'])} for r in rows]
 
 
 def stored_sector(key, season=None, *, path=None, today=None):
@@ -104,3 +108,81 @@ def stored_sector(key, season=None, *, path=None, today=None):
         top = {ticker for _, ticker in sorted(((f['market_cap'] or 0,ticker) for ticker,f in fs.items()), reverse=True)[:ec.CORE_TOP_CAP]}
         core = {ticker: (["cap"] if ticker in top else []) + (["dc_chain"] if f['sector'] in ec.DC_CHAIN else []) for ticker,f in fs.items()}
         return ec.read_sector_detail(conn,key,season,fs=fs,core=core,today=today)
+
+
+def _company(conn, ticker):
+    row = conn.execute('SELECT ticker,company_name,sector,market_cap,fiscal_year_end FROM public_us_companies WHERE ticker=?', (ticker.upper(),)).fetchone()
+    if row is None:
+        raise LookupError('Public company unavailable')
+    return dict(row)
+
+
+def _quarters(conn, company):
+    from pipeline.transcript import cy_label
+    rows = conn.execute('SELECT t.id,t.fiscal_year,t.fiscal_period,t.call_date,x.digest FROM transcripts t '
+                        'LEFT JOIN public_transcript_text x ON x.transcript_id=t.id WHERE t.ticker=? '
+                        'ORDER BY t.fiscal_year DESC,t.fiscal_period DESC', (company['ticker'],)).fetchall()
+    return [{'transcript_id':r['id'],'fiscal_year':r['fiscal_year'],'fiscal_period':r['fiscal_period'],
+             'cy':cy_label(r['fiscal_year'],r['fiscal_period'],company['fiscal_year_end']),
+             'call_date':r['call_date'],'has_digest':bool(r['digest'])} for r in rows]
+
+
+def stored_quarters(ticker, *, path=None):
+    with closing(connection(path)) as conn:
+        return _quarters(conn, _company(conn, ticker))
+
+
+def stored_companies(*, path=None):
+    with closing(connection(path)) as conn:
+        companies = [dict(r) for r in conn.execute('SELECT ticker,company_name,sector,market_cap,fiscal_year_end FROM public_us_companies ORDER BY ticker')]
+        calendar = {r['ticker']:dict(r) for r in conn.execute('SELECT ticker,last_report_date,next_report_date,checked_at,latest_results_date FROM public_us_calendar')}
+        start = ec.season_of(date.today().isoformat())['start']
+        out = []
+        for f in companies:
+            calls = _quarters(conn, f)
+            cal = calendar.get(f['ticker'], {})
+            latest_results = cal.get('latest_results_date')
+            out.append({'ticker':f['ticker'],'company_name':f['company_name'] or f['ticker'],
+                        'group_label':None,'category':ec.sector_name(f['sector']),'market_cap':f['market_cap'],
+                        'n_calls':len(calls),'latest':calls[0] if calls else None,
+                        'last_report_date':cal.get('last_report_date'),'next_report_date':cal.get('next_report_date'),
+                        'calendar_checked_at':cal.get('checked_at'),'latest_results_date':latest_results,
+                        'season_updated':bool(latest_results and latest_results >= start),
+                        'ko_names':[], 'upcoming_expectation':False})
+        return out
+
+
+def _transcript(conn, transcript_id):
+    row = conn.execute('SELECT id,ticker,fiscal_year,fiscal_period,call_date FROM transcripts WHERE id=?', (transcript_id,)).fetchone()
+    if row is None:
+        raise LookupError('Public transcript unavailable')
+    return dict(row), _company(conn, row['ticker'])
+
+
+def stored_detail(transcript_id, *, path=None):
+    from pipeline.transcript import cy_label
+    with closing(connection(path)) as conn:
+        t, f = _transcript(conn, transcript_id)
+        text = conn.execute('SELECT body,digest FROM public_transcript_text WHERE transcript_id=?', (transcript_id,)).fetchone()
+        if text is None:
+            raise LookupError('Public transcript text unavailable')
+        return {'transcript_id':t['id'],'ticker':t['ticker'],'company_name':f['company_name'] or t['ticker'],
+                'fiscal_year':t['fiscal_year'],'fiscal_period':t['fiscal_period'], 'call_date':t['call_date'],
+                'cy':cy_label(t['fiscal_year'],t['fiscal_period'],f['fiscal_year_end']),
+                'body':text['body'],'digest':text['digest'],'nodes':[],'causal_edges':[],'proxies':[]}
+
+
+def stored_chain(transcript_id, *, path=None, today=None):
+    with closing(connection(path)) as conn:
+        t, f = _transcript(conn, transcript_id)
+        return ec.read_chain_detail(conn,t=t,f=f,expectation=None,today=today)
+
+
+def stored_upcoming(ticker, *, path=None, today=None):
+    with closing(connection(path)) as conn:
+        f = _company(conn, ticker)
+        today_s = today or date.today().isoformat()
+        ev = ec.next_event(conn,f['ticker'],today_s)
+        if ev is None:
+            raise LookupError('Upcoming public event unavailable')
+        return ec.read_upcoming_detail(conn,f['ticker'],f=f,ev=ev,exp=None,today_s=today_s)

@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { track } from "@/lib/usage"
 import { Link, Navigate, useSearchParams } from "react-router-dom"
@@ -105,19 +106,11 @@ const NEXT = "next:"
 const nextKey = (ticker: string) => `${NEXT}${ticker}`
 
 export default function TranscriptPage() {
-  const [params, setParams] = useSearchParams()
-  const selectedId = params.get("t")
-  // 옛 '실적 모멘텀' 링크(?view=momentum)는 실적 시즌으로 — 모멘텀은 시즌 보기 안의 한 섹션
-  const rawView = params.get("view") === "momentum" ? "season" : params.get("view")
-  const view = (["season"] as const).find((v) => v === rawView) ?? "calls"
-  const sector = params.get("sector")
-  const railSort: RailSort = (["cap", "category", "recent"] as const).find((v) => v === params.get("rail")) ?? "cap"
+  return PUBLIC_ACCESS ? <TranscriptBrowser /> : <PrivateTranscriptBrowser />
+}
+
+function PrivateTranscriptBrowser() {
   const qc = useQueryClient()
-
-  const { data: follows = [], isLoading, isError, refetch } = useQuery(
-    apiQuery<FollowRow[]>({ key: ["spine", "transcript", "follow"], url: "/api/spine/transcript/follow", staleTime: STALE.short }),
-  )
-
   const seed = useMutation({
     mutationFn: () => api.post("/api/spine/transcript/seed").then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "transcript", "follow"] }),
@@ -127,6 +120,21 @@ export default function TranscriptPage() {
     mutationFn: () => api.post("/api/spine/transcript/calendar/refresh").then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["spine", "transcript", "follow"] }),
   })
+
+  return <TranscriptBrowser controls={{ seed: () => seed.mutate(), seeding: seed.isPending, refresh: () => refreshCal.mutate(), refreshing: refreshCal.isPending }} />
+}
+
+function TranscriptBrowser({ controls }: { controls?: { seed: () => void; seeding: boolean; refresh: () => void; refreshing: boolean } }) {
+  const [params, setParams] = useSearchParams()
+  const selectedId = params.get("t")
+  // 옛 '실적 모멘텀' 링크(?view=momentum)는 실적 시즌으로 — 모멘텀은 시즌 보기 안의 한 섹션
+  const rawView = params.get("view") === "momentum" ? "season" : params.get("view")
+  const view = (["season"] as const).find((v) => v === rawView) ?? "calls"
+  const sector = params.get("sector")
+  const railSort: RailSort = (["cap", "category", "recent"] as const).find((v) => v === params.get("rail")) ?? "cap"
+  const { data: follows = [], isLoading, isError, refetch } = useQuery(
+    apiQuery<FollowRow[]>({ key: ["spine", "transcript", "follow"], url: "/api/spine/transcript/follow", staleTime: STALE.short }),
+  )
 
   const mobile = useMediaQuery(MOBILE_QUERY)
   // 기업 목록에서 고르면 기록을 남긴다(뒤로 가기 = 목록), 상세 안에서 분기·기업을 바꾸면 교체
@@ -151,16 +159,16 @@ export default function TranscriptPage() {
   const header = (
     <div className="flex flex-col gap-0.5">
       <h1 className="font-display text-page font-normal tracking-[-0.02em] max-md:text-[26px] max-md:leading-[1.3]">컨콜</h1>
-      <span className="text-caption text-muted-foreground">미국 기업 실적 컨퍼런스콜 · 팔로우 {follows.length}</span>
+      <span className="text-caption text-muted-foreground">미국 기업 실적 컨퍼런스콜 · {PUBLIC_ACCESS ? "공개 대상" : "팔로우"} {follows.length}</span>
     </div>
   )
 
   const railFor = (onPick: (id: number | string) => void) => follows.length === 0 ? (
     <div className="p-3 space-y-3">
-      <p className="text-xs text-muted-foreground">팔로우가 비어 있습니다. 기본 세트를 불러오세요.</p>
-      <Button size="sm" onClick={() => seed.mutate()} disabled={seed.isPending}>
-        {seed.isPending ? "불러오는 중…" : "기본 세트 팔로우"}
-      </Button>
+      <p className="text-xs text-muted-foreground">{PUBLIC_ACCESS ? "공개 대상 기업 자료가 아직 준비되지 않았습니다." : "팔로우가 비어 있습니다. 기본 세트를 불러오세요."}</p>
+      {controls && <Button size="sm" onClick={controls.seed} disabled={controls.seeding}>
+        {controls.seeding ? "불러오는 중…" : "기본 세트 팔로우"}
+      </Button>}
     </div>
   ) : (
     <FollowRail follows={follows} sort={railSort} effectiveId={effectiveId} onSelect={onPick}
@@ -178,9 +186,9 @@ export default function TranscriptPage() {
         {/* 이번 시즌 실적 발언 모멘텀 — 0클릭으로 보이게 맨 위 한 줄 (전체는 '실적 시즌' 보기) */}
         <MomentumStrip />
         {/* 수집 직접 트리거 — cron만 기다리지 않고 지금 돌린다 (D-121) */}
-        <CollectTranscripts />
+        {!PUBLIC_ACCESS && <CollectTranscripts />}
         <RecentCalls onSelect={selectId} selectedId={selectedId} />
-        <UpcomingLink follows={follows} onRefresh={() => refreshCal.mutate()} refreshing={refreshCal.isPending} />
+        <UpcomingLink follows={follows} onRefresh={controls?.refresh} refreshing={controls?.refreshing ?? false} />
       </>}
       {mobile ? (
         listing ? (
@@ -206,7 +214,7 @@ export default function TranscriptPage() {
             <DetailPanel key={effectiveId} transcriptId={Number(effectiveId)} onSelect={selectId} />
           ) : (
             <Card><CardContent className="py-16">
-              <EmptyState message="아직 수집된 컨콜이 없습니다. 관리자에서 '컨콜 수집'을 실행하거나 기업을 팔로우해 주세요." />
+              <EmptyState message={PUBLIC_ACCESS ? "공개 대상으로 준비된 컨콜이 없습니다." : "아직 수집된 컨콜이 없습니다. 관리자에서 '컨콜 수집'을 실행하거나 기업을 팔로우해 주세요."} />
             </CardContent></Card>
           )}
         </div>
@@ -217,7 +225,7 @@ export default function TranscriptPage() {
 }
 
 /* ---------- 곧 발표 → 실적 시즌 발표 캘린더로 (D-302: 목록 블록은 캘린더와 겹쳐 한 줄 연결만 남긴다) ---------- */
-function UpcomingLink({ follows, onRefresh, refreshing }: { follows: FollowRow[]; onRefresh: () => void; refreshing: boolean }) {
+function UpcomingLink({ follows, onRefresh, refreshing }: { follows: FollowRow[]; onRefresh?: () => void; refreshing: boolean }) {
   const soon = follows.filter((f) => { const d = daysUntil(f.next_report_date); return d != null && d >= 0 && d <= 7 }).length
   return (
     <Card>
@@ -227,9 +235,9 @@ function UpcomingLink({ follows, onRefresh, refreshing }: { follows: FollowRow[]
         <Link to="/follow/transcripts?view=season#calendar" className="inline-flex items-center gap-0.5 text-primary hover:underline">
           발표 캘린더에서 보기<ChevronRight className="size-3.5" />
         </Link>
-        <Button variant="ghost" size="xs" className="ml-auto" onClick={onRefresh} disabled={refreshing}>
+        {onRefresh && <Button variant="ghost" size="xs" className="ml-auto" onClick={onRefresh} disabled={refreshing}>
           {refreshing ? "갱신 중…(수십초)" : "발표일 갱신"}
-        </Button>
+        </Button>}
       </CardContent>
     </Card>
   )
@@ -249,9 +257,9 @@ function FollowRail({ follows, sort, onSort, effectiveId, onSelect }: {
       <SegmentTabs tabs={RAIL_SORTS} value={sort} onChange={(v) => onSort(v as RailSort)} className="mb-2 w-full *:h-8 *:min-w-0 *:flex-1 *:px-1 *:text-xs" />
       <div className="relative mb-2">
         <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="기업 검색 (NVDA·엔비디아)" aria-label="팔로우 기업 검색" className="h-8 pl-7 text-xs" />
+        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="기업 검색 (NVDA·엔비디아)" aria-label={PUBLIC_ACCESS ? "공개 기업 검색" : "팔로우 기업 검색"} className="h-8 pl-7 text-xs" />
       </div>
-      {shown.length === 0 ? <p className="px-2 py-3 text-xs text-muted-foreground">‘{query.trim()}’에 맞는 팔로우 기업이 없습니다.</p>
+      {shown.length === 0 ? <p className="px-2 py-3 text-xs text-muted-foreground">‘{query.trim()}’에 맞는 {PUBLIC_ACCESS ? "공개" : "팔로우"} 기업이 없습니다.</p>
         : sort === "category"
           ? <GroupedRail follows={shown} effectiveId={effectiveId} onSelect={onSelect} />
           : <FlatRail follows={shown} sort={sort} effectiveId={effectiveId} onSelect={onSelect} />}
@@ -357,8 +365,10 @@ function DetailPanel({ transcriptId, onSelect }: { transcriptId: number; onSelec
           </div>
           <span className="text-[12.5px] text-ink-3">{callMeta(data, chain.data?.etf)}</span>
           {headline && <p className="text-base font-semibold leading-normal text-pretty">{headline}</p>}
-          <TranscriptTickerActions ticker={data.ticker} currentId={transcriptId} onSelect={onSelect}
-            extra={<Button variant="ghost" size="sm" asChild><Link to={`/us/${data.ticker}`} title="이 종목의 도시에(시세·밸류·투자 렌즈) 보기">도시에<ChevronRight /></Link></Button>} />
+          {PUBLIC_ACCESS
+            ? <div><Button variant="ghost" size="sm" asChild><Link to={`/us/${data.ticker}`} title="회사 상세 보기">도시에<ChevronRight /></Link></Button></div>
+            : <TranscriptTickerActions ticker={data.ticker} currentId={transcriptId} onSelect={onSelect}
+                extra={<Button variant="ghost" size="sm" asChild><Link to={`/us/${data.ticker}`} title="이 종목의 도시에(시세·밸류·투자 렌즈) 보기">도시에<ChevronRight /></Link></Button>} />}
           {/* 발표 창 D−6~D+3 — 일별 긴 차트·거래량·자료 언급은 아래 '더 보기' */}
           <QueryState query={chain} isEmpty={() => false} loading={<Skeleton className="aspect-[16/5] w-full rounded-card" />}>
             {(c) => <CallWindowChart chain={c} />}
@@ -395,7 +405,7 @@ function DetailFolds({ data, transcriptId, rest }: { data: Detail; transcriptId:
       {/* 데스크톱(rest)은 핵심 정리·시장 반응을 네 단계의 '자세히 보기'로 연다 — 여기엔 온톨로지·원문만 */}
       {!rest && <>
         <Fold label="핵심 정리 (컨콜 전체)"><CallDigest data={data} transcriptId={transcriptId} /></Fold>
-        <Fold label="시장 반응 정리 전문·출처"><CallReaction transcriptId={transcriptId} callDate={data.call_date} /></Fold>
+        <Fold label="시장 반응 정리 전문·출처"><ReactionContent transcriptId={transcriptId} callDate={data.call_date} /></Fold>
       </>}
       <OntoAndBody data={data} hasOnto={hasOnto} />
     </div>
@@ -407,13 +417,24 @@ function StagesWithMore({ chain, data, transcriptId }: { chain: ChainDetail; dat
   const reveal = useContext(FoldReveal)
   const body = (k: StageKey) => k === "before" ? <IssuesRow chain={chain} expanded />
     : k === "call" ? <CallDigest data={data} transcriptId={transcriptId} />
-    : k === "reaction" ? <CallReaction transcriptId={transcriptId} callDate={data.call_date} />
+    : k === "reaction" ? <ReactionContent transcriptId={transcriptId} callDate={data.call_date} />
     : <AfterDetail chain={chain} transcriptId={transcriptId} />
   return <StagesCard chain={chain} transcriptId={transcriptId} onMore={reveal ? (k, title) => { track("open", "transcript.stage", { entity: k, ref: String(transcriptId) }); reveal.show(title, body(k)) } : undefined} />
 }
 
+function ReactionContent({ transcriptId, callDate }: { transcriptId: number; callDate: string | null }) {
+  return PUBLIC_ACCESS ? <p className="text-sm text-muted-foreground">공개 근거가 확인된 시장 반응 해설을 준비 중입니다.</p> : <CallReaction transcriptId={transcriptId} callDate={callDate} />
+}
+
 /** 핵심 정리(컨콜 전체) — 없으면 생성 버튼(LLM) */
 function CallDigest({ data, transcriptId }: { data: Detail; transcriptId: number }) {
+  if (PUBLIC_ACCESS) return data.digest
+    ? <div className="bg-muted/40 px-4 py-3"><Markdown>{data.digest}</Markdown></div>
+    : <p className="text-sm text-muted-foreground">공개된 핵심 정리가 아직 없습니다. 원문 전문을 확인해 주세요.</p>
+  return <PrivateCallDigest data={data} transcriptId={transcriptId} />
+}
+
+function PrivateCallDigest({ data, transcriptId }: { data: Detail; transcriptId: number }) {
   const [wantDigest, setWantDigest] = useState(false)
   const computed = useQuery({
     ...apiComputeQuery<Detail>({ key: ["spine", "transcript", "digest", transcriptId], url: `/api/spine/transcript/detail/${transcriptId}/digest`, timeout: 300_000, enabled: wantDigest }),

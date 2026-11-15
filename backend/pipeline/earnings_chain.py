@@ -915,8 +915,6 @@ def _weekdays_between(a: str, b: str) -> int:
 
 
 def upcoming_detail(ticker: str, today: date | None = None) -> dict:
-    """콜 상세의 '다가오는 분기' — 발표 전 기대·오늘까지의 발표 전 주가(업종 ETF 대비)·최근 30일 목표가 변경·분기별 기록. LLM 0.
-    series.offset은 발표일 기준(발표일 = 0)으로 맞춘다: 최근 종가 = -(남은 평일 + 1). 기준(0%)은 최근 종가."""
     today_s = (today or date.today()).isoformat()
     conn = get_connection()
     try:
@@ -924,19 +922,24 @@ def upcoming_detail(ticker: str, today: date | None = None) -> dict:
         if not ev:
             raise LookupError("다가오는 실적 발표가 없습니다")
         f = follows(conn).get(ticker) or {"ticker": ticker, "company_name": ticker, "sector": "x:기타"}
-        etf = sector_etf(f["sector"])
         exp = latest_expectation(conn, ticker, ev["fiscal_year"], ev["fiscal_period"])
-        # 창은 오늘까지 — 발표가 멀어도 최근 시세를 그린다(오늘 다음 날을 가상의 발표일로 읽고 offset만 옮긴다)
-        tomorrow = (date.fromisoformat(today_s) + timedelta(days=1)).isoformat()
-        rows = [r for r in path(conn, ticker, tomorrow, etf, before=21, after=0) if r["offset"] < 0]
-        if rows:
-            shift = _weekdays_between(rows[-1]["date"], ev["event_date"])
-            rows = [{**r, "offset": r["offset"] - shift} for r in rows]
-        start = (date.fromisoformat(today_s) - timedelta(days=30)).isoformat()
-        pt_before = pt_window(conn, ticker, start, (date.fromisoformat(today_s) + timedelta(days=1)).isoformat())
-        hist = _history(conn, ticker, f["sector"], etf, today_s)
+        return read_upcoming_detail(conn, ticker, f=f, ev=ev, exp=exp, today_s=today_s)
     finally:
         conn.close()
+
+
+def read_upcoming_detail(conn, ticker, *, f, ev, exp, today_s):
+    """Stored upcoming prices/history with an explicit company, event and expectation."""
+    etf = sector_etf(f["sector"])
+    # 창은 오늘까지 — 발표가 멀어도 최근 시세를 그린다(오늘 다음 날을 가상의 발표일로 읽고 offset만 옮긴다)
+    tomorrow = (date.fromisoformat(today_s) + timedelta(days=1)).isoformat()
+    rows = [r for r in path(conn, ticker, tomorrow, etf, before=21, after=0) if r["offset"] < 0]
+    if rows:
+        shift = _weekdays_between(rows[-1]["date"], ev["event_date"])
+        rows = [{**r, "offset": r["offset"] - shift} for r in rows]
+    start = (date.fromisoformat(today_s) - timedelta(days=30)).isoformat()
+    pt_before = pt_window(conn, ticker, start, (date.fromisoformat(today_s) + timedelta(days=1)).isoformat())
+    hist = _history(conn, ticker, f["sector"], etf, today_s)
     return {"ticker": ticker, "name": f["company_name"], "sector": f["sector"], "sector_name": sector_name(f["sector"]),
             "etf": etf, "event_date": ev["event_date"], "fiscal_year": ev["fiscal_year"], "fiscal_period": ev["fiscal_period"],
             "confirmed": bool(ev["confirmed"]), "days_to_event": (date.fromisoformat(ev["event_date"]) - date.fromisoformat(today_s)).days,
@@ -947,41 +950,47 @@ def upcoming_detail(ticker: str, today: date | None = None) -> dict:
 
 
 def chain_detail(transcript_id: int) -> dict:
-    """콜 상세의 체인 — 기대·반응 구조화·차트(주가·거래량·언급량)·분기별 기록·지난 분기 비교."""
+    """Private call detail retains personal expectations and document mentions."""
     from pipeline import call_reaction as cr
     conn = get_connection()
-    t = conn.execute("SELECT * FROM transcripts WHERE id=?", (transcript_id,)).fetchone()
-    if not t:
+    try:
+        t = conn.execute("SELECT id,ticker,fiscal_year,fiscal_period,call_date FROM transcripts WHERE id=?", (transcript_id,)).fetchone()
+        if not t:
+            raise LookupError("transcript 없음")
+        f = follows(conn).get(t["ticker"]) or {"ticker": t["ticker"], "company_name": t["ticker"], "entity_id": None, "sector": "x:기타"}
+        exp = latest_expectation(conn, t["ticker"], t["fiscal_year"], t["fiscal_period"])
+        result = read_chain_detail(conn, t=t, f=f, expectation=exp)
+        event_date = result['event_date']
+        mentions = {}
+        if event_date:
+            start = (date.fromisoformat(event_date) - timedelta(days=30)).isoformat()
+            end = min(date.today(), date.fromisoformat(event_date) + timedelta(days=30)).isoformat()
+            docs, _ = cr.find_docs(conn, {**f, "company_name": f["company_name"] or t["ticker"]}, start, end, limit=100000)
+            for d in docs:
+                k = cr._kst(d["published_at"])[:5]
+                mentions[k] = mentions.get(k, 0) + 1
+        result['mentions'] = [{"day": k, "n": v} for k, v in sorted(mentions.items())]
+        return result
+    finally:
         conn.close()
-        raise LookupError("transcript 없음")
-    fs = follows(conn)
-    f = fs.get(t["ticker"]) or {"ticker": t["ticker"], "company_name": t["ticker"], "entity_id": None, "sector": "x:기타"}
-    ev = conn.execute("SELECT * FROM earnings_events WHERE ticker=? AND fiscal_year=? AND fiscal_period=?",
+
+
+def read_chain_detail(conn, *, t, f, expectation, today=None) -> dict:
+    """Stored price/target/history calculation; no personal document lookup."""
+    ev = conn.execute("SELECT event_date FROM earnings_events WHERE ticker=? AND fiscal_year=? AND fiscal_period=?",
                       (t["ticker"], t["fiscal_year"], t["fiscal_period"])).fetchone()
     event_date = ev["event_date"] if ev else t["call_date"]
     etf = sector_etf(f["sector"])
-    exp = latest_expectation(conn, t["ticker"], t["fiscal_year"], t["fiscal_period"])
-    rx = conn.execute("SELECT meta_json, status FROM transcript_reactions WHERE transcript_id=?", (transcript_id,)).fetchone()
+    rx = conn.execute("SELECT meta_json, status FROM transcript_reactions WHERE transcript_id=?", (t["id"],)).fetchone()
     meta = json.loads(rx["meta_json"]) if rx and rx["meta_json"] else None
     rows = path(conn, t["ticker"], event_date, etf, before=21, after=23) if event_date else []
-    # 언급량(일별, 한국 시각)
-    start = (date.fromisoformat(event_date) - timedelta(days=30)).isoformat() if event_date else None
-    end = min(date.today(), date.fromisoformat(event_date) + timedelta(days=30)).isoformat() if event_date else None
-    mentions = {}
-    if event_date:
-        docs, _ = cr.find_docs(conn, {**f, "company_name": f["company_name"] or t["ticker"]}, start, end, limit=100000)
-        for d in docs:
-            k = cr._kst(d["published_at"])[:5]
-            mentions[k] = mentions.get(k, 0) + 1
-    hist = _history(conn, t["ticker"], f["sector"], etf, date.today().isoformat())
+    hist = _history(conn, t["ticker"], f["sector"], etf, today or date.today().isoformat())
     pt_after = pt_window(conn, t["ticker"], event_date, (date.fromisoformat(event_date) + timedelta(days=8)).isoformat()) if event_date else None
-    conn.close()
     return {"ticker": t["ticker"], "name": f["company_name"], "sector": f["sector"], "sector_name": sector_name(f["sector"]),
-            "etf": etf, "event_date": event_date, "expectation": exp, "reaction_meta": meta, "reaction_status": rx["status"] if rx else None,
+            "etf": etf, "event_date": event_date, "expectation": expectation, "reaction_meta": meta, "reaction_status": rx["status"] if rx else None,
             "series": [{"date": r["date"], "offset": r["offset"], "ret": r["ret"], "bench": r["bench"], "excess": r["excess"],
                         "volume": r["volume"]} for r in rows],
-            "mentions": [{"day": k, "n": v} for k, v in sorted(mentions.items())],
-            "pt_after": pt_after, "history": hist}
+            "mentions": [], "pt_after": pt_after, "history": hist}
 
 
 # ---------- 일일 작업 ----------
