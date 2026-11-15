@@ -72,3 +72,11 @@ CREATE INDEX sector_market_document_link_entity ON sector_market_document_links(
 -- The original query has no ORDER BY. Preserve its observed scan policy so
 -- equal-time document ties keep their existing order for this snapshot.
 CREATE TABLE sector_market_doc_scan (id_count INTEGER PRIMARY KEY, document_first BOOLEAN NOT NULL);
+CREATE TABLE sector_market_trade_follow (
+    ordinal BIGINT PRIMARY KEY, hs_code TEXT, item_name TEXT, group_label TEXT, active INTEGER
+);
+CREATE TABLE sector_market_trade_stats (id BIGINT PRIMARY KEY, hs_code TEXT, period TEXT, export_usd DOUBLE PRECISION);
+CREATE INDEX sector_market_trade_stats_lookup ON sector_market_trade_stats(hs_code, period);
+CREATE TABLE sector_market_taiwan_revenue (code TEXT, ym TEXT, yoy_pct DOUBLE PRECISION);
+CREATE INDEX sector_market_taiwan_revenue_lookup ON sector_market_taiwan_revenue(ym, code);
+CREATE TABLE sector_market_season_themes (id BIGINT PRIMARY KEY, season TEXT, sector TEXT, verdict TEXT, body_json TEXT);

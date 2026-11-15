@@ -13,7 +13,7 @@ from psycopg import sql
 from pipeline.postgres_sector_market import PostgreSQLSectorSource, load_sector_market
 from pipeline.sector_rs import SQLiteSectorSource, build_sector_map, group_members_from_source
 from pipeline.sector_peers import sector_peers
-from pipeline.sector_view import (industry_map, industry_map_from_source, sector_members_from_source,
+from pipeline.sector_view import (data_links, data_links_from_source, industry_map, industry_map_from_source, sector_members_from_source,
                                   sector_docs, sector_docs_from_source, sector_narratives, sector_narratives_from_source,
                                   sector_peer_list, sector_peer_list_from_source)
 
@@ -48,6 +48,10 @@ class SectorMarketTest(unittest.TestCase):
             CREATE TABLE value_chains(group_name TEXT, themes_json TEXT);
             CREATE TABLE narratives(id INTEGER, topic TEXT, title TEXT, core_question TEXT,
                                     doc_count INTEGER, created_at TEXT, superseded_at TEXT);
+            CREATE TABLE trade_follow(hs_code TEXT, item_name TEXT, group_label TEXT, active INTEGER);
+            CREATE TABLE trade_stats(id INTEGER, hs_code TEXT, period TEXT, export_usd REAL);
+            CREATE TABLE tw_monthly_revenue(code TEXT, ym TEXT, yoy_pct REAL);
+            CREATE TABLE season_themes(id INTEGER, season TEXT, sector TEXT, verdict TEXT, body_json TEXT);
             CREATE TABLE entities(id INTEGER, type TEXT, aliases TEXT, name TEXT, status TEXT, meta_json TEXT);
             CREATE TABLE entity_relations(src_id INTEGER, dst_id INTEGER, rel_type TEXT);
             CREATE TABLE raw_documents(id INTEGER PRIMARY KEY, source_type TEXT, source_id TEXT, title TEXT, published_at TEXT,
@@ -62,6 +66,9 @@ class SectorMarketTest(unittest.TestCase):
             INSERT INTO sector_benchmarks VALUES ('A','AAA','ETF A','index',NULL),('B',NULL,NULL,NULL,NULL);
             INSERT INTO sector_benchmark_prices VALUES ('AAA','2026-01-09',10.0),('^KS11','2026-01-09',100.0);
             INSERT INTO sector_index VALUES ('B','2026-01-09',120.0);
+            INSERT INTO trade_follow VALUES ('111111','item','반도체',1);
+            INSERT INTO trade_stats VALUES (1,'111111','2025-01',100),(2,'111111','2026-01',150);
+            INSERT INTO season_themes VALUES (1,'2026Q1','semis','good','{"one_line":"fixture"}');
             INSERT INTO value_chains VALUES ('A','["theme-a"]');
             INSERT INTO narratives VALUES (1,'theme-a','title',NULL,2,'2026-01-09',NULL);
             INSERT INTO entities VALUES (1,'theme',NULL,'theme-a','active',NULL);
@@ -113,6 +120,8 @@ class SectorMarketTest(unittest.TestCase):
             self.assertEqual(sector_narratives_from_source(pgsource, 'A'), sector_narratives(self.db, 'A'))
             self.assertEqual(sector_docs_from_source(pgsource, 'A', ['001'], '2026-01-09'),
                              sector_docs(self.db, 'A', ['001'], '2026-01-09'))
+            self.assertEqual(data_links_from_source(pgsource, '반도체·전자부품', {}),
+                             data_links(self.db, '반도체·전자부품', {}))
             prices = SimpleNamespace(asOf='2026-01-09', model_dump=lambda **_: {
                 'dates': [], 'prices': {}, 'asOf': '2026-01-09', 'qualityIssues': []})
             runtime = SimpleNamespace(catalog=SimpleNamespace(

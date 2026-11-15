@@ -371,23 +371,52 @@ def _sector_docs_from_rows(kws, topic_ids, stock_ids, rows):
 # ---------- 이 산업의 데이터 ----------
 
 def data_links(conn, sector: str, member_caps: dict[str, float]) -> list[dict]:
+    return data_links_from_source(SQLiteSectorLinks(conn), sector, member_caps)
+
+
+class SQLiteSectorLinks:
+    def __init__(self, conn):
+        self.conn = conn
+
+    def trade_items(self, groups):
+        return self.conn.execute(f"SELECT hs_code, item_name, group_label FROM trade_follow WHERE active = 1 AND group_label IN ({','.join('?' * len(groups))})", groups).fetchall()
+
+    def latest_trade_period(self):
+        return self.conn.execute('SELECT max(period) FROM trade_stats').fetchone()[0]
+
+    def trade_export(self, code, period):
+        row = self.conn.execute('SELECT export_usd FROM trade_stats WHERE hs_code = ? AND period = ?', (code, period)).fetchone()
+        return row[0] if row else None
+
+    def taiwan_yoys(self, codes):
+        ym = self.conn.execute('SELECT max(ym) FROM tw_monthly_revenue').fetchone()[0]
+        rows = self.conn.execute(f"SELECT yoy_pct FROM tw_monthly_revenue WHERE ym = ? AND yoy_pct IS NOT NULL AND code IN ({','.join('?' * len(codes))})", [ym, *codes]) if ym and codes else []
+        return ym, [r[0] for r in rows]
+
+    def season_themes(self, keys):
+        ph = ','.join('?' * len(keys))
+        season = self.conn.execute(f'SELECT max(season) FROM season_themes WHERE sector IN ({ph})', keys).fetchone()[0]
+        rows = {r['sector']: dict(r) for r in self.conn.execute(
+            f'SELECT sector, verdict, body_json FROM season_themes WHERE season = ? AND sector IN ({ph}) ORDER BY id', [season, *keys])} if season else {}
+        return season, rows
+
+
+def data_links_from_source(source, sector: str, member_caps: dict[str, float]) -> list[dict]:
     out = []
     groups = TRADE_GROUPS.get(sector)
     if groups:
-        ph = ",".join("?" * len(groups))
-        items = conn.execute(f"SELECT hs_code, item_name, group_label FROM trade_follow WHERE active = 1 AND group_label IN ({ph})",
-                             groups).fetchall()
+        items = source.trade_items(groups)
         if items:
-            period = conn.execute("SELECT max(period) FROM trade_stats").fetchone()[0]
+            period = source.latest_trade_period()
             best = None
             if period:
                 prev = f"{int(period[:4]) - 1}{period[4:]}"
                 for it in items:
-                    cur = conn.execute("SELECT export_usd FROM trade_stats WHERE hs_code = ? AND period = ?", (it[0], period)).fetchone()
-                    old = conn.execute("SELECT export_usd FROM trade_stats WHERE hs_code = ? AND period = ?", (it[0], prev)).fetchone()
-                    if cur and cur[0] and (best is None or cur[0] > best["value"]):
-                        best = {"name": it[1], "value": cur[0],
-                                "yoy": round((cur[0] / old[0] - 1) * 100, 1) if old and old[0] else None}
+                    cur = source.trade_export(it[0], period)
+                    old = source.trade_export(it[0], prev)
+                    if cur and (best is None or cur > best["value"]):
+                        best = {"name": it[1], "value": cur,
+                                "yoy": round((cur / old - 1) * 100, 1) if old else None}
             out.append({"kind": "trade", "label": "수출입", "title": best["name"] if best else f"품목 {len(items)}",
                         "value": best["value"] if best else None, "value_kind": "usd", "change": best["yoy"] if best else None,
                         "sub": f"{int(period[5:7])}월 · 전년 대비 · 품목 {len(items)}" if best and period else f"품목 {len(items)}",
@@ -396,10 +425,7 @@ def data_links(conn, sector: str, member_caps: dict[str, float]) -> list[dict]:
     if layers:
         from pipeline.tw_universe import COMPANIES, LAYERS
         codes = [c for c, _n, layer, *_ in COMPANIES if layer in layers]
-        ym = conn.execute("SELECT max(ym) FROM tw_monthly_revenue").fetchone()[0]
-        yoys = [r[0] for r in conn.execute(
-            f"SELECT yoy_pct FROM tw_monthly_revenue WHERE ym = ? AND yoy_pct IS NOT NULL AND code IN ({','.join('?' * len(codes))})",
-            [ym, *codes])] if ym and codes else []
+        ym, yoys = source.taiwan_yoys(codes)
         names = dict(LAYERS)
         title = names[layers[0]] if len(layers) == 1 else f"{names[layers[0]]} 외 {len(layers) - 1}계층"
         out.append({"kind": "taiwan", "label": "대만 공급망", "title": f"{title} {len(codes)}사",
@@ -418,10 +444,7 @@ def data_links(conn, sector: str, member_caps: dict[str, float]) -> list[dict]:
     keys = US_SEASON.get(sector)
     if keys:
         from pipeline.earnings_chain import SECTORS
-        ph = ",".join("?" * len(keys))
-        season = conn.execute(f"SELECT max(season) FROM season_themes WHERE sector IN ({ph})", keys).fetchone()[0]
-        rows = {r["sector"]: r for r in conn.execute(
-            f"SELECT sector, verdict, body_json FROM season_themes WHERE season = ? AND sector IN ({ph}) ORDER BY id", [season, *keys])} if season else {}
+        season, rows = source.season_themes(keys)
         key = next((k for k in keys if k in rows), None)
         if key:
             row = rows[key]

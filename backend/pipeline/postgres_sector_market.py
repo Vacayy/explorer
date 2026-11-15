@@ -35,7 +35,8 @@ def load_sector_market(source, destination, *, peer_runtime=None):
                             'sector_market_peer_runtime, sector_market_sector_names, '
                             'sector_market_themes, sector_market_narratives, sector_market_entities, '
                             'sector_market_company_entities, sector_market_documents, sector_market_document_links, '
-                            'sector_market_doc_scan')
+                            'sector_market_doc_scan, sector_market_trade_follow, sector_market_trade_stats, '
+                            'sector_market_taiwan_revenue, sector_market_season_themes')
         with destination.cursor().copy(
             'COPY sector_market_prices (' + ', '.join(_COLUMNS) + ') FROM STDIN'
         ) as copy:
@@ -70,6 +71,9 @@ def load_sector_market(source, destination, *, peer_runtime=None):
             ('sector_market_entities', 'id, type, name, status', 'entities'),
             ('sector_market_documents', 'id, source_type, source_id, title, published_at', 'raw_documents'),
             ('sector_market_document_links', 'id, doc_id, entity_id, link_type', 'entity_links'),
+            ('sector_market_trade_stats', 'id, hs_code, period, export_usd', 'trade_stats'),
+            ('sector_market_taiwan_revenue', 'code, ym, yoy_pct', 'tw_monthly_revenue'),
+            ('sector_market_season_themes', 'id, season, sector, verdict, body_json', 'season_themes'),
         ):
             with destination.cursor().copy(f'COPY {target} ({columns}) FROM STDIN') as copy:
                 for row in source.execute(f'SELECT {columns} FROM {table}'):
@@ -78,6 +82,10 @@ def load_sector_market(source, destination, *, peer_runtime=None):
             (ordinal, id, topic, title, core_question, doc_count, created_at) FROM STDIN''') as copy:
             for ordinal, row in enumerate(source.execute('''SELECT id, topic, title, core_question, doc_count,
                 created_at FROM narratives WHERE superseded_at IS NULL ORDER BY created_at DESC''')):
+                copy.write_row((ordinal, *row))
+        with destination.cursor().copy('''COPY sector_market_trade_follow
+            (ordinal, hs_code, item_name, group_label, active) FROM STDIN''') as copy:
+            for ordinal, row in enumerate(source.execute('SELECT hs_code, item_name, group_label, active FROM trade_follow')):
                 copy.write_row((ordinal, *row))
         with destination.cursor().copy('COPY sector_market_company_entities (entity_id, stock_code) FROM STDIN') as copy:
             for row in source.execute('''SELECT e.id, c.stock_code FROM entities e JOIN companies c
@@ -125,6 +133,31 @@ class PostgreSQLSectorSource:
             return {}
         return dict(self.conn.execute('SELECT stock_code, corp_name FROM sector_market_companies '
                                       'WHERE stock_code = ANY(%s) ORDER BY ordinal', (codes,)))
+
+    def trade_items(self, groups):
+        return list(self.conn.execute('SELECT hs_code, item_name, group_label FROM sector_market_trade_follow '
+                                      'WHERE active = 1 AND group_label = ANY(%s) ORDER BY ordinal', (groups,)))
+
+    def latest_trade_period(self):
+        return self.conn.execute('SELECT max(period) FROM sector_market_trade_stats').fetchone()[0]
+
+    def trade_export(self, code, period):
+        row = self.conn.execute('SELECT export_usd FROM sector_market_trade_stats '
+                                'WHERE hs_code = %s AND period = %s ORDER BY id LIMIT 1', (code, period)).fetchone()
+        return row[0] if row else None
+
+    def taiwan_yoys(self, codes):
+        ym = self.conn.execute('SELECT max(ym) FROM sector_market_taiwan_revenue').fetchone()[0]
+        rows = self.conn.execute('SELECT yoy_pct FROM sector_market_taiwan_revenue '
+                                 'WHERE ym = %s AND yoy_pct IS NOT NULL AND code = ANY(%s)', (ym, codes)) if ym and codes else []
+        return ym, [r[0] for r in rows]
+
+    def season_themes(self, keys):
+        season = self.conn.execute('SELECT max(season) FROM sector_market_season_themes WHERE sector = ANY(%s)', (keys,)).fetchone()[0]
+        rows = {r[0]: {'sector': r[0], 'verdict': r[1], 'body_json': r[2]} for r in self.conn.execute(
+            'SELECT sector, verdict, body_json FROM sector_market_season_themes '
+            'WHERE season = %s AND sector = ANY(%s) ORDER BY id', (season, keys))} if season else {}
+        return season, rows
 
     def sector_names(self):
         return list(self.conn.execute('SELECT sector_name, group_name FROM sector_market_sector_names'))
