@@ -15,6 +15,21 @@ class StockPriceResponse(BaseModel):
     items: list[StockPriceItem]
 
 
+class CompanyPriceItem(BaseModel):
+    trade_date: str
+    open: int | float | None
+    high: int | float | None
+    low: int | float | None
+    close: int | float | None
+    volume: int | float | None
+    market_cap: int | float | None
+
+
+class CompanyPriceResponse(BaseModel):
+    """Shared KR/US chart shape; US decimal prices must retain precision."""
+    items: list[CompanyPriceItem]
+
+
 class ValuationItem(BaseModel):
     trade_date: str
     close: int | None = None

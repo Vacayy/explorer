@@ -18,17 +18,26 @@ router = APIRouter(prefix="/api/spine/us", tags=["spine"])
 
 
 @router.get("/{ticker}/income-flow/quarters", response_model=IncomeFlowQuarters)
-def us_income_flow_quarters_endpoint(ticker: str):
+def us_income_flow_quarters_endpoint(request: Request, ticker: str):
+    if getattr(request.state, 'public_access', False):
+        from security.public_us_dossier import stored_income_quarters
+        from routers.spine_transcript import _public_read
+        return _public_read(lambda: stored_income_quarters(ticker))
     return us_income_flow_quarters(ticker.upper())
 
 
 @router.get("/{ticker}/income-flow", response_model=IncomeFlowResponse)
 def us_income_flow_endpoint(
+    request: Request,
     ticker: str,
     q: str | None = Query(None, pattern=r"^\d{4}-(03|06|09|12)$"),
     mode: str = Query("q", pattern="^(q|ttm)$"),
 ):
     """미국 분기 손익 흐름(Sankey) — ia-redesign §4.13. q는 달력 분기 끝 'YYYY-MM'. mode=ttm은 최근 4분기 합."""
+    if getattr(request.state, 'public_access', False):
+        from security.public_us_dossier import stored_income
+        from routers.spine_transcript import _public_read
+        return _public_read(lambda: stored_income(ticker, q, mode))
     result = us_income_flow(ticker.upper(), q, mode)
     if result is None:
         raise HTTPException(404, detail="분기 손익 자료가 없습니다")
@@ -208,7 +217,11 @@ def us_worldmodel(ticker: str):
 
 
 @router.get("/{ticker}", response_model=UsDossier)
-def us_dossier(ticker: str):
+def us_dossier(request: Request, ticker: str):
+    if getattr(request.state, 'public_access', False):
+        from security.public_us_dossier import stored_dossier
+        from routers.spine_transcript import _public_read
+        return _public_read(lambda: stored_dossier(ticker))
     from pipeline.us_data import get_fundamentals, resolve_us
     conn = get_connection()
     eid, name = resolve_us(conn, ticker)

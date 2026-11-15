@@ -10,7 +10,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { fmtMoney, fmtQuarterLabel } from '../src/components/financials/flowFormat'
-import { layoutSankey } from '../src/components/financials/sankeyLayout'
+import { layoutSankey, layoutSankeyLabels } from '../src/components/financials/sankeyLayout'
 import type { FlowNode, FlowLink } from '../src/types'
 
 describe('fmtMoney', () => {
@@ -104,4 +104,26 @@ describe('layoutSankey', () => {
       expect(l.path).toContain('L')
     }
   })
+})
+
+it('keeps edge labels inside and separates adjacent small cost labels without changing flow geometry', () => {
+ const nodes: FlowNode[] = [
+  {id:'segment',label:'Data Center',value:96,column:0,kind:'revenue'},
+  {id:'revenue',label:'Revenue',value:100,column:1,kind:'revenue'},
+  {id:'rnd',label:'R&D',value:7,column:3,kind:'cost'},
+  {id:'sga',label:'SG&A',value:1.4,column:3,kind:'cost'},
+  {id:'net',label:'Net income',value:50,column:5,kind:'keep'},
+ ]
+ const laid = layoutSankey(nodes,[],{width:980,height:440})
+ const before = JSON.stringify(laid)
+ const labels = layoutSankeyLabels(laid.nodes,440,()=>3)
+ expect(labels.get('segment')!.x).toBeGreaterThan(0)
+ expect(labels.get('segment')!.anchor).toBe('start')
+ expect(labels.get('net')!.x).toBeGreaterThan(980)
+ expect(labels.get('net')!.x).toBeLessThan(1160)
+ expect(labels.get('net')!.anchor).toBe('start')
+ const costs = ['rnd','sga'].map(id=>labels.get(id)!.y).sort((a,b)=>a-b)
+ expect(costs[1]-costs[0]).toBeGreaterThanOrEqual(82)
+ for(const l of labels.values()) { expect(l.y-12).toBeGreaterThanOrEqual(0);expect(l.y+62).toBeLessThan(440) }
+ expect(JSON.stringify(laid)).toBe(before)
 })

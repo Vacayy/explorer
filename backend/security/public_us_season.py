@@ -22,12 +22,15 @@ COLUMNS = {
     "transcript_reactions": {"transcript_id", "status", "meta_json", "created_at"},
     "earnings_expectations": {"ticker", "fiscal_year", "fiscal_period", "snapshot", "issues_json", "created_at"},
     "season_themes": {"id", "season", "sector", "verdict", "body_json", "created_at", "tickers"},
-    "us_prices": {"stock_code", "trade_date", "close", "volume"},
+    "us_prices": {"stock_code", "trade_date", "open", "high", "low", "close", "volume"},
     "call_momentum": {"ticker", "event_date", "score", "status", "reasons", "first_candidate_at", "summary", "computed_at"},
     "public_us_coverage": {"ticker", "has_release", "extracted_docs", "failed_docs"},
     "public_transcript_text": {"transcript_id", "body", "digest"},
     "public_us_calendar": {"ticker", "last_report_date", "next_report_date", "checked_at", "latest_results_date"},
     "us_pt_changes": {"ticker", "graded_at", "firm", "pt_from", "pt_to"},
+    "us_fundamentals": {"ticker", "data_json", "fetched_at"},
+    "us_quarterly": {"ticker", "metric", "q", "value"},
+    "us_segments": {"ticker", "q", "segment_name", "revenue"},
 }
 
 

@@ -3,12 +3,13 @@ import json
 from typing import Literal
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from database import get_connection
 from pydantic import BaseModel, Field
 from datetime import date
 from models.spine import EntityTag, FeedDocument, FeedFacetEntity, FeedFacets, FeedResponse
 from models.company_evidence import CompanyEvidenceResponse
+from models.stock_price import CompanyPriceResponse
 from models.timeline import MarkAllReadRequest, MarkAllReadResponse, MarkReadRequest, TimelineResponse, TimelineChannelsResponse
 
 router = APIRouter(prefix="/api/spine/feed", tags=["spine"])
@@ -80,9 +81,15 @@ def resolve_channels(conn, rows) -> dict[int, dict | None]:
     return source_names(conn, rows)
 
 
-@router.get("/company-prices")
-def get_company_prices(company: str = Query(..., min_length=1, max_length=200),
+@router.get("/company-prices", response_model=CompanyPriceResponse)
+def get_company_prices(request: Request, company: str = Query(..., min_length=1, max_length=200),
                        market: Literal["kr", "us"] = "kr"):
+    if getattr(request.state, "public_access", False):
+        if market != 'us':
+            raise HTTPException(404, 'Public market unavailable at this endpoint')
+        from security.public_us_dossier import stored_prices
+        from routers.spine_transcript import _public_read
+        return _public_read(lambda: stored_prices(company))
     # Table name is chosen from a fixed allowlist; company stays a SQL parameter.
     table = "stock_prices" if market == "kr" else "us_prices"
     conn = get_connection()

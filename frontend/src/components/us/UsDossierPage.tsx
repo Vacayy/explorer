@@ -1,3 +1,5 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
+import { publicFeedUrl } from "@/lib/publicDocumentNavigation"
 import { QueryState } from "@/components/shared/QueryState"
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { useEffect } from 'react'
@@ -58,8 +60,9 @@ export function usMetricSources(f: UsFundamentals | null, c: UsConsensus, fetche
  * 미국 종목 도시에 (docs/specs/us-dossier.md · ia-redesign §4.9·§4.13) — 탭은 셸 하위 메뉴(?tab=overview|financials|evidence|lens).
  * 머리 가격은 차트와 같은 저장 시세(us_prices) 마지막 종가로 맞춘다(§8.8). 저장 시세가 없으면 '시세 수집'.
  */
-export default function UsDossierPage() {
-  const { ticker = '' } = useParams<{ ticker: string }>()
+export default function UsDossierPage({ ticker: publicTicker }: { ticker?: string } = {}) {
+  const { ticker: routeTicker = '' } = useParams<{ ticker: string }>()
+  const ticker = publicTicker ?? routeTicker
   const { search } = useLocation()
   const tab = usTabOf(search)
   const q = useQuery(usDossierQuery(ticker))
@@ -76,7 +79,7 @@ export default function UsDossierPage() {
     return (
       <PageContainer>
         <DossierHead market="us" eyebrow={usEyebrow(d)} name={d.name} last={last} loading={prices.isPending}
-          actions={<>
+          actions={!PUBLIC_ACCESS && <>
             <WatchButton stockCode={d.ticker} />
             <SaveButton kind="company" refId={d.ticker} url={`/us/${d.ticker}`} title={d.name} subtitle={d.ticker} />
             <UsPriceCollect ticker={d.ticker} compact />
@@ -89,14 +92,14 @@ export default function UsDossierPage() {
             sub: room != null ? <span className={room >= 0 ? 'text-up-ink' : 'text-down-ink'}>{formatPercent(room)} 여력</span> : undefined },
           { label: '목표가 범위', value: c.targets ? `${formatStockPrice(c.targets.low, 'us')} – ${formatStockPrice(c.targets.high, 'us')}` : '-', info: src.target_range },
         ]} />
-        {tab === 'evidence' ? <CompanyMentions key={ticker} company={d.ticker} market="us" />
+        {tab === 'evidence' ? PUBLIC_ACCESS ? <PublicCompanyEvidence ticker={d.ticker} name={d.name} /> : <CompanyMentions key={ticker} company={d.ticker} market="us" />
           : tab === 'financials' ? <UsFinancials d={d} price={price} />
-          : tab === 'lens' ? <>
+          : tab === 'lens' ? PUBLIC_ACCESS ? <Card><CardContent className="space-y-2 py-4"><h2 className="text-section font-semibold">투자 렌즈 · 월드모델</h2><p className="text-sm text-muted-foreground">저장된 분석과 인과 관계의 공개 연결을 준비 중입니다. 실적·시세는 개요와 실적·사업 탭에서 확인할 수 있습니다.</p></CardContent></Card> : <>
             <LensView code={d.ticker} market="us" />
             <WorldModelSection ticker={d.ticker} name={d.name} />
           </>
           : <>
-            <CompanyOverviewCard stockCode={d.ticker} market="us" fallback={<p className="text-muted-foreground">사업 설명을 아직 확보하지 못했습니다.</p>} />
+            {PUBLIC_ACCESS ? <Card className="gap-0 py-0" aria-label="기업 개요"><header className="border-b px-4 py-3"><h2 className="text-section font-semibold">기업 개요</h2></header><CardContent className="py-4 text-sm text-muted-foreground">공개 근거가 확인된 사업 설명과 조사 자료를 연결하고 있습니다. 아래 실적 발표와 공개 문서에서 원자료를 확인할 수 있습니다.</CardContent></Card> : <CompanyOverviewCard stockCode={d.ticker} market="us" fallback={<p className="text-muted-foreground">사업 설명을 아직 확보하지 못했습니다.</p>} />}
             <CompanyPriceResearch
               key={ticker}
               company={d.ticker}
@@ -105,15 +108,28 @@ export default function UsDossierPage() {
               loading={prices.isPending}
               error={prices.isError}
               retry={() => void prices.refetch()}
+              publicEvidence={<PublicCompanyEvidence ticker={d.ticker} name={d.name} />}
               overview={<div className="space-y-3">
                 {typeof d.latest_transcript?.id === 'number' && <UsEarningsCard transcriptId={d.latest_transcript.id} />}
-                <CompanyEvidence company={d.ticker} market="us" preview moreTo={`/us/${d.ticker}?tab=evidence`} />
+                {PUBLIC_ACCESS ? <PublicCompanyEvidence ticker={d.ticker} name={d.name} /> : <CompanyEvidence company={d.ticker} market="us" preview moreTo={`/us/${d.ticker}?tab=evidence`} />}
               </div>}
             />
           </>}
       </PageContainer>
     )
   }}</QueryState>
+}
+
+function PublicCompanyEvidence({ ticker, name }: { ticker: string; name: string }) {
+  const location = useLocation()
+  return <Card aria-label="관련 공개 자료"><CardContent className="space-y-3 py-4">
+    <h2 className="text-section font-semibold">관련 공개 자료</h2>
+    <p className="text-sm text-muted-foreground">기업별·날짜별 자료 연결을 준비 중입니다. 현재 공개된 문서는 기업명이나 티커로 검색할 수 있습니다.</p>
+    <div className="flex flex-wrap gap-2">
+      <Button asChild variant="outline"><Link to={publicFeedUrl(name, null, location.pathname + location.search)}>기업명으로 공개 문서 검색</Link></Button>
+      <Button asChild variant="outline"><Link to={publicFeedUrl(ticker, null, location.pathname + location.search)}>티커로 공개 문서 검색</Link></Button>
+    </div>
+  </CardContent></Card>
 }
 
 function DossierSkeleton() {
@@ -143,8 +159,8 @@ function UsFinancials({ d, price }: { d: UsDossier; price: number | null }) {
         ]} />}
         <div className="flex flex-wrap items-center gap-2 bg-muted/60 px-3 py-2 text-sm">
           <Badge variant="outline" className="border-chart-warning/40 text-chart-warning">부분 데이터</Badge>
-          <span>분기 재무·사업부 구성이 아직 없습니다</span>
-          <InfoTip label="부분 데이터 설명">미국 재무 저장본에는 분기별 계열·회계기간·사업부 구성이 없어 분기 추이를 만들지 않습니다. 이익의 질은 영업현금흐름 ÷ 순이익입니다.</InfoTip>
+          <span>{PUBLIC_ACCESS ? "연간 스냅샷 지표이며 분기 손익은 아래 저장 자료를 확인해 주세요" : "분기 재무·사업부 구성이 아직 없습니다"}</span>
+          <InfoTip label="부분 데이터 설명">{PUBLIC_ACCESS ? "위 지표는 저장된 연간 스냅샷입니다. 분기 손익 흐름은 별도 분기 자료를 사용하며, 사업부별 구성은 자료가 저장된 분기에 한해 표시합니다. 이익의 질은 영업현금흐름 ÷ 순이익입니다." : "미국 재무 저장본에는 분기별 계열·회계기간·사업부 구성이 없어 분기 추이를 만들지 않습니다. 이익의 질은 영업현금흐름 ÷ 순이익입니다."}</InfoTip>
           <span className="ml-auto" />
           <Button asChild variant="outline" size="sm"><Link to={`/us/${d.ticker}?tab=evidence&source=transcript`}>컨콜 원문 확인 ›</Link></Button>
         </div>

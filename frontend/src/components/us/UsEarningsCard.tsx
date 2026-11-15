@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 // 도시에 '실적 발표' 카드 — 최근 실적의 시장 반응·왜 그랬나·분기별 반응을 한 장에 (docs/specs/earnings-season.md §콜 상세)
 // 콜 상세(/follow/transcripts?t=)·섹터 상세로 이어진다. 데이터는 실적 시즌 체인(GET /chain/{id})을 그대로 쓴다.
 import { Link } from "react-router-dom"
@@ -54,7 +55,7 @@ function Body({ c, transcriptId }: { c: ChainDetail; transcriptId: number }) {
       <ExcessChart c={c} />
       <div className="min-w-0 space-y-2">
         <H3>왜 이렇게 반응했나</H3>
-        {m?.headline ? <p className="font-semibold">{stripCites(m.headline)}</p> : <NoReaction transcriptId={transcriptId} />}
+        {m?.headline ? <p className="font-semibold">{stripCites(m.headline)}</p> : PUBLIC_ACCESS ? <p className="text-sm text-muted-foreground">공개 근거가 확인된 시장 반응 해설을 준비 중입니다.</p> : <NoReaction transcriptId={transcriptId} />}
       </div>
     </div>
     {m && (m.welcomed?.length || m.questioned?.length) ? (

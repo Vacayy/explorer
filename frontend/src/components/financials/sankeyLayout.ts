@@ -128,3 +128,30 @@ export function layoutSankey(nodes: FlowNode[], links: FlowLink[], opt: LayoutOp
     nodeWidth, width: opt.width, height: opt.height,
   }
 }
+
+export interface SankeyLabel { x: number; y: number; anchor: 'start' | 'end' }
+
+/** Keep labels inside the SVG and separate short neighbouring nodes' text.
+ * Node and ribbon geometry remains unchanged; only the text baseline moves.
+ */
+export function layoutSankeyLabels(nodes: LaidOutNode[], height: number, subLines: (node: LaidOutNode) => number): Map<string, SankeyLabel> {
+  const labels = new Map<string, SankeyLabel>()
+  const columns = new Map<number, LaidOutNode[]>()
+  for (const node of nodes) columns.set(node.column, [...(columns.get(node.column) ?? []), node])
+  for (const column of columns.values()) {
+    const rows = [...column].sort((a, b) => a.y - b.y).map(node => {
+      const lines = Math.min(3, subLines(node))
+      return { node, y: node.y + Math.min(node.h, 26) / 2 + 4, bottom: lines ? 38 + (lines - 1) * 12 : 22 }
+    })
+    // Text starts 12px above the baseline; leave 8px between label blocks.
+    for (let i = 1; i < rows.length; i++) rows[i].y = Math.max(rows[i].y, rows[i - 1].y + rows[i - 1].bottom + 20)
+    for (let i = rows.length - 1; i >= 0; i--) {
+      const ceiling = i === rows.length - 1 ? height - 4 : rows[i + 1].y - 20
+      rows[i].y = Math.min(rows[i].y, ceiling - rows[i].bottom)
+    }
+    for (const { node, y } of rows) {
+      labels.set(node.id, { x: node.x + 18, y, anchor: 'start' })
+    }
+  }
+  return labels
+}

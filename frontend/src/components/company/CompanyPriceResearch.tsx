@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import CandlestickChart from '@/components/charts/CandlestickChart'
@@ -23,6 +24,7 @@ export function CompanyPriceResearch({
   retry,
   market = 'kr',
   overview,
+  publicEvidence,
   compact = false,
 }: {
   company: string
@@ -32,13 +34,14 @@ export function CompanyPriceResearch({
   retry: () => void
   market?: 'kr' | 'us'
   overview?: ReactNode
+  publicEvidence?: ReactNode
   compact?: boolean
 }) {
   const [sp, setSp] = useSearchParams()
-  const scanOpen = sp.get('scan') === '1'
+  const scanOpen = !PUBLIC_ACCESS && sp.get('scan') === '1'
   const scanWithin = [1, 3, 5, 10, 20].includes(Number(sp.get('scan_within'))) ? Number(sp.get('scan_within')) : 5
   const scanOnChart = sp.get('scan_chart') !== '0'
-  const sourceRun = market === 'kr' ? sp.get('source_run') : null
+  const sourceRun = !PUBLIC_ACCESS && market === 'kr' ? sp.get('source_run') : null
   const original = !!sourceRun && sp.get('scan_at') !== 'latest'
   const scanAnchor = useRef<HTMLDivElement>(null)
   const theme = useChartTheme()
@@ -231,10 +234,10 @@ export function CompanyPriceResearch({
                       </p>
                     ) : null}
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  {!PUBLIC_ACCESS && <div className="flex flex-wrap gap-2">
                     <Button variant={scanOpen ? 'secondary' : 'outline'} size="sm" className="max-md:min-h-11" aria-pressed={scanOpen} onClick={() => setScanOpen(!scanOpen)}><Activity className="size-4" />기술적 분석</Button>
                     {!historical && <Button variant={scanOpen && sp.get('scan_view') === 'structure' ? 'secondary' : 'outline'} size="sm" className="max-md:min-h-11" disabled={!latest || loading || error} onClick={() => setSp(previous => { const next = new URLSearchParams(previous); next.set('scan', '1'); next.set('scan_view', 'structure'); return next }, { replace: true, preventScrollReset: true })}><PenLine className="size-4" />구조 그리기</Button>}
-                  </div>
+                  </div>}
                   {selected && (
                     <Button
                       variant="outline"
@@ -400,12 +403,12 @@ export function CompanyPriceResearch({
               tabIndex={0}
               aria-label="선택 구간 자료 목록"
             >
-              <CompanyEvidence
+              {PUBLIC_ACCESS ? publicEvidence ?? <p className="p-4 text-sm text-muted-foreground">선택 날짜와 관련된 공개 자료 연결을 준비 중입니다.</p> : <CompanyEvidence
                 key={`${company}:research`}
                 company={company}
                 market={market}
                 range={{ start, end: selected, cutoff, after }}
-              />
+              />}
             </div>
           )}
         </div>

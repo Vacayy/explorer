@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 // 도시에 › 실적·사업 탭 머리 섹션 — 분기 손익 흐름(Sankey). ia-redesign §4.13.
 // 백엔드가 raw 금액·YoY·QoQ·이익률·콜아웃까지 완성해 돌려주므로 프런트는 레이아웃·라벨·토글만 맡는다.
 //
@@ -12,13 +13,15 @@ import { InfoTip } from "@/components/shared/InfoTip"
 import { Button } from "@/components/ui/button"
 import { useFinancialsCollect, useIncomeFlow, useIncomeFlowQuarters } from "@/hooks/useIncomeFlow"
 import type { FlowNode, IncomeFlowResponse } from "@/types"
-import { layoutSankey, type LaidOutNode, type LaidOutLink } from "./sankeyLayout"
+import { layoutSankey, layoutSankeyLabels, type SankeyLabel, type LaidOutNode, type LaidOutLink } from "./sankeyLayout"
 import { LINK_OPACITY, NODE_STYLE, calloutLabel, fmtMoney, fmtQuarterLabel, fmtSubtitle, nodeSubText } from "./flowFormat"
 import { cn } from "@/lib/utils"
 
 const PERIOD_TABS = [{ value: 'q', label: '단일 분기' }, { value: 'ttm', label: '최근 4분기 합' }]
 const CHART_H = 440
 const CHART_MIN_W = 980
+// Last-column labels need their own space; do not overlap the preceding column.
+const LABEL_GUTTER = 180
 
 /** 도시에 › 실적·사업 › 분기 손익 흐름 섹션. code=stock_code(KR) 또는 ticker(US). */
 export function IncomeFlow({ code, market }: { code: string; market: 'kr' | 'us' }) {
@@ -59,12 +62,16 @@ export function IncomeFlow({ code, market }: { code: string; market: 'kr' | 'us'
 
 /** 자료 없음 · 404 — 국내는 "DART에서 받아오기" 트리거를 함께 보여준다 (사각지대 소형주 대응). */
 function ErrorOrEmpty({ code, market, isError, onRetry }: { code: string; market: 'kr' | 'us'; isError: boolean; onRetry: () => void }) {
-  const collect = useFinancialsCollect(code)
-  if (market !== 'kr') {
+  if (PUBLIC_ACCESS || market !== 'kr') {
     return isError
       ? <ErrorState message="분기 손익을 불러오지 못했습니다." onRetry={onRetry} />
-      : <p className="py-4 text-sm text-muted-foreground">아직 분기 손익 자료가 없습니다 — 분기보고서가 공시되면 채워집니다.</p>
+      : <p className="py-4 text-sm text-muted-foreground">{PUBLIC_ACCESS ? "공개 저장본에 이 기간의 분기 손익 자료가 아직 없습니다." : "아직 분기 손익 자료가 없습니다 — 분기보고서가 공시되면 채워집니다."}</p>
   }
+  return <PrivateCollectEmpty code={code} isError={isError} onRetry={onRetry} />
+}
+
+function PrivateCollectEmpty({ code, isError, onRetry }: { code: string; isError: boolean; onRetry: () => void }) {
+  const collect = useFinancialsCollect(code)
   const msg = collect.isSuccess
     ? (collect.data && collect.data.periods_added > 0
         ? `DART에서 ${collect.data.periods_added}개 분기를 새로 받았습니다. 잠시 후 다시 그려집니다.`
@@ -119,13 +126,14 @@ function SankeySvg({ d }: { d: IncomeFlowResponse }) {
     source: `seg_${s.name}`, target: 'revenue', value: s.value,
   }))
   const { nodes, links } = layoutSankey([...segNodes, ...d.nodes], [...segLinks, ...d.links], { width: W, height: H })
+  const labels = layoutSankeyLabels(nodes, H, node => nodeSubText(node).length)
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="min-w-[980px] max-w-full" aria-label="분기 손익 흐름 다이어그램">
+    <svg viewBox={`0 0 ${W + LABEL_GUTTER} ${H}`} className="max-w-full" style={{ minWidth: W + LABEL_GUTTER }} aria-label="분기 손익 흐름 다이어그램">
       <g>
         {links.map((l, i) => <LinkBand key={i} link={l} nodeKindById={byId(nodes)} />)}
       </g>
       <g>
-        {nodes.map(n => <NodeBar key={n.id} n={n} unit={d.unit} />)}
+        {nodes.map(n => <NodeBar key={n.id} n={n} unit={d.unit} label={labels.get(n.id)!} />)}
       </g>
     </svg>
   )
@@ -154,16 +162,12 @@ function LinkBand({ link, nodeKindById }: { link: LaidOutLink; nodeKindById: Rec
   )
 }
 
-function NodeBar({ n, unit }: { n: LaidOutNode; unit: 'KRW' | 'USD' }) {
+function NodeBar({ n, unit, label }: { n: LaidOutNode; unit: 'KRW' | 'USD'; label: SankeyLabel }) {
   const style = NODE_STYLE[n.kind]
   const subs = nodeSubText(n)
-  const labelLeft = n.column === 0
-  const labelRight = n.column >= 5
-  const labelX = labelLeft ? n.x - 8 : labelRight ? n.x + 18 : n.x + 18
-  const labelAnchor: 'start' | 'end' = labelLeft ? 'end' : 'start'
-  const labelY = n.y + Math.min(n.h, 26) / 2 + 4
+  const { x: labelX, y: labelY, anchor: labelAnchor } = label
   return (
-    <g>
+    <g data-sankey-node={n.id}>
       <rect
         x={n.x} y={n.y} width={10} height={n.h}
         fill={style.fill} opacity={style.opacity}

@@ -6,6 +6,10 @@
 > 유지 규칙: 구조(테이블·파이프라인·라우터·IA·의존성)가 바뀌는 커밋은 본 문서 갱신을 포함한다 (CLAUDE.md Context Discipline).
 > (구 ARCHITECTURE.md·PLAN.md는 초기 대시보드 시절 문서 — docs/private/archive/로 이동, 본 문서가 현행)
 
+## 공개 미국 기업 상세의 저장 수치 조회
+
+공개 `/us/:ticker`는 기존 기업 헤더·시세 차트·실적 카드·재무 탭·손익 흐름·발표 이력을 사용한다. `security.public_us_dossier`는 공개 미국 기업 registry에 속한 티커만 같은 readonly snapshot의 `us_fundamentals`(준비된 수치 JSON·수집 시각), OHLCV, `us_quarterly`, `us_segments`에서 읽는다. 기존 `/api/spine/us/{ticker}`와 손익/분기 API, `/api/spine/feed/company-prices?market=us`의 공개 분기이며 get_fundamentals의 TTL 수집·갱신을 호출하지 않는다. 주가 응답은 `CompanyPriceResponse`로 소수점 OHLC를 보존한다. `income_flow`는 호출자 소유 연결을 받을 수 있으며 기존 분기/TTM·사업부 계산을 재사용한다. 자료 없는 기업은 재무 스냅샷 없음으로 표시한다. 개인 Watch/Save/수집/기술분석 실행은 마운트하지 않는다. 기업 설명·증거·Lens·월드모델의 공개 연결은 별도 후속이며 전체 기능 수용이나 원천 재배포 권리 승인을 뜻하지 않는다.
+
 ## 기존 피드 화면 재사용
 
 `FeedFrame`/`FeedHeaderView`, `ChannelReaderFrame`/`ChannelEntry`, `DocumentCardView`는 private/public 피드가 공유하는 기존 레이아웃·헤더·2열/모바일 틀·소스 행·카드다. 공개 `/feed`는 `PublicFeedPage`에서 `/api/public/feed`의 승인 소스 디렉터리와 서버 채널/종류/페이지 필터를 연결한다. URL의 channel/channel_type/channel_q/reader_topic/reader_page/reader_until/reader_open과 문서 return_to를 유지한다. 개인 읽음·관리·스터디·주제추천 hook은 마운트하지 않는다. 공개 문서 검색은 기존 승인 검색으로 연결하며 원래 DocumentSearch 전체 UI와 홈 구성 연결은 후속이다.

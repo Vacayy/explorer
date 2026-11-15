@@ -6,7 +6,7 @@ function localUrl(value: string | null): URL | null {
 
 export function publicCompanyReturn(value: string | null): string | null {
   const url = localUrl(value)
-  return url && /^\/analyze\/\d{6}\/summary$/.test(url.pathname) ? url.pathname + url.search : null
+  return url && (/^\/analyze\/\d{6}\/summary$/.test(url.pathname) || /^\/us\/[A-Za-z0-9][A-Za-z0-9.-]{0,19}$/.test(url.pathname)) ? url.pathname + url.search : null
 }
 
 export function publicFeedUrl(q: string, cursor: string | null = null, companyReturn: string | null = null): string {

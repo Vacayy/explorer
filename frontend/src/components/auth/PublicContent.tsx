@@ -1,3 +1,4 @@
+import UsDossierPage from "@/components/us/UsDossierPage"
 import TranscriptPage from "@/components/follow/TranscriptPage"
 import { SeasonView } from "@/components/follow/season/SeasonView"
 import { SectorView } from "@/components/follow/season/SectorView"
@@ -28,6 +29,7 @@ import { PublicTrialChatPage } from '@/components/chat/PublicTrialChatPage'
 /** Incremental public coverage. Never mount a private page behind a hidden UI. */
 export function PublicContent() {
   const { pathname, search } = useLocation()
+  const usCompany = useMatch('/us/:ticker')
   const sector = useMatch('/industry/us/:ticker')
   const krSector = useMatch('/industry/:sector')
   const summary = useMatch('/analyze/:stockCode/summary')
@@ -41,6 +43,7 @@ export function PublicContent() {
     return <PageContainer>{sectorKey ? <SectorView sectorKey={sectorKey} /> : <SeasonView tabs={null} />}</PageContainer>
   }
   if (pathname === '/follow/transcripts') return <TranscriptPage />
+  if (usCompany?.params.ticker) return <UsDossierPage ticker={usCompany.params.ticker} />
   if (pathname === '/follow/trade' || trade?.params.hs) return <PublicTradePage hsCode={trade?.params.hs} />
   if (summary?.params.stockCode) return <PublicCompanySummary stockCode={summary.params.stockCode} />
   if (krSector?.params.sector) return <PublicKrSectorPage sector={krSector.params.sector} />
