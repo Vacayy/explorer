@@ -191,3 +191,18 @@ class MemberSavedTests(unittest.TestCase):
         self.assertEqual((item['status'],item['available'],item['title'],item['url'],item['current_url']),
                          ('unavailable',False,None,None,None))
         self.assertEqual(item['note'],'Attachment version')
+
+    def test_concurrent_duplicate_save_keeps_one_original_reference(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from models.member_saved import SavedCreate
+        from security.member_saved import MemberSaved
+        def save(note):
+            return MemberSaved(self.source,self.users['a'],self.docs).add(SavedCreate(doc_id=1,note=note))
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results=list(pool.map(save,['first contender','second contender']))
+        self.assertEqual(results[0]['id'],results[1]['id'])
+        self.assertEqual(results[0]['note'],results[1]['note'])
+        with sqlite3.connect(self.source) as conn:
+            rows=conn.execute('SELECT note,saved_fingerprint FROM member_saved_documents WHERE owner_user_id=? AND doc_id=1',(self.users['a'],)).fetchall()
+        self.assertEqual(len(rows),1)
+        self.assertEqual(rows[0][1],self.docs.capture(1).fingerprint)
