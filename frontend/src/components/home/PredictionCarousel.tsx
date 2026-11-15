@@ -1,4 +1,5 @@
 import { useRef } from "react"
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import { HomeBlock } from "@/components/home/HomeSection"
 import { BlockError } from "@/components/home/blockState"
@@ -32,7 +33,7 @@ export function PredictionCarousel() {
   return (
     <section aria-label="예측시장">
       <HomeBlock label="predictions" title="예측시장"
-        info={<>Kalshi에서 금융·경제·테크·정치 카테고리의 인기 이벤트를 하루 세 번(08:00·16:00·23:00) 받습니다. 금융·경제 칸을 더 많이 둡니다. 카드 오른쪽 위 핀으로 추적하면 인기순에서 빠져도 계속 받아 맨 앞에 둡니다. 확률은 최근 체결가, 변화는 약 하루 전 수집분 대비, 추이선은 대표 결과의 최근 60일입니다. 기준선이 여러 개인 시장('~ 이상')은 확률 50%에 가까운 기준선을 보입니다.</>}
+        info={PUBLIC_ACCESS ? <>Kalshi에서 저장한 금융·경제·테크·정치 이벤트입니다. 목록과 상세의 저장 시각은 다를 수 있으며 실시간 가격이 아닙니다. 확률은 저장 당시 최근 체결가, 변화는 이전 수집분 대비, 추이선은 보관된 일봉입니다. 기준선이 여러 개인 시장은 확률 50%에 가까운 기준선을 보입니다.</> : <>Kalshi에서 금융·경제·테크·정치 카테고리의 인기 이벤트를 하루 세 번(08:00·16:00·23:00) 받습니다. 금융·경제 칸을 더 많이 둡니다. 카드 오른쪽 위 핀으로 추적하면 인기순에서 빠져도 계속 받아 맨 앞에 둡니다. 확률은 최근 체결가, 변화는 약 하루 전 수집분 대비, 추이선은 대표 결과의 최근 60일입니다. 기준선이 여러 개인 시장('~ 이상')은 확률 50%에 가까운 기준선을 보입니다.</>}
         asOf={q.data?.fetched_at ? formatKstSlashDate(q.data.fetched_at) : null}
         actions={items.length > 0 && <div className="flex gap-1 max-sm:hidden">
           <Button variant="ghost" size="icon" className="size-7" aria-label="이전" onClick={() => scroll(-1)}><ChevronLeft className="size-4" /></Button>

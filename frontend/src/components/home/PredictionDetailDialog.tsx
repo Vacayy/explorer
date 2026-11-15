@@ -88,6 +88,7 @@ function Body({ d, range, setRange }: { d: KalshiDetail; range: string; setRange
   }))
   const data = [...byDay.values()].sort((a, b) => String(a.time).localeCompare(String(b.time)))
   return <div className="flex min-w-0 flex-col gap-4">
+    {PUBLIC_ACCESS && <p className="text-xs text-ink-3">상세 저장: {formatKstSlashDate(d.fetched_at)} KST · 목록과 저장 시각이 다를 수 있습니다.</p>}
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <h3 className="text-sm font-semibold">확률 추이</h3>
