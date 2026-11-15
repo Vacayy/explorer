@@ -1,4 +1,3 @@
-import { PUBLIC_ACCESS } from '@/lib/accessMode'
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
 import { apiQuery, STALE } from "@/api/query"
@@ -12,7 +11,7 @@ export function useTwRevenue() {
 /** 대만 → 한국 연결 신호 — kr를 주면 그 종목 연결만 */
 export function useTwLinks(kr?: string) {
   return useQuery(apiQuery<TwLinksResponse>({
-    key: ["spine", "tw", "links", kr ?? "all"], url: "/api/spine/tw/links", params: kr ? { kr } : undefined, staleTime: STALE.long, enabled: !PUBLIC_ACCESS,
+    key: ["spine", "tw", "links", kr ?? "all"], url: "/api/spine/tw/links", params: kr ? { kr } : undefined, staleTime: STALE.long,
   }))
 }
 

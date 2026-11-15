@@ -17,22 +17,28 @@ def tw_revenue(request: Request, months: int = Query(36, ge=3, le=120)):
 
 
 @router.get("/links", response_model=TwLinksResponse)
-def tw_links(kr: str | None = None):
+def tw_links(request: Request, kr: str | None = None):
     """대만 → 한국 연결 — 연결별 대만 신호(3개월 YoY·가속/둔화)와 숫자 근거(시차별 상관)"""
+    if getattr(request.state, 'public_access', False):
+        return _public_snapshot('links', kr)
     from pipeline.tw_links import read_links
     return read_links(kr)
 
 
 @router.get("/value-chain", response_model=ValueChainResponse)
-def value_chain():
+def value_chain(request: Request):
     """밸류체인 지도 — 노드별 대만 신호, 엣지별 측정 시차·위약 보정 판정 (docs/specs/value-chain.md)"""
+    if getattr(request.state, 'public_access', False):
+        return _public_snapshot('value-chain')
     from pipeline.value_chain import read_map
     return read_map()
 
 
 @router.get("/confirm", response_model=list[KrConfirm])
-def kr_confirm(kr: str | None = None):
+def kr_confirm(request: Request, kr: str | None = None):
     """한국 확인 신호 — 대만·수출(HS)·공시 세 원천의 방향 (docs/specs/value-chain.md §4)"""
+    if getattr(request.state, 'public_access', False):
+        return _public_snapshot('confirm', kr)
     from pipeline.kr_confirm import confirm
     from pipeline.tw_links import LINKS
     codes = [kr] if kr else sorted({link[0] for link in LINKS})
@@ -40,24 +46,41 @@ def kr_confirm(kr: str | None = None):
 
 
 @router.get("/propagation", response_model=PropagationResponse)
-def propagation():
+def propagation(request: Request):
     """번지는 중 — 한국 확인 전·엇갈림·선행 경보 (docs/specs/value-chain.md §5)"""
+    if getattr(request.state, 'public_access', False):
+        return _public_snapshot('propagation')
     from pipeline.value_chain import propagation as compute
     return compute()
 
 
 @router.get("/flow", response_model=FlowResponse)
-def value_chain_flow():
+def value_chain_flow(request: Request):
     """돈의 흐름·다음 스포트라이트 가설 (docs/specs/value-chain.md §11) — 예측이 아니라 반증 조건이 붙은 가설"""
+    if getattr(request.state, 'public_access', False):
+        return _public_snapshot('flow')
     from pipeline.value_chain_flow import compute
     return compute()
 
 
 @router.get("/expectations", response_model=ExpectationsResponse)
-def value_chain_expectations():
+def value_chain_expectations(request: Request):
     """시장 기대치 (docs/specs/value-chain.md §15) — 칸 구성 회사 컨센서스·리서치 전망, 관측과 나란히(섞지 않음)"""
+    if getattr(request.state, 'public_access', False):
+        return _public_snapshot('expectations')
     from pipeline.vc_expectations import with_observed
     return with_observed()
+
+
+def _public_snapshot(name, kr=None):
+    import sqlite3
+    from security.public_value_chain import stored
+    try:
+        return stored(name, kr)
+    except LookupError:
+        raise HTTPException(404, '준비된 자료가 없습니다') from None
+    except (sqlite3.Error, OSError, ValueError):
+        raise HTTPException(503, '자료를 불러올 수 없습니다') from None
 
 
 def _valid_root(root: str) -> None:

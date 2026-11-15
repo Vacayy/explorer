@@ -16,6 +16,8 @@
 
 공개 자료 사본에 `public_collection_index`가 명시적으로 준비된 경우 공개 문서와 피드는 그 인덱스에 담긴 수집 자료만 읽는다. 원본 DB가 아니라 개인정보를 분리한 읽기 전용 사본과 첨부 디렉터리가 전제이며, 요청 중 인덱스 생성이나 AI 요약 생성을 수행하지 않는다. 기존에 저장된 `enrichments.summary`는 문서 응답에 포함되고 기존 피드의 요약/원문 보기 방식으로 표시한다. 인덱스가 없는 기존 배포는 기존 승인 방식으로 동작한다.
 
+공개 `/value-chain`은 준비된 읽기 전용 `public_value_chain_snapshot`에서 기존 지도·한국 확인·전파·흐름·기대치·대만 연결 조회를 제공한다. 원본 조회 결과를 별도 사본에 저장하므로 원본 DB, 수집 및 재계산을 공개 요청에서 실행하지 않는다. `kr` 필터는 준비된 연결과 확인 대상에 적용한다. 보고서 생성은 공개 화면에 마운트하지 않으며 저장 보고서의 공개 범위는 별도 확인이 필요하다.
+
 ## 공개 미국 기업 상세의 저장 수치 조회
 
 공개 `/us/:ticker`는 기존 기업 헤더·시세 차트·실적 카드·재무 탭·손익 흐름·발표 이력을 사용한다. `security.public_us_dossier`는 공개 미국 기업 registry에 속한 티커만 같은 readonly snapshot의 `us_fundamentals`(준비된 수치 JSON·수집 시각), OHLCV, `us_quarterly`, `us_segments`에서 읽는다. 기존 `/api/spine/us/{ticker}`와 손익/분기 API, `/api/spine/feed/company-prices?market=us`의 공개 분기이며 get_fundamentals의 TTL 수집·갱신을 호출하지 않는다. 주가 응답은 `CompanyPriceResponse`로 소수점 OHLC를 보존한다. `income_flow`는 호출자 소유 연결을 받을 수 있으며 기존 분기/TTM·사업부 계산을 재사용한다. 자료 없는 기업은 재무 스냅샷 없음으로 표시한다. 개인 Watch/Save/수집/기술분석 실행은 마운트하지 않는다. 기업 설명·증거·Lens·월드모델의 공개 연결은 별도 후속이며 전체 기능 수용이나 원천 재배포 권리 승인을 뜻하지 않는다.

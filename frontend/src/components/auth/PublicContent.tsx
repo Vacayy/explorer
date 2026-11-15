@@ -1,5 +1,6 @@
 import TaiwanPage from '@/components/industry/TaiwanPage'
 import TaiwanCompanyPage from '@/components/industry/TaiwanCompany'
+import ValueChainPage from '@/components/explore/ValueChainPage'
 import CreditPage from '@/components/follow/CreditPage'
 import UsDossierPage from "@/components/us/UsDossierPage"
 import TranscriptPage from "@/components/follow/TranscriptPage"
@@ -50,6 +51,7 @@ export function PublicContent() {
   if (pathname === '/follow/transcripts') return <TranscriptPage />
   if (pathname === '/follow/credit') return <CreditPage />
   if (pathname === '/follow/taiwan') return <TaiwanPage />
+  if (pathname === '/value-chain') return <ValueChainPage />
   if (taiwanCompany?.params.code) return <TaiwanCompanyPage />
   if (usCompany?.params.ticker) return <UsDossierPage ticker={usCompany.params.ticker} />
   if (pathname === '/follow/trade' || trade?.params.hs) return <PublicTradePage hsCode={trade?.params.hs} />
