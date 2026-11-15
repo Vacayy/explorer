@@ -12,6 +12,8 @@ from pipeline.postgres_signals_fixture import signals_items, signals_summary as 
 from pipeline.postgres_narrative_fixture import list_narratives as pg_narratives, cached_narrative as pg_narrative
 from pipeline.narrative import list_narratives as sqlite_narratives, cached_meta as sqlite_narrative
 from routers.spine_narrative import NarrativeList, Narrative
+from pipeline.postgres_calendar_fixture import calendar_events
+from models.spine import CalendarEvent
 
 
 def main():
@@ -31,6 +33,8 @@ def main():
         signals=[dict(row) for row in source.execute('SELECT * FROM signals')]
         entities=[dict(row) for row in source.execute('SELECT * FROM entities')]
         narratives=[dict(row) for row in source.execute('SELECT * FROM narratives')]
+        catalysts=[dict(row) for row in source.execute('SELECT * FROM catalysts')]
+        companies=[dict(row) for row in source.execute('SELECT * FROM companies')]
         links=[dict(row) for row in source.execute('SELECT * FROM entity_links')]
         documents=[dict(row) for row in source.execute('SELECT id,published_at,source_type FROM raw_documents')]
         enrichments=[dict(row) for row in source.execute('SELECT doc_id,time_orientation,reference_period FROM enrichments')]
@@ -39,11 +43,12 @@ def main():
             conn.execute(sql.SQL('CREATE TABLE {}.legacy_snapshot_rows(table_name text,row_ordinal bigint,row_data jsonb)').format(sql.Identifier(schema)))
             conn.execute(sql.SQL('CREATE TABLE {}.legacy_snapshot_tables(table_name text primary key)').format(sql.Identifier(schema)))
             conn.execute(sql.SQL("INSERT INTO {}.legacy_snapshot_tables VALUES ('signals')").format(sql.Identifier(schema)))
+            conn.execute(sql.SQL("INSERT INTO {}.legacy_snapshot_tables VALUES ('catalysts'),('companies')").format(sql.Identifier(schema)))
             conn.execute(sql.SQL("CREATE INDEX ON {}.legacy_snapshot_rows (table_name,(row_data->>'id'))").format(sql.Identifier(schema)))
             conn.execute(sql.SQL("CREATE INDEX ON {}.legacy_snapshot_rows (table_name,(row_data->>'signal_type'),(row_data->>'entity_id'))").format(sql.Identifier(schema)))
             conn.execute(sql.SQL("CREATE INDEX ON {}.legacy_snapshot_rows (table_name,(row_data->>'doc_id'))").format(sql.Identifier(schema)))
             with conn.cursor() as cur:
-                for table,rows in [('entities',entities),('signals',signals),('narratives',narratives),('entity_links',links),('raw_documents',documents),('enrichments',enrichments)]:
+                for table,rows in [('entities',entities),('signals',signals),('narratives',narratives),('entity_links',links),('raw_documents',documents),('enrichments',enrichments),('catalysts',catalysts),('companies',companies)]:
                     cur.executemany(sql.SQL('INSERT INTO {}.legacy_snapshot_rows VALUES (%s,%s,%s)').format(sql.Identifier(schema)),[(table,i,Jsonb(row)) for i,row in enumerate(rows)])
         counts=[]
         with psycopg.connect(dsn,options=f'-c search_path={schema}') as conn:
@@ -80,7 +85,14 @@ def main():
             for topic in topics:
                 if pg_narrative(conn,topic).model_dump() != Narrative(**sqlite_narrative(source,topic)).model_dump():
                     raise AssertionError('Narrative detail mismatch')
-        print(f'Compared signal lists {counts}, summary, {len(expected_momentum)} momentum, {len(expected_narratives["items"])} narratives and {len(topics)} details: matched')
+            event_days=[date.fromisoformat(row['event_date']) for row in catalysts]
+            start=max(set(event_days),key=lambda day:sum(day<=candidate<=day+timedelta(days=7) for candidate in event_days))
+            rows=source.execute('SELECT c.id,c.stock_code,co.corp_name,c.event_type,c.event_date,c.title FROM catalysts c LEFT JOIN companies co ON c.corp_code=co.corp_code WHERE c.event_date>=? AND c.event_date<=? ORDER BY c.event_date ASC',(start.isoformat(),(start+timedelta(days=7)).isoformat())).fetchall()
+            watched={row['stock_code'] for row in rows[:2] if row['stock_code']}
+            events=sorted([CalendarEvent(**dict(row),in_watchlist=row['stock_code'] in watched) for row in rows],key=lambda e:(not e.in_watchlist,e.event_date))
+            if [row.model_dump() for row in calendar_events(conn,start=start,watched_codes=watched)] != [row.model_dump() for row in events]:
+                raise AssertionError('Calendar event mismatch')
+        print(f'Compared signal lists {counts}, summary, {len(expected_momentum)} momentum, {len(expected_narratives["items"])} narratives, {len(topics)} details and {len(events)} calendar events: matched')
     finally:
         source.close()
         with psycopg.connect(dsn) as conn:

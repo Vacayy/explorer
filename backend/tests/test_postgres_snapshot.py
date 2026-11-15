@@ -10,7 +10,7 @@ import time
 import tempfile
 import subprocess
 import sys
-from datetime import datetime,timezone
+from datetime import date,datetime,timezone
 from contextlib import closing
 from collections import namedtuple
 from pathlib import Path
@@ -49,6 +49,7 @@ from pipeline.postgres_enrich_worker_fixture import enrich_document
 from pipeline.postgres_projection_publisher_fixture import FixturePublisher
 from pipeline.postgres_signals_fixture import signals_items
 from pipeline.postgres_signal_compute_fixture import compute_mention_signals
+from pipeline.postgres_calendar_fixture import calendar_events
 from pipeline.postgres_ingest_cycle_fixture import run_cycle, run_exclusive_cycle, run_periodic, CYCLE_LOCK
 import tests.test_document_read_boundary as detail_fixtures
 
@@ -82,14 +83,14 @@ class SnapshotReplacementTests(unittest.TestCase):
     def pg(self):
         return psycopg.connect(self.dsn, options=f'-c search_path={self.schema}')
 
-    def load(self, at, *, include_linking=False, include_signals=False):
+    def load(self, at, *, include_linking=False, include_signals=False, include_events=False):
         source = sqlite3.connect(self.fixture.path.as_uri() + '?mode=ro', uri=True)
         source.row_factory = sqlite3.Row
         source.execute('PRAGMA query_only=ON')
         source.execute('BEGIN')
         try:
             with patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
-                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None, include_linking=include_linking, include_signals=include_signals)
+                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None, include_linking=include_linking, include_signals=include_signals, include_events=include_events)
         finally:
             source.close()
 
@@ -152,6 +153,21 @@ class SnapshotReplacementTests(unittest.TestCase):
             c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
             item=signals_items(c,since='2026-01-01',signal_type='mention_surge')[0]
             self.assertEqual(item.payload['count_7d'],3)
+
+    def test_event_snapshot_keeps_calendar_order_and_company(self):
+        with self.fixture.connect() as c:
+            c.execute('CREATE TABLE catalysts(id INTEGER,stock_code TEXT,corp_code TEXT,event_type TEXT,event_date TEXT,title TEXT)')
+            c.execute('CREATE TABLE companies(corp_code TEXT,corp_name TEXT)')
+            c.execute("INSERT INTO companies VALUES ('corp','합성 기업')")
+            c.executemany('INSERT INTO catalysts VALUES (?,?,?,?,?,?)',[
+                (1,'A','corp','schedule','2026-01-02','일정 A'),
+                (2,'B',None,'schedule','2026-01-03','일정 B')])
+        self.load('2026-01-03T00:00:00+00:00',include_events=True)
+        with self.pg() as c:
+            c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            events=calendar_events(c,start=date(2026,1,1),watched_codes={'B'})
+            self.assertEqual([row.id for row in events],[2,1])
+            self.assertEqual(events[1].corp_name,'합성 기업')
 
     def test_archive_to_ledger_preserves_source_and_rejects_second_import(self):
         self.load('2026-01-03T00:00:00+00:00')
