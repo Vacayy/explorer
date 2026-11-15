@@ -19,3 +19,7 @@ it('returns from approved document search to the US dossier and rejects other US
  expect(new URLSearchParams(feed.split('?')[1]).get('company_return')).toBe(company)
  for (const value of ['/us/MSFT/admin', '//evil.test/us/MSFT', '/us/../admin', '/us/%2Fadmin']) expect(publicCompanyReturn(value)).toBeNull()
 })
+it('returns to the public Korean evidence page with its selected day', () => {
+ expect(publicCompanyReturn('/analyze/089890/mentions?day=2026-11-12')).toBe('/analyze/089890/mentions?day=2026-11-12')
+ for (const value of ['//evil.test/analyze/089890/mentions', '/analyze/089890/mentions/admin', '/analyze/../mentions']) expect(publicCompanyReturn(value)).toBeNull()
+})
