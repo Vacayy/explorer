@@ -36,6 +36,7 @@ PUBLIC_ROUTE_POLICIES = {
     ('GET', '/api/spine/home/predictions'): 'public',
     ('GET', '/api/spine/home/predictions/{event_ticker}'): 'public',
     ('GET', '/api/spine/risk'): 'public',
+    ('GET', '/api/spine/tw/revenue'): 'public',
     ('GET', '/api/spine/credit'): 'public',
     ('GET', '/api/spine/credit/history'): 'public',
     ('GET', '/api/spine/market-regime'): 'public',

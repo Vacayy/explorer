@@ -1,5 +1,5 @@
 """대만 월매출 API — 홈 위젯용 (pipeline/tw_revenue, LLM·네트워크 0)."""
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 
 from models.tw import KrConfirm, TwLinksResponse, TwRevenueResponse
 from models.value_chain import ChainPreview, ChainReport, ChainReportItem, ExpectationsResponse, FlowResponse, PropagationResponse, ValueChainResponse
@@ -8,7 +8,10 @@ router = APIRouter(prefix="/api/spine/tw", tags=["spine"])
 
 
 @router.get("/revenue", response_model=TwRevenueResponse)
-def tw_revenue(months: int = Query(36, ge=3, le=120)):
+def tw_revenue(request: Request, months: int = Query(36, ge=3, le=120)):
+    if getattr(request.state, 'public_access', False):
+        from security.public_tw_revenue import stored_revenue
+        return stored_revenue(months)
     from pipeline.tw_revenue import read
     return read(months)
 

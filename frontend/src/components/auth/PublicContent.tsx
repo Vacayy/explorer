@@ -1,3 +1,5 @@
+import TaiwanPage from '@/components/industry/TaiwanPage'
+import TaiwanCompanyPage from '@/components/industry/TaiwanCompany'
 import CreditPage from '@/components/follow/CreditPage'
 import UsDossierPage from "@/components/us/UsDossierPage"
 import TranscriptPage from "@/components/follow/TranscriptPage"
@@ -38,6 +40,7 @@ export function PublicContent() {
   const document = useMatch('/doc/:docId')
   const financial = useMatch('/analyze/:stockCode/financials')
   const trade = useMatch('/follow/trade/:hs')
+  const taiwanCompany = useMatch('/follow/taiwan/:code')
   const params = new URLSearchParams(search)
   if (pathname === '/follow/transcripts' && params.get('view') === 'season') {
     if (params.get('market') === 'kr') return <PageContainer><KrSeasonView tabs={null} /></PageContainer>
@@ -46,6 +49,8 @@ export function PublicContent() {
   }
   if (pathname === '/follow/transcripts') return <TranscriptPage />
   if (pathname === '/follow/credit') return <CreditPage />
+  if (pathname === '/follow/taiwan') return <TaiwanPage />
+  if (taiwanCompany?.params.code) return <TaiwanCompanyPage />
   if (usCompany?.params.ticker) return <UsDossierPage ticker={usCompany.params.ticker} />
   if (pathname === '/follow/trade' || trade?.params.hs) return <PublicTradePage hsCode={trade?.params.hs} />
   if (summary?.params.stockCode) return <PublicCompanySummary stockCode={summary.params.stockCode} />

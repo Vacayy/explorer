@@ -179,11 +179,17 @@ def read(months: int = 36) -> dict:
     from pipeline.tw_universe import COMPANIES, LAYERS
     conn = get_connection()
     try:
-        rows = conn.execute("SELECT code, ym, market, revenue, last_year, mom_pct, yoy_pct, note, fetched_at "
-                            "FROM tw_monthly_revenue ORDER BY ym").fetchall()
-        latest = conn.execute("SELECT MAX(ym), MAX(fetched_at) FROM tw_monthly_revenue").fetchone()
+        return read_snapshot(conn, months)
     finally:
         conn.close()
+
+
+def read_snapshot(conn, months: int = 36) -> dict:
+    """Compute the existing response from a caller-owned, read-only snapshot."""
+    from pipeline.tw_universe import COMPANIES, LAYERS
+    rows = conn.execute("SELECT code, ym, market, revenue, last_year, mom_pct, yoy_pct, note, fetched_at "
+                        "FROM tw_monthly_revenue ORDER BY ym").fetchall()
+    latest = conn.execute("SELECT MAX(ym), MAX(fetched_at) FROM tw_monthly_revenue").fetchone()
     by: dict[str, list[dict]] = {}
     for r in rows:
         by.setdefault(r["code"], []).append(dict(r))

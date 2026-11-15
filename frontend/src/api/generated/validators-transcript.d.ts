@@ -11,9 +11,9 @@ export const response201: ValidateFunction
 export const response202: ValidateFunction
 export const response203: ValidateFunction
 export const response204: ValidateFunction
-export const response269: ValidateFunction
-export const response270: ValidateFunction
-export const response271: ValidateFunction
-export const response272: ValidateFunction
-export const response273: ValidateFunction
-export const response274: ValidateFunction
+export const response277: ValidateFunction
+export const response278: ValidateFunction
+export const response279: ValidateFunction
+export const response280: ValidateFunction
+export const response281: ValidateFunction
+export const response282: ValidateFunction

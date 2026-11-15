@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from '@/lib/accessMode'
 import { useMemo } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { PageLayout } from "@/components/shared/PageLayout"
@@ -38,17 +39,17 @@ export default function TaiwanPage() {
     for (const [k, v] of Object.entries(kv)) { if (v) n.set(k, v); else n.delete(k) }
     return n
   }, { replace: true, preventScrollReset: true })
-  if (rev.isError && links.isError) return <PageLayout mode="document"><ErrorState message="대만 월매출을 불러오지 못했습니다." onRetry={() => { void rev.refetch(); void links.refetch() }} /></PageLayout>
+  if (rev.isError && (PUBLIC_ACCESS || links.isError)) return <PageLayout mode="document"><ErrorState message="대만 월매출을 불러오지 못했습니다." onRetry={() => { void rev.refetch(); void links.refetch() }} /></PageLayout>
   const code = params.get("tw")
   return <PageLayout mode="document">
     <div className="flex flex-col">
-      {rev.data && links.data ? <TwSummary d={rev.data} links={links.data.items} />
+      {rev.data && (PUBLIC_ACCESS || links.data) ? <TwSummary d={rev.data} links={links.data?.items ?? []} />
         : rev.isError ? <BlockError message="대만 월매출 요약을 불러오지 못했습니다" error={rev.error} onRetry={() => void rev.refetch()} /> : <SummaryStripSkeleton />}
       <RevenueMonitor q={rev} layer={params.get("tw_layer") ?? "all"} sort={params.get("tw_sort") === "revenue" ? "revenue" : "yoy"} page={Number(params.get("page") ?? 1)}
         onChange={kv => setMany({ ...kv, page: null })} onPage={p => setMany({ page: p > 1 ? String(p) : null })}
         hrefOf={p => { const n = new URLSearchParams(params); if (p > 1) n.set("page", String(p)); else n.delete("page"); return `?${n}` }}
         onOpen={v => setMany({ tw: v })} />
-      <LinkWall q={links} />
+      {PUBLIC_ACCESS ? <p className="p-4 text-sm text-muted-foreground">대만·한국 연결 분석은 공개 준비 중입니다.</p> : <LinkWall q={links} />}
     </div>
     <TwCompanyDialog code={code} item={rev.data?.items.find(i => i.code === code)} layers={rev.data?.layers ?? []} asOf={rev.data?.as_of ?? null} onClose={() => setMany({ tw: null })} />
   </PageLayout>
@@ -64,7 +65,7 @@ function TwSummary({ d, links }: { d: TwRevenueResponse; links: TwLink[] }) {
     { label: "공시", value: `${d.reported} / ${d.total}`, sub: <span className={cn(twStale(d.as_of) && "text-warn")}>{monthLabel(d.as_of)} 월매출</span> },
     { label: "전년 대비 중앙값", value: formatPercent(med), sub: `${formatNumber(yoys.length)}개사` },
     { label: `전년 대비 +${UP50}% 이상`, value: formatNumber(yoys.filter(v => v >= UP50).length), sub: "분홍 막대" },
-    { label: "한국 연결", value: formatNumber(links.length), sub: Object.entries(states).map(([k, v]) => `${k} ${v}`).join(" · ") || "-" },
+    ...(!PUBLIC_ACCESS ? [{ label: "한국 연결", value: formatNumber(links.length), sub: Object.entries(states).map(([k, v]) => `${k} ${v}`).join(" · ") || "-" }] : []),
   ]} />
 }
 
