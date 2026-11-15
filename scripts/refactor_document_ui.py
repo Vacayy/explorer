@@ -12,6 +12,8 @@ import uvicorn
 from models.spine import FeedDocument
 from models.timeline import TimelineResponse, TimelineChannelsResponse
 from models.industry import IndustryMapResponse, SectorDetailResponse, SectorPeerListResponse
+from models.peers import PeerRuntime
+from models.sector_peers import SectorPeersResponse
 from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
 from pipeline.postgres_timeline_sources import PostgreSQLTimelineSources, GenerationTimelineResponse, GenerationExpired
 from pipeline.postgres_sector_market import PostgreSQLSectorSource
@@ -30,6 +32,28 @@ factory = lambda: psycopg.connect(dsn, options=f'-c search_path={schema}')
 reader = PostgreSQLRawDocumentReader(factory)
 timeline_reader = PostgreSQLTimelineSources(factory)
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+
+@app.get('/api/peers/runtime', response_model=PeerRuntime)
+def peer_runtime():
+    # Fixture only: lastAttempt can contain operational information.
+    with factory() as connection:
+        connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        runtime = PostgreSQLSectorSource(connection).peer_runtime()
+    if runtime is None:
+        raise HTTPException(503, 'Peer 저장 자료를 읽거나 검증하지 못했습니다.')
+    return runtime
+
+
+@app.get('/api/spine/sector-map/peers', response_model=SectorPeersResponse)
+def sector_peer_mapping():
+    with factory() as connection:
+        connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        source = PostgreSQLSectorSource(connection)
+        runtime = source.peer_runtime()
+        if runtime is None:
+            raise HTTPException(503, 'Peer 저장 자료를 읽거나 검증하지 못했습니다.')
+        return source.sector_peers(runtime)
 
 
 @app.get('/api/spine/industry/map', response_model=IndustryMapResponse)
