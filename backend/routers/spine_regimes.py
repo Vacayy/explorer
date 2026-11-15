@@ -1,6 +1,6 @@
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from models.regimes import (BrkResponse, EraCheckBody, EraCommentaryResponse, EraStateResponse, RegimeCollectResponse,
                             RegimesResponse)
 from pipeline import era, era_commentary
@@ -11,15 +11,23 @@ router = APIRouter(prefix='/api/spine/regimes', tags=['spine'])
 
 
 @router.get('', response_model=RegimesResponse)
-def regimes():
+def regimes(request: Request):
     """S&P500 국면(Lunde–Timmermann 20/20)·조정·10개월선 추세·NBER 침체. 저장 읽기만(docs/specs/market-regimes.md)."""
+    if getattr(request.state, 'public_access', False):
+        from security.public_regimes import stored_regimes
+        from routers.spine_transcript import _public_read
+        return _public_read(stored_regimes)
     return get_regimes()
 
 
 @router.get('/brk', response_model=BrkResponse)
-def brk(bench: Literal['sp500tr', 'sp500', 'nasdaq'] = 'sp500tr',
+def brk(request: Request, bench: Literal['sp500tr', 'sp500', 'nasdaq'] = 'sp500tr',
         span: Literal['1y', '3y', '5y', '10y', '20y', 'all'] = Query('all', alias='range')):
     """버크셔 vs 지수 — 누적·상대강도·롤링 12M 초과수익·국면별 초과수익."""
+    if getattr(request.state, 'public_access', False):
+        from security.public_regimes import stored_brk
+        from routers.spine_transcript import _public_read
+        return _public_read(lambda: stored_brk(bench, span))
     return get_brk(bench, span)
 
 

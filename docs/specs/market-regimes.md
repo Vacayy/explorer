@@ -102,3 +102,7 @@
 `era.quantitative_temperature(conn)`는 기존 정량 items만 계산한다. 개인 `era_checks`를 읽거나 합산 verdict를 만들지 않는다. 기존 개인 `layer_temperature`는 이 결과에 정성 체크를 합쳐 원래 응답을 유지한다. 테스트는 개인 체크8개 변경으로 기존 verdict가 달라져도 정량 items는 같고, 개인 테이블 접근을 거부한 연결에서도 정량 계산이 같은지 확인한다. 빈 정량 입력은 빈 목록이며 중립 판정으로 채우지 않는다.
 
 공개 연결은 아직 미구현이다. 후속 reader는 검증된 원천 snapshot만 전달하고 `get_state`, `layer_premises`, `era_commentary.latest`, 전역 `shared` cache를 사용하지 않는다. `risk.get_risk`는 요청키 외 HY/금리와 sync metadata를 읽으며 빈 입력에서 전체 DB로 fallback할 수 있으므로 공개 진입점으로 재사용하지 않는다. 공용 금리차는 동일 관측일 교집합, bp 변환·실제 관측일을 보존해야 하고 HY 입력이 미확인인 복합 신호는 clear가 아니라 unavailable이어야 한다. S&P500/VIX/ICE/Moody's/CNN 원천 이용 조건과 개인 영향을 제거한 판정·UI·운영 연결은 별도 수용 범위다.
+
+## 공개 저장 조회 준비
+
+공개 국면/BRK GET은 별도 public US snapshot의 고정 INDEX/BRK/벤치마크 종가와 public_regime_recessions만 사용한다. 기존 규칙·BRK-A/B접합·기간·벤치·월말초과수익·베타·잠정구간 계약을 유지한다. 준비본의 날짜/유한양수가격/0·1침체값을 검증하고 원본 개인 연결로 폴백하지 않는다. 새 자료 수집/개인state·checks/해설 호출은 공개 허용 목록에 없다. 입력 관측일을 유지하며 준비본에 수집시각이 없으면 fetched_at을 만들어 넣지 않는다. 실제 자료의 공개근거와 snapshot준비/원본UI/실배포 검증은 별도다.

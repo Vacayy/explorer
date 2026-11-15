@@ -866,3 +866,7 @@ Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API bas
 ## 공개 매크로 리스크 타일
 
 PublicMacroPage는 기존 RiskTiles와 useRiskTiles의 readonly `/api/spine/risk?range=5y&keys=...`를 재사용한다. 금리/신용/심리 수치·20일변화·장기위치·6개월추이·결측/지연표시를 유지하고 아직 없는 overlay 링크만 showOverlay=false로 숨긴다. 별도 macro 조회와 독립된 오류경계이며 국면 자동수집·사용자 정성체크·LLM은 마운트하지 않는다.
+
+## 공개 국면 이력 조회 준비
+
+`security.public_regimes`는 준비된 public US snapshot의 고정5개 지수/BRK 종가 및 `public_regime_recessions(snapshot_date,value)`만 읽는다. 날짜·양수유한가격·0/1침체값을 검증하고 기존 regimes_from_series/brk_from_series/recessions_from_rows 계산을 재사용한다. 공개 GET `/api/spine/regimes`와 `/brk`는 해당 reader만 사용하며 state/checks/commentary/collect는 허용하지 않는다. 이 구조는 API 준비이며 실제 원자료 공개 근거·snapshot·화면·배포 수용을 대신하지 않는다. 개인 get_regimes/get_brk와 수집 경로는 유지한다.

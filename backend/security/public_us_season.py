@@ -22,6 +22,7 @@ RESTRICTED_TRANSCRIPT_PROVIDERS = {
 
 DB_PATH = os.environ.get("EXPLORER_PUBLIC_US_SEASON_DB")
 COLUMNS = {
+    "public_regime_recessions": {"snapshot_date", "value"},
     "public_company_evidence": {"ticker", "doc_id", "fingerprint"},
     "public_company_profiles": {"ticker", "payload_json"},
     "public_us_companies": {"ticker", "company_name", "sector", "market_cap", "fiscal_year_end"},
