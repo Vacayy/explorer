@@ -115,6 +115,9 @@ class SnapshotReplacementTests(unittest.TestCase):
                 response=client.get('/api/spine/signals',params={'type':'mention_surge','days':7})
                 self.assertEqual(response.status_code,200)
                 self.assertEqual([row['id'] for row in response.json()['items']],[4])
+                summary=client.get('/api/spine/signals/summary',params={'days':7})
+                self.assertEqual(summary.status_code,200)
+                self.assertEqual(summary.json()['as_of'],'2099-01-01')
 
     def test_archive_to_ledger_preserves_source_and_rejects_second_import(self):
         self.load('2026-01-03T00:00:00+00:00')

@@ -3,11 +3,12 @@ import os
 import sqlite3
 import uuid
 from datetime import date,timedelta
+from unittest.mock import patch
 import psycopg
 from psycopg import sql
 from psycopg.types.json import Jsonb
-from routers.spine_signals import _row_to_item
-from pipeline.postgres_signals_fixture import signals_items
+from routers.spine_signals import _row_to_item, signals_summary as sqlite_summary
+from pipeline.postgres_signals_fixture import signals_items, signals_summary as pg_summary
 
 
 def main():
@@ -48,7 +49,16 @@ def main():
                 actual=[item.model_dump() for item in signals_items(conn,since=since,signal_type=kind)]
                 if actual != expected: raise AssertionError('Signal list mismatch')
                 counts.append(len(actual))
-        print(f'Compared signal lists all/theme/mentions: {counts}; matched')
+            def original_connection():
+                connection=sqlite3.connect('file:/data/stock_explorer.db?mode=ro',uri=True)
+                connection.row_factory=sqlite3.Row
+                connection.execute('PRAGMA query_only=ON')
+                return connection
+            with patch('routers.spine_signals.get_connection',side_effect=original_connection):
+                expected_summary=sqlite_summary(days=7).model_dump()
+            if pg_summary(conn,days=7).model_dump() != expected_summary:
+                raise AssertionError('Signal summary mismatch')
+        print(f'Compared signal lists all/theme/mentions: {counts} and summary: matched')
     finally:
         source.close()
         with psycopg.connect(dsn) as conn:
