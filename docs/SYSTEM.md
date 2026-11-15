@@ -722,3 +722,5 @@ tail -f logs/ingest.log               # 수집 관찰
 실제 크기 비교에서는 SQLite 정렬용 작은 임시 tmpfs가 가득 차 `SQLITE_FULL`로 실패할 수 있다. 사본 적재 시험은 여유가 확인된 비공개 디스크 임시 공간을 `SQLITE_TMPDIR`로 지정하고, 사용 후 해당 실험 전용 공간을 삭제한다.
 
 격리 PostgreSQL 실험의 `pipeline/postgres_raw_document_read.py`는 보존된 원본 행에서 문서 상세 한 건을 구성한다. 기존 SQLite의 명시되지 않은 엔티티 순서는 snapshot 당시 `document_entity_order`에 기록하며 영구적인 업무 순서로 취급하지 않는다. 출처 이름과 YouTube 요약 필드 생성은 기존 SQLite 경로와 공통 함수를 사용한다. 이것은 전체 조회 모델 재생성이나 검색 이전이 아니다. `scripts/refactor_document_ui.py`는 일회성 fixture DB에서만 상세 GET을 제공하는 로컬 UI 실험 도구다. `scripts/refactor_full_trial.py --retain`은 성공한 fixture schema를 UI 실험용으로 임시 보존하므로 사용 후 전용 schema와 볼륨을 정리해야 한다.
+
+`pipeline/postgres_rebuild_detail.py`는 보존된 PostgreSQL 원본 행과 별도 엔티티 순서 메타데이터를 이용해 기존 상세 응답 캐시를 일회성 fixture 안에서 한 트랜잭션으로 다시 만든다. 문서 ID 집합이 다르면 실패하며 적재와 같은 잠금을 사용한다. 목록·필터·검색 캐시의 재생성이나 운영 전환은 제공하지 않는다. 대량 자료에서 소요 시간은 아직 측정하지 않았다.

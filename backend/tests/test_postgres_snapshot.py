@@ -18,6 +18,7 @@ except ImportError:
 from pipeline.postgres_document_read import PostgreSQLDocumentReader
 from pipeline.postgres_snapshot import SNAPSHOT_LOCK_KEY, load_snapshot
 from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
+from pipeline.postgres_rebuild_detail import rebuild_details
 import tests.test_document_read_boundary as detail_fixtures
 
 
@@ -142,6 +143,23 @@ class SnapshotReplacementTests(unittest.TestCase):
         with self.pg() as c:
             c.execute("UPDATE document_projection SET detail_document = jsonb_set(detail_document, '{content}', %s::jsonb) WHERE id=1", (json.dumps("projection only"),))
         self.assertEqual(raw_reader.get(1).model_dump(), expected[1])
+
+    def test_rebuild_details_from_pg_and_rollback_on_failure(self):
+        self.load('2026-01-05T00:00:00+00:00')
+        original = self.reader.get(1).model_dump()
+        feed = [x.model_dump() for x in self.reader.list().items]
+        with self.pg() as c:
+            c.execute("UPDATE document_projection SET detail_document=jsonb_set(detail_document, '{content}', %s::jsonb) WHERE id=1", (json.dumps('stale'),))
+        self.assertEqual(rebuild_details(self.pg), 2)
+        self.assertEqual(self.reader.get(1).model_dump(), original)
+        self.assertEqual([x.model_dump() for x in self.reader.list().items], feed)
+        with self.pg() as c:
+            c.execute("UPDATE document_projection SET detail_document=jsonb_set(detail_document, '{content}', %s::jsonb) WHERE id=1", (json.dumps('stale'),))
+            c.execute("CREATE FUNCTION fail_rebuild() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id=2 THEN RAISE EXCEPTION 'synthetic failure'; END IF; RETURN NEW; END $$")
+            c.execute('CREATE TRIGGER fail_rebuild BEFORE UPDATE ON document_projection FOR EACH ROW EXECUTE FUNCTION fail_rebuild()')
+        with self.assertRaises(psycopg.errors.RaiseException):
+            rebuild_details(self.pg)
+        self.assertEqual(self.reader.get(1).content, 'stale')
 
     def test_refuses_non_fixture_target_schema(self):
         source = sqlite3.connect(self.fixture.path.as_uri() + '?mode=ro', uri=True)
