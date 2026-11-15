@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 // 실적 시즌 · 한국 (?view=season&market=kr, ia-redesign §4.22, 시안 Season-KR, docs/specs/earnings-season.md §국내 시즌)
 // 위계: 머리(시장·시즌 선택, 미국과 같은 머리) → KPI → 오늘 바뀐 것 → 발표 캘린더(?day=) → 반응이 좋았던·나빴던 발표
 //       → 최근 발표 표(?kf=, 캘린더에서 고른 날) → 업종별 집계 | 아직 발표 전. 미국과 다른 점은 머리 ⓘ(D-303).
@@ -275,9 +276,18 @@ function useMyCodes(): Set<string> {
 }
 
 function RecentTable({ d }: { d: KrSeasonOverview }) {
-  const [params, setParams] = useSearchParams()
+  return PUBLIC_ACCESS ? <RecentTableRows d={d} mine={new Set()} /> : <PrivateRecentTable d={d} />
+}
+
+function PrivateRecentTable({ d }: { d: KrSeasonOverview }) {
   const mine = useMyCodes()
-  const filter: KrFilter = FILTERS.find((f) => f === params.get("kf")) ?? "all"
+  return <RecentTableRows d={d} mine={mine} />
+}
+
+function RecentTableRows({ d, mine }: { d: KrSeasonOverview; mine: Set<string> }) {
+  const [params, setParams] = useSearchParams()
+  const filters = PUBLIC_ACCESS ? FILTERS.filter(f => f !== "mine") : FILTERS
+  const filter: KrFilter = filters.find((f) => f === params.get("kf")) ?? "all"
   const day = params.get("day")
   const counts = filterCounts(d.announcements, mine, day)
   const rows = filterAnnouncements(d.announcements, filter, mine, day)
@@ -293,7 +303,7 @@ function RecentTable({ d }: { d: KrSeasonOverview }) {
         <div className="flex flex-wrap items-center gap-2">
           {day && <Button variant="secondary" size="sm" className="h-7 gap-1 text-xs" onClick={() => set({ day: null })} aria-label="날짜 선택 해제">{mmdd(day)} 공시<X className="size-3" /></Button>}
           <SegmentTabs value={filter} onChange={(v) => set({ kf: v === "all" ? null : v })}
-            tabs={FILTERS.map((f) => ({ value: f, label: `${label[f]} ${formatNumber(counts[f])}` }))} />
+            tabs={filters.map((f) => ({ value: f, label: `${label[f]} ${formatNumber(counts[f])}` }))} />
         </div>
       </div>
       {rows.length === 0 ? <Meta className="py-2">{filter === "mine" ? "내 종목 중 이 조건의 발표가 아직 없습니다." : "이 조건의 발표가 없습니다."}</Meta> : (

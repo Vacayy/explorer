@@ -1,3 +1,4 @@
+import { KrSeasonView } from "@/components/follow/season/KrSeasonView"
 import NarrativePage from "@/components/explore/NarrativePage"
 import NarrativeHistory from "@/components/explore/NarrativeHistory"
 import { PublicFeedPage } from '@/components/feed/PublicFeedPage'
@@ -29,6 +30,7 @@ export function PublicContent() {
   const document = useMatch('/doc/:docId')
   const financial = useMatch('/analyze/:stockCode/financials')
   const trade = useMatch('/follow/trade/:hs')
+  if (pathname === '/follow/transcripts' && new URLSearchParams(search).get('view') === 'season' && new URLSearchParams(search).get('market') === 'kr') return <PageContainer><KrSeasonView tabs={null} /></PageContainer>
   if (pathname === '/follow/trade' || trade?.params.hs) return <PublicTradePage hsCode={trade?.params.hs} />
   if (summary?.params.stockCode) return <PublicCompanySummary stockCode={summary.params.stockCode} />
   if (krSector?.params.sector) return <PublicKrSectorPage sector={krSector.params.sector} />

@@ -6,7 +6,7 @@
 import threading
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from typing import Any
 
 from pydantic import BaseModel
@@ -260,8 +260,12 @@ def season(season: str | None = None):
 
 
 @router.get("/season/kr", response_model=KrSeasonOverview)
-def season_kr(season: str | None = Query(None, pattern=r"^\d{4}Q[1-4]$")):
+def season_kr(request: Request, season: str | None = Query(None, pattern=r"^\d{4}Q[1-4]$")):
     """국내 실적 시즌 — 잠정실적 공시·DB 시세만으로 발표·첫 반응·5일·업종 대비·업종별·아직 발표 전(ia-redesign §4.22). LLM 0·외부 호출 0."""
+    if getattr(request.state, "public_access", False):
+        from security.public_kr_season import stored_season
+        from routers.public_documents import perform
+        return perform(lambda: stored_season(season))
     from pipeline.kr_season import overview
     return overview(season)
 
