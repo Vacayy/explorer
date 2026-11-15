@@ -1,3 +1,4 @@
+import CreditPage from '@/components/follow/CreditPage'
 import UsDossierPage from "@/components/us/UsDossierPage"
 import TranscriptPage from "@/components/follow/TranscriptPage"
 import { SeasonView } from "@/components/follow/season/SeasonView"
@@ -44,6 +45,7 @@ export function PublicContent() {
     return <PageContainer>{sectorKey ? <SectorView sectorKey={sectorKey} /> : <SeasonView tabs={null} />}</PageContainer>
   }
   if (pathname === '/follow/transcripts') return <TranscriptPage />
+  if (pathname === '/follow/credit') return <CreditPage />
   if (usCompany?.params.ticker) return <UsDossierPage ticker={usCompany.params.ticker} />
   if (pathname === '/follow/trade' || trade?.params.hs) return <PublicTradePage hsCode={trade?.params.hs} />
   if (summary?.params.stockCode) return <PublicCompanySummary stockCode={summary.params.stockCode} />
