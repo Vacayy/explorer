@@ -1,3 +1,4 @@
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import { useSearchParams } from "react-router-dom"
 import { DetailLink as Link } from "@/components/shared/DetailNavigation"
 import { Badge } from "@/components/ui/badge"
@@ -208,31 +209,32 @@ export function TradeCard() {
   const month = d?.period ? `${+d.period.slice(5, 7)}월` : ""
   return <MarketCard band="local" label="kr.trade">
     <BlockHead section title="수출입" sub={d?.period ? `${d.period.slice(0, 4)}년 ${month} · 관세청 품목별` : undefined} link={{ to: "/follow/trade", label: "산업 › 수출입" }}
-      info="수출 총액 · 증가분 기여 1위 · 산업별 수출 규모. 새 달 통계는 매월 중순에 나옵니다" />
+      info={PUBLIC_ACCESS ? "공개 11개 품목의 관측 소계입니다. 전체 수출 총액이 아니며, 누락된 품목은 합계에 포함하지 않습니다." : "수출 총액 · 증가분 기여 1위 · 산업별 수출 규모. 새 달 통계는 매월 중순에 나옵니다"} />
     <FillState data={d} isError={q.isError} error={q.error} onRetry={() => void q.refetch()} message="수출입 통계를 불러오지 못했습니다">{() => {
       if (!d!.period) return <FillNote>수출입 통계가 아직 없습니다. 매일 09:20에 새 통계월을 확인합니다.</FillNote>
       const top = d!.surge[0]
       const groups = d!.groups.slice(0, 12)
-      const max = Math.max(...groups.map(g => g.value), 1)
+      const max = Math.max(...groups.map(g => g.value ?? 0), 1)
       return <>
         <div className="flex shrink-0 flex-wrap items-baseline gap-x-6 gap-y-1">
           <div>
-            <div className="flex items-center gap-1.5 text-xs text-ink-3">수출 총액{tradeIsLagging(d!.period) && <Badge variant="warn">{month} 기준</Badge>}</div>
-            <div className="font-display text-[28px] tabular-nums">{formatUsd(d!.total_usd)}</div>
+            <div className="flex items-center gap-1.5 text-xs text-ink-3">{PUBLIC_ACCESS ? "공개 품목 관측 소계" : "수출 총액"}{tradeIsLagging(d!.period) && <Badge variant="warn">{month} 기준</Badge>}</div>
+            <div className="font-display text-[28px] tabular-nums">{(d!.total_usd == null ? "—" : formatUsd(d!.total_usd))}</div>
+            {PUBLIC_ACCESS && <p className="text-xs text-ink-3">{d!.observed_count}/{d!.total_count}개 품목 관측{d!.partial ? " · 일부 자료 누락" : ""} · 전체 수출액 아님</p>}
           </div>
           {top && <div className="min-w-0">
-            <div className="text-xs text-ink-3">기여 1위</div>
+            <div className="text-xs text-ink-3">{PUBLIC_ACCESS ? "급등 품목 중 기여 1위" : "기여 1위"}</div>
             <div className="text-[13.5px] font-semibold">
               <Link to={`/follow/trade?hs=${encodeURIComponent(top.hs_code)}`} className="hover:underline">{top.item_name}</Link>
               {" · "}전년 대비 <span className={tone(top.yoy)}>{formatPercent(top.yoy == null ? null : top.yoy * 100, 0)}</span>
-              {top.contribution != null && <> · 증가분의 {formatRatio(top.contribution * 100).replace(".0%", "%")}</>}
+              {top.contribution != null && <> · {PUBLIC_ACCESS ? "증감 기여 비중" : "증가분의"} {formatRatio(top.contribution * 100).replace(".0%", "%")}</>}
             </div>
           </div>}
         </div>
         <FillArea aria-label="산업별 수출"><ul>{groups.map(g => <li key={g.group_label} className="grid grid-cols-[minmax(0,132px)_1fr_64px_58px] items-center gap-2.5 py-[5px] text-[12.5px]">
-          <span className="truncate">{g.group_label}</span>
-          <span aria-hidden className="h-1.5 rounded-[3px] bg-chip"><span className="block h-1.5 rounded-[3px] bg-ink-2" style={{ width: `${Math.max(1.5, g.value / max * 100)}%` }} /></span>
-          <span className="text-right font-mono tabular-nums">{formatUsd(g.value)}</span>
+          <span className="truncate">{g.group_label}{PUBLIC_ACCESS && g.partial ? " · 일부" : ""}</span>
+          <span aria-hidden className="h-1.5 rounded-[3px] bg-chip"><span className="block h-1.5 rounded-[3px] bg-ink-2" style={{ width: `${Math.max(1.5, (g.value ?? 0) / max * 100)}%` }} /></span>
+          <span className="text-right font-mono tabular-nums">{(g.value == null ? "—" : formatUsd(g.value))}</span>
           <span className="text-right font-mono whitespace-nowrap">{g.surge ? <span className="text-up-ink">급등 {g.surge}</span> : g.plunge ? <span className="text-down-ink">급감 {g.plunge}</span> : <span className="text-ink-3">-</span>}</span>
         </li>)}</ul></FillArea>
       </>

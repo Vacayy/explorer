@@ -37,7 +37,7 @@ def month_before(period,back):
     return f'{year:04d}-{month+1:02d}'
 
 
-def stored_trade(flow='export',period=None,months=60,path=None):
+def stored_trade(flow='export',period=None,months=60,path=None,*,_highlights=None):
     today=date.today().strftime('%Y-%m')
     if flow not in {'export','import'} or months not in {24,60} or (period is not None and
             (not re.fullmatch(r'[1-9][0-9]{3}-(0[1-9]|1[0-2])',period) or period>today or period<'1900-01')):
@@ -77,19 +77,34 @@ def stored_trade(flow='export',period=None,months=60,path=None):
                     raw[hs].append({key:r[key] for key in ('period','export_usd','import_usd')})
                 stamps=[r['fetched_at'] for r in rows if valid_timestamp(r['fetched_at'])]
                 fetched[hs]=max(stamps,default=None)
-        return project(raw,fetched,flow,selected,latest_period,months,sorted(available_periods,reverse=True))
+        return project(raw,fetched,flow,selected,latest_period,months,sorted(available_periods,reverse=True),highlights=_highlights)
     except (OSError,sqlite3.Error,ValueError,TypeError):
         raise HTTPException(503,'Trade observations unavailable') from None
     finally:
         if conn is not None:conn.close()
 
 
-def project(raw,fetched,flow,period,latest_period,months,periods):
+def project(raw,fetched,flow,period,latest_period,months,periods,*,highlights=None):
     meta={'flow':flow,'period':period,'latest_period':latest_period,'periods':periods,'months':months,
           'unit':'USD','valuation':'FOB' if flow=='export' else 'CIF','source':'관세청 품목별 수출입실적',
           'source_url':'https://www.data.go.kr/data/15101609/openapi.do',
           'note':'고정 11개 품목의 저장 관측입니다. 전체 무역 총액이 아닙니다. 저장시각은 재취득·저장 시각이며 공표·정정일이 아닙니다. 수집기가 결측·해석 실패를 0으로 저장할 수 있어 저장된 0의 실제 여부는 확인되지 않았습니다. 부분 결측 합계는 관측 소계이고 기여도 분모는 전년비 증감액이 있는 상위 품목만 포함합니다. 원천 정정으로 값이 바뀔 수 있습니다.',
           'fetched_at':max((v for v in fetched.values() if v),default=None)}
+    if highlights is not None:
+        from pipeline.trade_metrics import highlights_from_table
+        catalog=[{'hs_code':hs,'item_name':PUBLIC_NAMES.get(hs,name),'group_label':group} for hs,name,group in DEFAULT_FOLLOWS]
+        table=table_from_inputs(catalog,raw,periods,period,flow,**highlights['options'])
+        result=highlights_from_table(table,flow,highlights['limit'],highlights['rank'])
+        top=[r for r in table['rows'] if not r.get('nested_in')]
+        observed=sum(r.get('value') is not None for r in top)
+        result.update(scope='public_catalog',observed_count=observed,total_count=len(top) if top else len(catalog),
+                      partial=observed<len(top) if top else True,total_usd=result['total_usd'] if observed else None)
+        for group in result['groups']:
+            members=[r for r in top if (r.get('group_label') or '미분류')==group['group_label']]
+            known=[r['value'] for r in members if r.get('value') is not None]
+            group.update(value=sum(known) if known else None,observed_count=len(known),total_count=len(members),partial=len(known)<len(members))
+        result['groups'].sort(key=lambda g:-(g['value'] or 0))
+        return result
     if not period or not periods:
         return {**meta,'empty':True,'partial':False,'rows':[],'total':aggregate([]),'groups':[]}
     catalog=[{'hs_code':hs,'item_name':PUBLIC_NAMES.get(hs,name),'group_label':group} for hs,name,group in DEFAULT_FOLLOWS]
@@ -140,3 +155,12 @@ def valid_timestamp(value):
     if not isinstance(value,str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})?)?',value):return False
     try:datetime.fromisoformat(value.replace('Z','+00:00'));return True
     except ValueError:return False
+
+
+def stored_highlights(period=None, flow='export', limit=8, rank='contribution', *, mode='zscore', metric='yoy', z_threshold=None, min_usd=None, path=None):
+    if (not 1<=limit<=100 or rank not in {'contribution','intensity'} or mode not in {'zscore','fixed'}
+            or metric not in {'mom','yoy','qoq','yoy3m'} or
+            any(v is not None and (not math.isfinite(v) or v<0) for v in (z_threshold,min_usd))):
+        raise HTTPException(422,'Invalid public trade selection')
+    return stored_trade(flow,period,60,path,_highlights={'limit':limit,'rank':rank,
+        'options':dict(mode=mode,metric=metric,z_threshold=z_threshold,min_usd=min_usd)})

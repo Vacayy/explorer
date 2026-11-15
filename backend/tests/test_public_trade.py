@@ -34,6 +34,28 @@ class PublicTradeTests(unittest.TestCase):
         self.client=TestClient(app,base_url='https://beta.example');self.addCleanup(self.client.close)
         p=patch('config.DB_PATH',self.path);p.start();self.addCleanup(p.stop)
 
+    def test_public_highlights_coverage_and_no_private_follows(self):
+        from security.public_trade import stored_highlights
+        from routers.spine_trade import router as legacy_router
+        before=self.path.read_bytes()
+        with patch.object(trade_metrics,'get_connection',side_effect=AssertionError('private follows')):
+            result=stored_highlights(path=self.path)
+            self.assertEqual(result['scope'],'public_catalog')
+            self.assertEqual(result['observed_count'],1)
+            self.assertTrue(result['partial'])
+            self.assertEqual(result['total_usd'],20e6)
+            self.assertTrue(any(g['value'] is None for g in result['groups']))
+            empty=stored_highlights(period='1990-01',path=self.path)
+            self.assertIsNone(empty['total_usd'])
+            self.assertNotIn('PRIVATE_CANARY',str(result))
+        self.assertEqual(before,self.path.read_bytes())
+        app=FastAPI();app.include_router(legacy_router)
+        app.add_middleware(PublicAccessBoundary,routes=app.router.routes,policies={('GET','/api/spine/trade/highlights'):'public'})
+        with TestClient(app,base_url='https://beta.example') as client:
+            self.assertEqual(client.get('/api/spine/trade/highlights?limit=100').status_code,200)
+            self.assertEqual(client.get('/api/spine/trade/highlights?limit=101').status_code,422)
+            self.assertEqual(client.get('/api/spine/trade/highlights?rank=private').status_code,422)
+
     def test_actual_http_bounds_gap_and_private_independence(self):
         before=self.path.read_bytes()
         with patch.object(trade_metrics,'get_connection',side_effect=AssertionError('hidden DB')):

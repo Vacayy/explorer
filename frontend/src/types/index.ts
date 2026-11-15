@@ -1287,9 +1287,10 @@ export interface TradeHighlightRow {
   yoy3m: number | null   // 3개월 합의 전년 동기 대비(비율)
 }
 export interface TradeHighlights {
-  period: string | null; periods: string[]; total_usd: number
+  period: string | null; periods: string[]; total_usd: number | null
+  scope: "followed" | "public_catalog"; observed_count: number | null; total_count: number | null; partial: boolean
   surge: TradeHighlightRow[]; plunge: TradeHighlightRow[]   // 상위 limit개만
-  groups: { group_label: string; count: number; value: number; surge: number; plunge: number }[]   // 판정 수는 전 품목 기준
+  groups: { group_label: string; count: number; value: number | null; surge: number; plunge: number; observed_count: number | null; total_count: number | null; partial: boolean }[]   // 판정 수는 전 품목 기준
 }
 /** GET /api/spine/trade/grid — 품목 벽(산업 › 수출입 품목 모니터). 세목 제외 전 품목의 월별 수출 시계열 한 번에 */
 export interface TradeGridItem {

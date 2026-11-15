@@ -86,7 +86,7 @@ function TradeSummary({ d, items }: { d: TradeHighlights; items: TradeGridItem[]
   const lag = tradeIsLagging(d.period)
   const surge = items.filter(i => i.flag === "surge").length
   return <SummaryStrip label="trade" cells={[
-    { label: "수출 총액", value: formatUsd(d.total_usd), sub: <>{monthLabel(d.period)}{lag && <Badge variant="outline" className="ml-1.5 h-4 border-chart-warning/50 px-1 text-[10px] font-normal text-chart-warning">{+(d.period ?? "0000-00").slice(5, 7)}월 기준</Badge>}</> },
+    { label: "수출 총액", value: (d.total_usd == null ? "—" : formatUsd(d.total_usd)), sub: <>{monthLabel(d.period)}{lag && <Badge variant="outline" className="ml-1.5 h-4 border-chart-warning/50 px-1 text-[10px] font-normal text-chart-warning">{+(d.period ?? "0000-00").slice(5, 7)}월 기준</Badge>}</> },
     { label: "팔로우 품목", value: formatNumber(items.length), sub: `세목 제외 · 급등 ${surge}` },
     { label: "평소보다 크게 늘어난 품목", value: formatNumber(d.surge.length), sub: "전년 대비 z ≥ 2" },
     { label: "기여 1위", value: <span className="font-sans text-xl max-md:text-lg">{top?.item_name ?? "-"}</span>, sub: top?.contribution != null ? `증가분의 ${formatRatio(top.contribution * 100)}` : undefined },
@@ -179,15 +179,15 @@ function SurgeBlock({ q, onMonth, onPick }: { q: HlQuery; onMonth: (v: string | 
 
 function GroupBlock({ q }: { q: HlQuery }) {
   const d = q.data
-  const max = Math.max(1, ...(d?.groups ?? []).map(g => g.value))
+  const max = Math.max(1, ...(d?.groups ?? []).map(g => g.value ?? 0))
   return <section data-home-section="trade.groups" className={LOWER}>
     <BlockHead section title="산업별 수출" sub={d ? monthLabel(d.period) : undefined} />
     {!d ? (q.isError ? <BlockError message="산업별 수출을 불러오지 못했습니다" error={q.error} onRetry={() => void q.refetch()} /> : <RowsSkeleton rows={10} head={false} />)
       : <BoundedArea fixed className="min-h-0 flex-1" viewportClassName="!h-full !max-h-none" aria-label="산업별 수출">
         <ul>{d.groups.map(g => <li key={g.group_label} className="grid grid-cols-[minmax(0,132px)_1fr_52px_58px] items-center gap-2.5 py-[5px] text-[12.5px] max-sm:grid-cols-[minmax(0,96px)_1fr_52px_52px]">
           <span className="truncate">{g.group_label}</span>
-          <span className="h-1.5 rounded-[3px] bg-chip" aria-hidden><span className="block h-1.5 rounded-[3px] bg-ink-2" style={{ width: `${Math.max(1.5, g.value / max * 100)}%` }} /></span>
-          <span className="text-right font-mono tabular-nums">{formatUsd(g.value)}</span>
+          <span className="h-1.5 rounded-[3px] bg-chip" aria-hidden><span className="block h-1.5 rounded-[3px] bg-ink-2" style={{ width: `${Math.max(1.5, (g.value ?? 0) / max * 100)}%` }} /></span>
+          <span className="text-right font-mono tabular-nums">{(g.value == null ? "—" : formatUsd(g.value))}</span>
           <span className={cn("text-right font-mono tabular-nums", g.surge ? "text-up-ink" : "text-ink-3")}>{g.surge ? `급등 ${g.surge}` : "-"}</span>
         </li>)}</ul>
       </BoundedArea>}

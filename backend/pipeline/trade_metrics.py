@@ -262,6 +262,11 @@ def highlights(period: str | None = None, flow: str = "export", limit: int = 8, 
     상위가 급등이면 세목도 함께 급등으로 잡혀 같은 움직임을 두세 번 센다. 상위가 팔로우되지 않은 10자리 품목은 그 자체가 최상위라 남긴다.
     세목의 판정은 table()·/follow 행(품목 격자 배지)에 그대로 있다."""
     t = table(period, flow, **opt)
+    return highlights_from_table(t, flow, limit, rank)
+
+
+def highlights_from_table(t, flow="export", limit=8, rank="contribution"):
+    """Same ranking on an explicitly selected market catalog."""
     flagged = [r for r in t["rows"] if r.get("flag") in ("surge", "plunge") and not r.get("nested_in")]
     if rank == "intensity":
         flagged.sort(key=lambda r: -(r.get("intensity") or 0))
