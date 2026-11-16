@@ -1,6 +1,8 @@
 // spine(그래프 척추) API 계층 — queryKey factory + fetcher (frontend-plan.md Phase C)
 import api from "@/api/client";
+import { getMemberSession } from "@/api/auth";
 import { STALE, apiComputeQuery, apiQuery } from "@/api/query";
+import { PUBLIC_ACCESS } from "@/lib/accessMode";
 import type { AskResponse, AttachmentRef, ChatTargetKind, ChatTargetSearch, ConversationDetail, ConversationItem, DossierSummary, HomeResponse, LensBundle, LensReading, SourceDossier, SpineFeedResponse, SignalsSummary, SpineSignalsResponse, UsDossier, UsWorldModel } from "@/types";
 
 export interface SpineFeedParams {
@@ -145,6 +147,15 @@ export interface PageContext {
   ref?: string
 }
 
+async function operatorWriteConfig() {
+  if (!PUBLIC_ACCESS) return {}
+  const session = await getMemberSession()
+  if (!session.authenticated || session.user?.role !== 'operator' || !session.csrf_token) {
+    throw new Error('운영자 로그인을 확인해 주세요.')
+  }
+  return { withCredentials: true, headers: { 'X-CSRF-Token': session.csrf_token } }
+}
+
 export async function askQuestion(params: {
   question: string;
   document_ids?: number[];
@@ -157,13 +168,13 @@ export async function askQuestion(params: {
   /** 지금 붙어 있는 대상 전체 — ×로 뺀 것은 빠진 채로 보낸다 (ia-redesign §4.14a) */
   attachments?: AttachmentRef[];
 }): Promise<AskResponse> {
-  const { data } = await api.post<AskResponse>("/api/spine/ask", params, { timeout: 300_000 });
+  const { data } = await api.post<AskResponse>("/api/spine/ask", params, { ...(await operatorWriteConfig()), timeout: 300_000 });
   return data;
 }
 
 /** 스레드 제목 편집 (D-145) */
 export async function renameConversation(params: { id: number; title: string }): Promise<ConversationItem> {
-  const { data } = await api.patch<ConversationItem>(`/api/spine/conversations/${params.id}`, { title: params.title });
+  const { data } = await api.patch<ConversationItem>(`/api/spine/conversations/${params.id}`, { title: params.title }, await operatorWriteConfig());
   return data;
 }
 

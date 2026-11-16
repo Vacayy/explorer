@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { API_BASE } from "@/api/client"
 import { askQuestion, conversationsQuery, conversationDetailQuery, spineKeys } from "@/api/spine"
 import { addPendingAnswer } from "@/lib/pendingAnswers"
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 
 /** 생성 중 상태의 상한 — 이보다 오래 user로 끝나 있으면 서버가 죽은 것으로 보고 폴링을 멈춘다 */
 export const STALL_MS = 5 * 60_000
@@ -49,7 +50,7 @@ export function useChat(activeId: number | null, onThreadCreated: (id: number) =
   const [draft, setDraft] = useState<Draft | null>(null)
   useEffect(() => {
     if (!activeId || !awaiting) { setDraft(null); return }
-    const es = new EventSource(`${API_BASE}/api/spine/conversations/${activeId}/stream`)
+    const es = new EventSource(`${API_BASE}/api/spine/conversations/${activeId}/stream`, { withCredentials: PUBLIC_ACCESS })
     const parse = (e: Event) => JSON.parse((e as MessageEvent).data) as { text?: string }
     es.addEventListener("status", (e) => setDraft((d) => ({ text: d?.text ?? "", status: parse(e).text ?? "" })))
     es.addEventListener("delta", (e) => setDraft((d) => ({ text: (d?.text ?? "") + (parse(e).text ?? ""), status: d?.status ?? "" })))

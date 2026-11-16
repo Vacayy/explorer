@@ -80,7 +80,12 @@ export function TopBar({ aiOpen, onToggleAi }: { aiOpen: boolean; onToggleAi: ()
           <Sparkles className="size-3.5 max-md:size-[18px]" strokeWidth={1.7} aria-hidden /><span className="max-md:sr-only">AI</span>
         </Button>
         </>}
-        {PUBLIC_ACCESS && <AccountControl />}
+        {PUBLIC_ACCESS && <>
+          <Button asChild variant="secondary" size="sm" className="h-8 gap-1.5 rounded-full border-0 px-3 text-ink max-md:size-10 max-md:bg-transparent max-md:px-0 max-md:text-ink-2">
+            <Link to="/chat" aria-label="AI 대화"><Sparkles className="size-3.5 max-md:size-[18px]" strokeWidth={1.7} aria-hidden /><span className="max-md:sr-only">AI</span></Link>
+          </Button>
+          <AccountControl />
+        </>}
       </div>
     </header>
   )

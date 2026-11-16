@@ -95,6 +95,14 @@ PUBLIC_ROUTE_POLICIES = {
     ('GET', '/api/financials/{stock_code}'): 'public',
     ('GET', '/api/public/chat/session'): 'trial',
     ('POST', '/api/public/chat'): 'trial',
+    # Legacy conversations use the operator's existing data, never member data.
+    # Their routes additionally enforce the conversation-list owner filter.
+    ('GET', '/api/spine/conversations'): 'operator',
+    ('GET', '/api/spine/conversations/{conversation_id}'): 'operator',
+    ('PATCH', '/api/spine/conversations/{conversation_id}'): 'operator',
+    ('GET', '/api/spine/conversations/{conversation_id}/stream'): 'operator',
+    ('GET', '/api/spine/chat/targets'): 'operator',
+    ('POST', '/api/spine/ask'): 'operator',
     ('GET', '/api/health'): 'public',
     ('GET', '/api/public/documents'): 'public',
     ('GET', '/api/public/feed'): 'public',

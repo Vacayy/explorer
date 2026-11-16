@@ -29,6 +29,13 @@ import { MemberPrinciplesPage } from '@/components/portfolio/MemberPrinciplesPag
 import { MemberPortfolioPage } from '@/components/portfolio/MemberPortfolioPage'
 import { PublicDocumentListPage } from '@/components/doc/PublicDocumentListPage'
 import { PublicTrialChatPage } from '@/components/chat/PublicTrialChatPage'
+import ChatPage from '@/components/chat/ChatPage'
+import { useMemberAccess } from '@/components/auth/MemberAccess'
+
+export function PublicChatRoute() {
+  const access = useMemberAccess()
+  return access.status === 'operator' ? <ChatPage /> : <PublicTrialChatPage />
+}
 
 /** Incremental public coverage. Never mount a private page behind a hidden UI. */
 export function PublicContent() {
@@ -63,7 +70,7 @@ export function PublicContent() {
   if (pathname === '/home/macro') return <PublicMacroPage />
   if (pathname === '/financials') return <PublicFinancialSearch />
   if (financial?.params.stockCode) return <PublicFinancialsPage stockCode={financial.params.stockCode} />
-  if (pathname === '/chat') return <PublicTrialChatPage />
+  if (pathname === '/chat') return <PublicChatRoute />
   if (pathname === '/feed/saved') return <MemberSavedPage />
   if (pathname === '/feed') return isSearchView(search) || new URLSearchParams(search).has('cursor') ? <PublicDocumentListPage /> : <PublicFeedPage />
   if (pathname === '/portfolio/principles') return <MemberPrinciplesPage />
