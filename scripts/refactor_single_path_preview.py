@@ -222,8 +222,10 @@ install_owner_portfolio(app, factory)  # after the legacy reads it replaces
 # Model-assisted reads with no stored result: the unchanged legacy handlers, structured calls via llm.run.
 from fastapi.routing import APIRoute  # noqa: E402
 from routers import analysis as legacy_analysis_router, chart_structure as legacy_chart_router  # noqa: E402
+from routers import spine_feed as legacy_feed_router  # noqa: E402
 for legacy_router, path in ((legacy_chart_router.router, '/api/spine/chart-structure/interpret'),
-                            (legacy_analysis_router.router, '/api/analysis/refine')):
+                            (legacy_analysis_router.router, '/api/analysis/refine'),
+                            (legacy_feed_router.router, '/api/spine/feed/company-evidence/summary')):
     app.router.routes.extend(route for route in legacy_router.routes
                              if isinstance(route, APIRoute) and route.path == path and 'POST' in route.methods)
 install_owner_records(app, factory, document_ui.timeline_reader, legacy_projection)

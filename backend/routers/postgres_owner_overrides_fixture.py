@@ -27,7 +27,8 @@ ADAPTED = (('POST', '/api/spine/admin/flag'), ('PUT', '/api/spine/regimes/checks
            # Button computations over the candidate's own material (no external requests).
            ('POST', '/api/spine/person/{name}/profile'), ('POST', '/api/spine/narrative/scenario/compute'),
            ('POST', '/api/spine/report/compute'), ('POST', '/api/spine/trade/{hs_code}/beneficiaries'),
-           ('POST', '/api/spine/research/candidates/{candidate_id}/approve'))
+           ('POST', '/api/spine/research/candidates/{candidate_id}/approve'),
+           ('POST', '/api/spine/regimes/commentary'), ('POST', '/api/spine/thesis/audit'))
 # Computations that also write the graph: graph tables are copied writable and their diff is published.
 GRAPH_WRITERS = {'/api/spine/narrative/compute', '/api/spine/narrative/scenario/compute'}
 # Approvals whose legacy action only touches the decision tables (alias registration, acknowledgement).
@@ -37,12 +38,14 @@ APPROVE = re.compile(r'^/api/spine/agent-proposals/(\d+)/approve$')
 
 def install(app, projection, factory):
     from routers import (spine_admin, spine_approvals, spine_causal, spine_keywords, spine_lens, spine_narrative,
-                         spine_person, spine_regimes, spine_report, spine_research, spine_sources, spine_trade)
+                         spine_person, spine_regimes, spine_report, spine_research, spine_sources, spine_thesis,
+                         spine_trade)
     from routers.postgres_owner_legacy_fixture import _Borrowed
     wanted = set(ADAPTED)
     for router in (spine_admin.router, spine_regimes.router, spine_research.router, spine_approvals.agent_router,
                    spine_keywords.router, spine_lens.router, spine_sources.router, spine_causal.beneficiary_router,
-                   spine_narrative.router, spine_person.router, spine_report.router, spine_trade.router):
+                   spine_narrative.router, spine_person.router, spine_report.router, spine_trade.router,
+                   spine_thesis.router):
         for route in router.routes:
             if isinstance(route, APIRoute) and any((method, route.path) in wanted for method in route.methods):
                 app.router.routes.append(route)
