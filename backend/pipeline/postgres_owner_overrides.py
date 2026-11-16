@@ -7,11 +7,14 @@ on writable TEMP copies of these tables (`routers.postgres_owner_overrides_fixtu
 changed are kept here and laid over the collected rows in every read path (`legacy_snapshot_rows`
 itself, after `install_view`) and in the collector export. A removed row is kept as a NULL override.
 """
+import logging
 import re
 
 from psycopg.types.json import Jsonb
 
 from pipeline.postgres_graph_fixture import _guard
+
+log = logging.getLogger(__name__)
 
 # table -> natural key column
 OVERRIDES = {'feature_flags': 'name', 'era_checks': 'key', 'research_candidates': 'id',
@@ -20,11 +23,11 @@ OVERRIDES = {'feature_flags': 'name', 'era_checks': 'key', 'research_candidates'
              'knowledge_falsifiers': 'id', 'knowledge': 'id', 'knowledge_evidence': 'id',
              # A composite key is 'a|b'; through the PG view such an override can only add rows.
              'knowledge_entities': 'knowledge_id|entity_id',
-             'scenarios': 'topic', 'reports': 'id'}
+             'scenarios': 'topic', 'reports': 'id', 'company_profiles': 'id'}
 # Computation outputs: copied into TEMP only for the computing request; reads see them from the
 # next projection build (the computing request answers with the result itself).
 COMPUTED = ('lens_readings', 'source_digests', 'models', 'narratives', 'knowledge_falsifiers',
-            'knowledge_evidence', 'knowledge_entities', 'scenarios', 'reports')
+            'knowledge_evidence', 'knowledge_entities', 'scenarios', 'reports', 'company_profiles')
 
 
 def initialize(conn):
@@ -128,6 +131,9 @@ def derive(root, pg, *, skip=()):
         return
     for table, key, row in pg.execute('SELECT table_name,key,row_data FROM owner_row_overrides ORDER BY updated_at'):
         if table in skip:
+            continue
+        if table not in OVERRIDES:  # written by newer code than this process runs; never break every read for it
+            log.warning('Skipping override for unknown table %s (restart to load it)', table)
             continue
         match = ' AND '.join(f'"{column}"=?' for column in _columns(table))
         values = key.split('|')

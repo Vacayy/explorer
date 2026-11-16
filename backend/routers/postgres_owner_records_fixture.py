@@ -8,7 +8,9 @@ private loopback gateway; external exposure needs the owner gate first.
 """
 import json
 
-from fastapi import APIRouter, HTTPException, Path
+from typing import Literal
+
+from fastapi import APIRouter, HTTPException, Path, Query
 from fastapi.routing import APIRoute
 
 from models.kalshi import KalshiPinBody, KalshiPinResult
@@ -16,6 +18,7 @@ from models.timeline import MarkAllReadResponse
 from pipeline.timeline import utc
 from pipeline import postgres_owner_records_fixture as records
 from routers.spine_feed import MarkAllReadRequest, MarkReadRequest
+from routers.company_profile import ProfileRequest
 from routers.spine_knowledge import InjectRequest, InjectResponse
 from routers.spine_follows import FollowedEntity, FollowRequest
 from routers.spine_saved import NoteRequest, SavedItem, SaveRequest
@@ -333,6 +336,36 @@ def create_router(factory, timeline, projection=None):
         if projection is not None:
             falsify(knowledge_id)
         return {'id': knowledge_id, 'epistemic_status': epistemic}
+
+    @router.post('/api/spine/company-profile/{code}')
+    def build_company_profile(code: str, body: ProfileRequest, market: Literal['kr', 'us'] = Query('kr')):
+        # The legacy route (web research model call, DART text for KR) as a private-copy computation: the
+        # report row and its source documents are published like collected rows. The candidate's network
+        # guard blocks in-process fetches (the DART text is then reported as a gap, as the legacy code does).
+        from pipeline import company_profile as cp, postgres_copy_compute
+        from routers.company_profile import _company
+        from routers.postgres_legacy_read_fixture import _offline
+        if projection is None:
+            raise HTTPException(503, 'Company profile unavailable')
+        code = code.upper() if market == 'us' else code
+        conn = cp.connect()
+        try:
+            name, sector = _company(conn, code, market)
+        finally:
+            conn.close()
+        offline = _offline.set(True)
+        try:
+            profile, reused = postgres_copy_compute.run(
+                projection, factory,
+                lambda work: cp.ensure_profile(code, name, sector, body.reason, force=body.force, market=market),
+                results={'company_profiles': ('id', 'company_profiles')}, source=f'POST /api/spine/company-profile/{code}')
+        except cp.ProfileUnavailable as exc:
+            raise HTTPException(502, str(exc)) from exc
+        except Exception as exc:  # as legacy: model and network failures are shown, not hidden
+            raise HTTPException(502, f'웹 조사를 마치지 못했습니다: {str(exc)[:200]}') from exc
+        finally:
+            _offline.reset(offline)
+        return {'profile': profile, 'reused': reused, 'reuse_hours': cp.REUSE_HOURS, 'market': market}
 
     @router.post('/api/spine/knowledge', response_model=InjectResponse, status_code=201)
     def inject_knowledge(body: InjectRequest):
