@@ -96,6 +96,75 @@ def extract_numeric(connect,question_id,*,run_llm,limit=40):
     return {'extracted':extracted,'scanned':scanned,'stale':stale,'graph_projection_required':True}
 
 
+def extract_numeric_native(connect, question_id, *, run_llm, limit=40):
+    """Extract into single-path PG tables; graph projection and rollup remain separate."""
+    if not isinstance(limit, int) or not 1 <= limit <= 40:
+        raise ValueError('invalid scan limit')
+    with connect() as pg:
+        _guard(pg)
+        proxies = pg.execute('SELECT p.id,p.label,p.tickers,p.extract_hint FROM proxy_registry p '
+            'JOIN sub_questions s ON s.id=p.sub_question_id WHERE p.active=1 AND s.question_id=%s '
+            'ORDER BY p.id', (question_id,)).fetchall()
+    scanned = extracted = stale = 0
+    for proxy_id, label, ticker_list, hint in proxies:
+        tickers = [t.strip() for t in (ticker_list or '').split(',') if t.strip()]
+        if not tickers:
+            continue
+        with connect() as pg:
+            _guard(pg)
+            generation = pg.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
+            proxy = pg.execute('SELECT id,label,tickers,extract_hint,active FROM proxy_registry WHERE id=%s', (proxy_id,)).fetchone()
+            rows = pg.execute("SELECT t.row_data,d.row_data FROM legacy_snapshot_rows t JOIN legacy_snapshot_rows d "
+                "ON d.table_name='raw_documents' AND d.row_data->>'id'=t.row_data->>'raw_doc_id' "
+                "WHERE t.table_name='transcripts' AND t.row_data->>'ticker'=ANY(%s) "
+                "ORDER BY (t.row_data->>'fiscal_year')::integer DESC NULLS LAST,t.row_ordinal LIMIT %s",
+                (tickers, limit)).fetchall()
+        if not generation or not proxy:
+            raise ValueError('Missing snapshot or proxy')
+        for item, doc in rows:
+            if scanned >= limit:
+                break
+            tid = item['id']
+            with connect() as pg:
+                exists = pg.execute('SELECT 1 FROM proxy_observations WHERE proxy_id=%s AND transcript_id=%s '
+                    'UNION ALL SELECT 1 FROM proxy_scans WHERE proxy_id=%s AND transcript_id=%s LIMIT 1',
+                    (proxy_id, tid, proxy_id, tid)).fetchone()
+            if exists:
+                continue
+            scanned += 1
+            try:
+                raw = run_llm(transcript._PROXY_PROMPT.format(label=label, hint=hint or '',
+                              body=(doc.get('markdown') or '')[:40000]), task='proxy.extract').text
+                value = json.loads(raw[raw.find('{'):raw.rfind('}')+1])
+                if not isinstance(value, dict):
+                    raise ValueError('invalid extraction')
+            except Exception:
+                continue
+            with connect() as pg:
+                _guard(pg)
+                pg.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (f'question-scan:{proxy_id}:{tid}',))
+                current_generation = pg.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
+                current_proxy = pg.execute('SELECT id,label,tickers,extract_hint,active FROM proxy_registry WHERE id=%s FOR UPDATE', (proxy_id,)).fetchone()
+                current = pg.execute("SELECT t.row_data,d.row_data FROM legacy_snapshot_rows t JOIN legacy_snapshot_rows d "
+                    "ON d.table_name='raw_documents' AND d.row_data->>'id'=t.row_data->>'raw_doc_id' "
+                    "WHERE t.table_name='transcripts' AND t.row_data->>'id'=%s", (str(tid),)).fetchone()
+                if current_generation != generation or current_proxy != proxy or current != (item, doc):
+                    stale += 1
+                    continue
+                exists = pg.execute('SELECT 1 FROM proxy_observations WHERE proxy_id=%s AND transcript_id=%s '
+                    'UNION ALL SELECT 1 FROM proxy_scans WHERE proxy_id=%s AND transcript_id=%s LIMIT 1',
+                    (proxy_id, tid, proxy_id, tid)).fetchone()
+                if exists:
+                    continue
+                pg.execute("INSERT INTO proxy_scans(proxy_id,transcript_id,scanned_at) VALUES(%s,%s,to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS'))", (proxy_id, tid))
+                if value.get('found'):
+                    pg.execute("INSERT INTO proxy_observations(proxy_id,transcript_id,source_type,source_id,observed_at,value_num,value_text,direction,created_at) "
+                        "VALUES(%s,%s,'transcript',%s,%s,%s,%s,%s,to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS'))",
+                        (proxy_id, tid, str(tid), item.get('call_date'), value.get('value_num'), value.get('value_text'), value.get('direction')))
+                    extracted += 1
+    return {'extracted': extracted, 'scanned': scanned, 'stale': stale, 'graph_projection_required': True}
+
+
 def project_numeric_observations(connect):
     """Apply the original entity-observation projection inside this candidate.
 
