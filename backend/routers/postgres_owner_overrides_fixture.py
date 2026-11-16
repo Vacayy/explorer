@@ -26,7 +26,8 @@ ADAPTED = (('POST', '/api/spine/admin/flag'), ('PUT', '/api/spine/regimes/checks
            ('POST', '/api/spine/narrative/compute'),
            # Button computations over the candidate's own material (no external requests).
            ('POST', '/api/spine/person/{name}/profile'), ('POST', '/api/spine/narrative/scenario/compute'),
-           ('POST', '/api/spine/report/compute'), ('POST', '/api/spine/trade/{hs_code}/beneficiaries'))
+           ('POST', '/api/spine/report/compute'), ('POST', '/api/spine/trade/{hs_code}/beneficiaries'),
+           ('POST', '/api/spine/research/candidates/{candidate_id}/approve'))
 # Computations that also write the graph: graph tables are copied writable and their diff is published.
 GRAPH_WRITERS = {'/api/spine/narrative/compute', '/api/spine/narrative/scenario/compute'}
 # Approvals whose legacy action only touches the decision tables (alias registration, acknowledgement).

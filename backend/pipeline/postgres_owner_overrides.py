@@ -23,11 +23,13 @@ OVERRIDES = {'feature_flags': 'name', 'era_checks': 'key', 'research_candidates'
              'knowledge_falsifiers': 'id', 'knowledge': 'id', 'knowledge_evidence': 'id',
              # A composite key is 'a|b'; through the PG view such an override can only add rows.
              'knowledge_entities': 'knowledge_id|entity_id',
-             'scenarios': 'topic', 'reports': 'id', 'company_profiles': 'id', 'trade_beneficiaries': 'id'}
+             'scenarios': 'topic', 'reports': 'id', 'company_profiles': 'id', 'trade_beneficiaries': 'id',
+             'stock_briefs': 'id'}
 # Computation outputs: copied into TEMP only for the computing request; reads see them from the
 # next projection build (the computing request answers with the result itself).
 COMPUTED = ('lens_readings', 'source_digests', 'models', 'narratives', 'knowledge_falsifiers',
-            'knowledge_evidence', 'knowledge_entities', 'scenarios', 'reports', 'company_profiles', 'trade_beneficiaries')
+            'knowledge_evidence', 'knowledge_entities', 'scenarios', 'reports', 'company_profiles', 'trade_beneficiaries',
+            'stock_briefs')
 
 
 def initialize(conn):
@@ -129,7 +131,10 @@ def derive(root, pg, *, skip=()):
     """Lay the kept decisions over the collected rows (a NULL override removes the row)."""
     if pg.execute("SELECT to_regclass('owner_row_overrides')").fetchone()[0] is None:
         return
-    for table, key, row in pg.execute('SELECT table_name,key,row_data FROM owner_row_overrides ORDER BY updated_at'):
+    # Removals first: one request may hide rows and add rows under the same unique columns (an idempotent
+    # replace), and its overrides share one timestamp.
+    for table, key, row in pg.execute('SELECT table_name,key,row_data FROM owner_row_overrides '
+                                      'ORDER BY row_data IS NOT NULL,updated_at,table_name,key'):
         if table in skip:
             continue
         if table not in OVERRIDES:  # written by newer code than this process runs; never break every read for it
