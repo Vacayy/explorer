@@ -805,6 +805,99 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
                               "JOIN ingest_enrichment_attempts a ON a.document_id=d.id WHERE d.source_id='crash.md'").fetchone()
                 self.assertEqual(row,('unknown','unknown'))
 
+    def test_durable_publisher_restores_active_generation_after_failure(self):
+        from pipeline.postgres_durable_publisher_fixture import DurableFixturePublisher
+        self.load('2026-01-03T00:00:00+00:00')
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            original=store_document(c,source_type='note',source_id='first',title='첫 합성 문서',markdown='기존 본문')
+        def target(schema): return psycopg.connect(self.dsn,options=f'-c search_path={schema}')
+        publisher=DurableFixturePublisher(self.pg,self.schema,target)
+        restored=None
+        try:
+            publisher.initialize()
+            self.assertFalse(publisher.restore())
+            initial=publisher.publish()
+            self.assertIsNotNone(publisher.get(original['id']))
+            old_schema=publisher.active[0]
+            with self.pg() as c:
+                new=store_document(c,source_type='note',source_id='second',title='둘째 합성 문서',markdown='지속검색단어 본문')
+            with patch('pipeline.postgres_durable_publisher_fixture.copy_with_note_changes',
+                       side_effect=RuntimeError('synthetic publish failure')):
+                with self.assertRaisesRegex(RuntimeError,'synthetic publish failure'):
+                    publisher.publish()
+            self.assertIsNone(publisher.get(new['id']))
+            killed_code='''
+import os,time,psycopg
+from unittest.mock import patch
+from pipeline.postgres_durable_publisher_fixture import DurableFixturePublisher
+dsn=os.environ['REFACTOR_POSTGRES_DSN']; source=os.environ['TEST_SOURCE_SCHEMA']
+def factory(): return psycopg.connect(dsn,options='-c search_path='+source)
+def target(name): return psycopg.connect(dsn,options='-c search_path='+name)
+def pause(*args):
+    print('STAGED',flush=True)
+    time.sleep(120)
+with patch('pipeline.postgres_durable_publisher_fixture.SearchSnapshot',side_effect=pause):
+    DurableFixturePublisher(factory,source,target).publish()
+'''
+            killed=subprocess.Popen([sys.executable,'-u','-c',killed_code],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,
+                                    env={**os.environ,'TEST_SOURCE_SCHEMA':self.schema})
+            try:
+                ready,_,_=select.select([killed.stdout],[],[],30)
+                self.assertTrue(ready,'publisher did not reach staged index')
+                self.assertEqual(killed.stdout.readline().strip(),'STAGED')
+                killed.kill()
+                killed.wait(timeout=10)
+            finally:
+                if killed.poll() is None:
+                    killed.kill()
+                    killed.wait(timeout=10)
+                killed.stdout.close()
+                killed.stderr.close()
+            self.assertIsNotNone(publisher.get(original['id']))
+            publisher.close()
+            restored=DurableFixturePublisher(self.pg,self.schema,target)
+            self.assertTrue(restored.restore())
+            self.assertEqual(restored.active[0],old_schema)
+            self.assertIsNone(restored.get(new['id']))
+            generation=restored.publish()
+            self.assertNotEqual(initial,generation)
+            self.assertIsNotNone(restored.get(original['id']))
+            self.assertIsNotNone(restored.get(new['id']))
+            self.assertIn(new['id'],[item.id for item in restored.search('지속검색단어').items])
+            restored.close()
+            self.assertTrue(restored.restore())
+            self.assertIn(new['id'],[item.id for item in restored.search('지속검색단어').items])
+            child_code='''
+import os,psycopg
+from pipeline.postgres_durable_publisher_fixture import DurableFixturePublisher
+dsn=os.environ['REFACTOR_POSTGRES_DSN']; source=os.environ['TEST_SOURCE_SCHEMA']
+def factory(): return psycopg.connect(dsn,options='-c search_path='+source)
+def target(name): return psycopg.connect(dsn,options='-c search_path='+name)
+p=DurableFixturePublisher(factory,source,target)
+assert p.restore()
+assert p.get(int(os.environ['TEST_DOC_ID'])) is not None
+assert any(item.id==int(os.environ['TEST_DOC_ID']) for item in p.search('지속검색단어').items)
+p.close()
+print('RESTORED')
+'''
+            child=subprocess.run([sys.executable,'-c',child_code],capture_output=True,text=True,timeout=30,
+                                 env={**os.environ,'TEST_SOURCE_SCHEMA':self.schema,'TEST_DOC_ID':str(new['id'])})
+            self.assertEqual((child.returncode,child.stdout.strip()),(0,'RESTORED'))
+            with self.pg() as c:
+                states=dict(c.execute('SELECT schema_name,state FROM fixture_publication_stages').fetchall())
+            self.assertEqual(states[old_schema],'retained')
+            self.assertEqual(list(states.values()).count('building'),2)
+        finally:
+            publisher.close()
+            if restored is not None: restored.close()
+            with self.pg() as c:
+                schemas=[row[0] for row in c.execute('SELECT schema_name FROM fixture_publication_stages')]
+            with psycopg.connect(self.dsn) as c:
+                for schema in schemas:
+                    c.execute(psycopg.sql.SQL('DROP SCHEMA IF EXISTS {} CASCADE').format(psycopg.sql.Identifier(schema)))
+
     def test_killed_projection_build_keeps_previous_and_recovers(self):
         self.load('2026-01-03T00:00:00+00:00')
         with self.pg() as c:

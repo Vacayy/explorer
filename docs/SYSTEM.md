@@ -850,3 +850,5 @@ fixture snapshot 교체는 호출자가 공간 점검 함수를 명시하지 않
 `scripts/refactor_synthetic_ui_seed.py`는 테스트 fixture와 mock BlogConnector로 합성 글 1건을 격리 PG 원장에 저장·fake 강화·projection 생성한 뒤 종료 신호까지 유지한다. 별도 localhost 18007에서 기존 프런트·`REFACTOR_LEXICAL_ONLY=1` API를 연결해 해당 글의 피드·문서 저장 요약·텍스트 검색 표시를 브라우저로 확인했다. 이 작은 fixture에는 claims·related·공통 AI 활동 API가 준비되지 않아 오류 배너가 남았고 hybrid 검색·첨부·실제 외부 신규 글은 시험하지 않았다. 기본 셸의 일부 조회는 기존 readonly viewer를 사용하므로 모든 응답이 합성 데이터는 아니다. 시험용 container와 schema는 종료했다. `scripts/refactor-synthetic-ui-nginx.conf`는 시험 설정이며 별도 실행·중지 절차와 운영 배포 구성이 아니다.
 
 위 합성 UI의 누락 경로와 실제 18006을 구분해 확인했다. 실제 자료의 대표 문서에서 claims는 PG 200, related와 home/ai-activity는 이전 readonly viewer 200이며 브라우저 오류 배너가 없었다. 합성 시험의 오류는 해당 시험 경로·캡처 누락으로, 전체 문서의 기능 동등성 검증을 의미하지 않는다.
+
+`postgres_durable_publisher_fixture`는 별도 일회용 PG schema의 활성 조회 schema·generation과 생성 중 schema를 DB에 기록하는 lexical 전용 실험이다. 생성 완료 후 활성 포인터를 transaction으로 바꾸며, 프로세스를 다시 띄우면 포인터의 generation을 확인하고 색인을 복구한다. 합성 자료에서 게시 실패·생성 중 OS 강제 종료 시 이전 조회 유지, 새 프로세스의 이전/신규 조회와 검색 복구를 확인했다. 이전·중단 schema는 자동 삭제하지 않으므로 사용량이 늘며 별도 안전한 정리 정책이 필요하다. 다중 프로세스의 활성 변경 통지·reader lease, 실제 데이터/모델/수집, 자동 기동 및 18006 연결은 미구현이다.
