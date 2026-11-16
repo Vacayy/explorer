@@ -11,6 +11,7 @@ any legacy reader in this process must see the same text as the PG reader.
 """
 import logging
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -26,11 +27,11 @@ VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'questio
              'legacy_supplement_tables', 'legacy_supplement_rows', *NATIVE,
              'fixture_portfolio_transactions', 'fixture_portfolio_members', 'fixture_portfolio_principles',
              'owner_follows', 'owner_kalshi_pins', 'owner_channel_reads',
-             'owner_saved_items')
+             'owner_saved_items', 'owner_tracker_conditions')
 # Small owner-ledger tables re-derived per connection in TEMP shadows, so writes
 # show at once; the file keeps its own (possibly older) derived copy underneath.
 SHADOWED = ('portfolio_transactions', 'stock_group_members', 'portfolio_principles', 'follows', 'kalshi_pins', 'channel_reads',
-            'saved_items')
+            'saved_items', 'tracker_conditions')
 CHECK_SECONDS = 10
 log = logging.getLogger(__name__)
 
@@ -187,6 +188,11 @@ class LegacyProjection:
             # TEMP names shadow main ones; the unchanged derivations then write only the shadows.
             for table in SHADOWED:
                 conn.execute(f'CREATE TEMP TABLE "{table}" AS SELECT * FROM main."{table}"')
+                # Same index names, so legacy `CREATE INDEX IF NOT EXISTS` stays a no-op under query_only.
+                for (sql,) in conn.execute("SELECT sql FROM main.sqlite_master WHERE type='index' AND tbl_name=? "
+                                           "AND sql IS NOT NULL", (table,)).fetchall():
+                    conn.execute(re.sub(r'^CREATE\s+(UNIQUE\s+)?INDEX\s+(IF\s+NOT\s+EXISTS\s+)?',
+                                        r'CREATE \1INDEX IF NOT EXISTS temp.', sql, flags=re.I))
             with self.factory() as pg:
                 pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
                 _derive_owner_portfolio(conn, pg)
@@ -246,3 +252,9 @@ def _derive_owner_records(root, pg):
         root.execute('DELETE FROM saved_items')
         root.executemany('INSERT INTO saved_items (id,kind,ref,url,title,subtitle,note,created_at) VALUES (?,?,?,?,?,?,?,?)',
                          pg.execute('SELECT id,kind,ref,url,title,subtitle,note,created_at FROM owner_saved_items ORDER BY id').fetchall())
+    if pg.execute("SELECT to_regclass('owner_tracker_conditions')").fetchone()[0] is not None:
+        root.execute('DELETE FROM tracker_conditions')
+        root.executemany('INSERT INTO tracker_conditions (id,stock_code,role,kind,level,ma,label,note,done,created_at,updated_at) '
+                         'VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+                         pg.execute('SELECT id,stock_code,role,kind,level,ma,label,note,done,created_at,updated_at '
+                                    'FROM owner_tracker_conditions ORDER BY id').fetchall())

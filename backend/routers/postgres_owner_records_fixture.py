@@ -1,4 +1,4 @@
-"""Loopback-only owner follows, prediction pins, feed read marks and bookmarks on the PG ledger.
+"""Loopback-only owner follows, prediction pins, feed read marks, bookmarks and tracker conditions on the PG ledger.
 
 Same request/response shapes and errors as the legacy routes. The follow list
 and feed read marks read the ledger directly; legacy reads (prediction cards)
@@ -15,6 +15,8 @@ from pipeline import postgres_owner_records_fixture as records
 from routers.spine_feed import MarkAllReadRequest, MarkReadRequest
 from routers.spine_follows import FollowedEntity, FollowRequest
 from routers.spine_saved import NoteRequest, SavedItem, SaveRequest
+from routers.spine_tracker import Code
+from models.tracker import TrackerCondition, TrackerConditionIn, TrackerConditionPatch
 
 
 def create_router(factory, timeline):
@@ -100,6 +102,36 @@ def create_router(factory, timeline):
     def remove_saved(item_id: int):
         with connection() as conn:
             records.remove_saved(conn, item_id)
+
+    @router.post('/api/spine/tracker/{code}/conditions', response_model=TrackerCondition)
+    def condition_add(body: TrackerConditionIn, code: str = Code):
+        if body.kind.startswith('price_') and not body.level:
+            raise HTTPException(422, '가격 조건에는 기준가가 필요합니다')
+        if body.kind.endswith('_ma') and not body.ma:
+            raise HTTPException(422, '이평선 조건에는 N일이 필요합니다')
+        import database
+        from routers.spine_tracker import _check
+        legacy = database.get_connection()  # the projection: same stock lookup as before
+        try:
+            _check(legacy, code)
+        finally:
+            legacy.close()
+        with connection() as conn:
+            return records.add_tracker_condition(conn, code, body)
+
+    @router.patch('/api/spine/tracker/conditions/{cid}', response_model=TrackerCondition)
+    def condition_patch(cid: int, body: TrackerConditionPatch):
+        with connection() as conn:
+            row = records.patch_tracker_condition(conn, cid, {k: v for k, v in body.model_dump().items() if v is not None})
+        if not row:
+            raise HTTPException(404, '조건 없음')
+        return row
+
+    @router.delete('/api/spine/tracker/conditions/{cid}')
+    def condition_delete(cid: int):
+        with connection() as conn:
+            records.delete_tracker_condition(conn, cid)
+        return {'deleted': cid}
 
     return router
 
