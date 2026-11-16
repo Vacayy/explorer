@@ -10,8 +10,7 @@ import RetailHeatPage from "@/components/retail/RetailHeatPage"
 import { KrSeasonView } from "@/components/follow/season/KrSeasonView"
 import NarrativePage from "@/components/explore/NarrativePage"
 import NarrativeHistory from "@/components/explore/NarrativeHistory"
-import { PublicFeedPage } from '@/components/feed/PublicFeedPage'
-import { isSearchView } from '@/lib/feed'
+import FeedPage from '@/components/feed/FeedPage'
 import { PublicTradePage } from '@/components/follow/PublicTradePage'
 import { MemberSavedPage } from '@/components/follow/MemberSavedPage'
 import { PublicMacroPage } from '@/components/home/PublicMacroPage'
@@ -24,10 +23,9 @@ import IndustryMapPage from '@/components/industry/IndustryMapPage'
 import HomePage, { HomeKrPage, HomeUsPage } from '@/components/home/HomePage'
 import { PageContainer } from '@/components/shared/PageContainer'
 import { Button } from '@/components/ui/button'
-import { PublicDocumentPage } from '@/components/doc/PublicDocumentPage'
+import DocPage from '@/components/doc/DocPage'
 import { MemberPrinciplesPage } from '@/components/portfolio/MemberPrinciplesPage'
 import { MemberPortfolioPage } from '@/components/portfolio/MemberPortfolioPage'
-import { PublicDocumentListPage } from '@/components/doc/PublicDocumentListPage'
 import { PublicTrialChatPage } from '@/components/chat/PublicTrialChatPage'
 import ChatPage from '@/components/chat/ChatPage'
 import { useMemberAccess } from '@/components/auth/MemberAccess'
@@ -96,10 +94,10 @@ export function PublicContent() {
   if (studyProject) return <OperatorStudyRoute kind="project" />
   if (study) return <OperatorStudyRoute kind="study" />
   if (pathname === '/feed/saved') return <MemberSavedPage />
-  if (pathname === '/feed') return isSearchView(search) || new URLSearchParams(search).has('cursor') ? <PublicDocumentListPage /> : <PublicFeedPage />
+  if (pathname === '/feed') return <FeedPage />
   if (pathname === '/portfolio/principles') return <MemberPrinciplesPage />
   if (pathname === '/portfolio') return <MemberPortfolioPage />
-  if (document?.params.docId) return <PublicDocumentPage docId={document.params.docId} />
+  if (document?.params.docId) return <DocPage />
   if (sector?.params.ticker) return <PublicUsSectorPage ticker={sector.params.ticker} />
   if (pathname === '/industry') return <IndustryMapPage />
   if (pathname === '/' || pathname === '/home') return <HomePage />

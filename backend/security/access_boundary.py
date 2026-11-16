@@ -20,6 +20,17 @@ NO_STORE = {'Cache-Control': 'no-store', 'Pragma': 'no-cache', 'Referrer-Policy'
 # Only these existing endpoints have been reviewed at this stage. Each business
 # route needs public projection or ownership validation before joining this map.
 PUBLIC_ROUTE_POLICIES = {
+    # The owner approved existing collected records for public reading.
+    # Mutating endpoints remain outside the anonymous allowlist.
+    ('GET', '/api/spine/feed'): 'public',
+    ('GET', '/api/spine/feed/timeline'): 'public',
+    ('GET', '/api/spine/feed/channels'): 'public',
+    ('GET', '/api/spine/doc/{doc_id}'): 'public',
+    ('GET', '/api/spine/doc/{doc_id}/related'): 'public',
+    ('GET', '/api/spine/doc/{doc_id}/claims'): 'public',
+    ('GET', '/api/spine/signals'): 'public',
+    ('GET', '/api/spine/signals/momentum'): 'public',
+    ('GET', '/api/spine/saved'): 'public',
     ('GET', '/api/spine/regimes'): 'public',
     ('GET', '/api/spine/regimes/brk'): 'public',
     ('GET', '/api/spine/feed/company-evidence'): 'public',
