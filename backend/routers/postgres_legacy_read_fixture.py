@@ -22,10 +22,16 @@ READ_ROUTES = {'/api/spine/home', '/api/spine/home/ai-activity', '/api/spine/hom
                # Portfolio reads (writes need a PG ledger and stay unavailable)
                '/api/portfolio', '/api/portfolio/history', '/api/portfolio/exposure', '/api/portfolio/events',
                '/api/portfolio/flow', '/api/portfolio/thesis', '/api/portfolio/transactions', '/api/portfolio/principles',
-               '/api/portfolio/principles/state', '/api/portfolio/alerts'}
+               '/api/portfolio/principles/state', '/api/portfolio/alerts',
+               # Narrative detail panels (the detail itself stays on the PG reader)
+               '/api/spine/narrative/{narrative_id}/causal', '/api/spine/narrative/{narrative_id}/chain',
+               '/api/spine/narrative/{narrative_id}/diff', '/api/spine/narrative/{narrative_id}/grounding',
+               '/api/spine/narrative/{narrative_id}/related', '/api/spine/narrative/mer', '/api/spine/narrative/scenario',
+               '/api/spine/narrative/versions', '/api/spine/world/checkpoint',
+               '/api/spine/narratives/{narrative_id}/market-today'}
 LEGACY_ROUTERS = ('spine_home', 'spine_search', 'spine_regimes', 'spine_indices', 'spine_credit', 'spine_market_overview',
                   'spine_risk', 'spine_world', 'spine_retail', 'spine_trend', 'spine_pricing', 'spine_tracker',
-                  'spine_trade', 'spine_transcript', 'spine_groups', 'spine_approvals', 'portfolio')
+                  'spine_trade', 'spine_transcript', 'spine_groups', 'spine_approvals', 'portfolio', 'spine_narrative', 'spine_market_today')
 
 
 def install(app, projection):

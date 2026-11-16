@@ -180,10 +180,18 @@ def experimental_signals_summary(days: int = Query(7,ge=1,le=90)):
         return signals_summary(connection,days=days)
 
 
+def overlay_join_hint(connection):
+    # jsonb filters on the overlay UNION view are misestimated into nested loops
+    # (60s+). Transaction-local only; removed when typed PG tables replace the view.
+    connection.execute('SET LOCAL enable_nestloop = off')
+    connection.execute("SET LOCAL statement_timeout = '15s'")
+
+
 @app.get('/api/spine/signals/momentum', response_model=SignalsMomentumResponse)
 def experimental_momentum(limit: int = Query(12,ge=3,le=30)):
     with factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        overlay_join_hint(connection)
         return mention_momentum(connection,limit=limit)
 
 
@@ -201,6 +209,7 @@ def experimental_narrative_list():
 def experimental_narrative_detail(topic: str):
     with factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        overlay_join_hint(connection)
         return cached_narrative(connection,topic)
 
 
