@@ -86,7 +86,7 @@ class SnapshotReplacementTests(unittest.TestCase):
     def pg(self):
         return psycopg.connect(self.dsn, options=f'-c search_path={self.schema}')
 
-    def load(self, at, *, include_linking=False, include_signals=False, include_events=False, include_centroids=False, include_telegram_marks=False, include_narrative_inputs=False, include_narrative_graph=False):
+    def load(self, at, *, include_linking=False, include_signals=False, include_events=False, include_centroids=False, include_telegram_marks=False, include_narrative_inputs=False, include_narrative_graph=False, include_knowledge=False):
         source = sqlite3.connect(self.fixture.path.as_uri() + '?mode=ro', uri=True)
         source.row_factory = sqlite3.Row
         if include_centroids:
@@ -100,9 +100,29 @@ class SnapshotReplacementTests(unittest.TestCase):
         source.execute('BEGIN')
         try:
             with patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
-                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None, include_linking=include_linking, include_signals=include_signals, include_events=include_events, include_centroids=include_centroids, include_telegram_marks=include_telegram_marks, include_narrative_inputs=include_narrative_inputs, include_narrative_graph=include_narrative_graph)
+                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None, include_linking=include_linking, include_signals=include_signals, include_events=include_events, include_centroids=include_centroids, include_telegram_marks=include_telegram_marks, include_narrative_inputs=include_narrative_inputs, include_narrative_graph=include_narrative_graph, include_knowledge=include_knowledge)
         finally:
             source.close()
+
+    def test_knowledge_snapshot_preserves_evidence_and_refuses_missing_table(self):
+        with closing(self.fixture.connect()) as source:
+            source.execute('CREATE TABLE knowledge(id INTEGER PRIMARY KEY, statement TEXT)')
+            source.execute('CREATE TABLE knowledge_evidence(id INTEGER PRIMARY KEY, knowledge_id INTEGER, stance TEXT)')
+            source.execute("INSERT INTO knowledge VALUES (1,'합성 지식')")
+            source.execute("INSERT INTO knowledge_evidence VALUES (2,1,'support')")
+            source.commit()
+        self.load('2026-01-03T00:00:00+00:00', include_knowledge=True)
+        with self.pg() as c:
+            rows = c.execute("SELECT table_name,row_data FROM legacy_snapshot_rows WHERE table_name IN ('knowledge','knowledge_evidence') ORDER BY table_name").fetchall()
+        self.assertEqual(rows, [('knowledge', {'id': 1, 'statement': '합성 지식'}),
+                                ('knowledge_evidence', {'id': 2, 'knowledge_id': 1, 'stance': 'support'})])
+        with closing(self.fixture.connect()) as source:
+            source.execute('DROP TABLE knowledge_evidence')
+            source.commit()
+        with self.assertRaisesRegex(ValueError, 'Required source table missing: knowledge_evidence'):
+            self.load('2026-01-04T00:00:00+00:00', include_knowledge=True)
+        with self.pg() as c:
+            self.assertEqual(c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='knowledge_evidence'").fetchone()[0], 1)
 
     def test_centroids_load_with_the_same_snapshot_generation(self):
         import sqlite_vec
