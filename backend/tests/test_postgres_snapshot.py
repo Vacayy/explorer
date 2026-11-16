@@ -109,6 +109,12 @@ class SnapshotReplacementTests(unittest.TestCase):
         from pipeline.portfolio import LedgerError
         with self.pg() as c:
             portfolio.initialize(c)
+            c.execute('CREATE TABLE sector_market_metadata(singleton BOOLEAN)')
+            c.execute('CREATE TABLE sector_market_companies(stock_code TEXT,corp_name TEXT)')
+            c.execute('CREATE TABLE sector_market_prices(stock_code TEXT,trade_date TEXT,close BIGINT)')
+            c.execute('INSERT INTO sector_market_metadata VALUES (TRUE)')
+            c.execute("INSERT INTO sector_market_companies VALUES ('000001','합성 회사')")
+            c.execute("INSERT INTO sector_market_prices VALUES ('000001','2026-01-02',10),('000001','2026-01-03',12)")
         with self.pg() as c:
             a=portfolio.add_transaction(c,'member-a',{'trade_date':'2026-01-02','kind':'buy','stock_code':'000001','amount':100,'price':10},companies={'000001'},last_close=lambda *_:None)
         with self.pg() as c:
@@ -119,13 +125,13 @@ class SnapshotReplacementTests(unittest.TestCase):
             rows=portfolio.list_transactions(c,'member-a',names={'000001':'합성 회사'})
             self.assertEqual([r['kind'] for r in rows],['buy','deposit'])
             self.assertNotIn('amount',rows[0])
-            def market_prices(txs,ledger):
-                return {'000001':[('2026-01-02',10.0),('2026-01-03',12.0)]},{}
-            result=portfolio.read_portfolio(c,'member-a',names={'000001':'합성 회사'},prices=market_prices)
+            market=portfolio.FixturePortfolioMarket(c)
+            self.assertEqual(market.last_close('000001','2026-01-02'),10)
+            result=portfolio.read_portfolio(c,'member-a',names=market.names(),prices=market.prices)
             self.assertEqual(result['summary']['holdings'][0]['return_pct'],20.0)
             self.assertEqual(result['summary']['holdings'][0]['name'],'합성 회사')
             self.assertEqual(result['history'][-1]['cum_return_pct'],20.0)
-            other=portfolio.read_portfolio(c,'member-b',names={},prices=market_prices)
+            other=portfolio.read_portfolio(c,'member-b',names={},prices=market.prices)
             self.assertEqual((other['summary']['holdings'],other['history']),([],[]))
         with self.assertRaises(LedgerError):
             with self.pg() as c:

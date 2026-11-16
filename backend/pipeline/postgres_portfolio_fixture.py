@@ -3,6 +3,7 @@
 The caller must supply a verified internal principal; this module is not an
 authentication boundary and is never registered with the running service.
 """
+from datetime import date, timedelta
 from models.portfolio import TransactionCreate
 from pipeline.portfolio import EPS, LedgerError, history_from_source, replay, summary_from_source
 from pipeline.postgres_graph_fixture import _guard
@@ -62,6 +63,36 @@ class FixturePortfolioReadSource:
 
     def prices(self, txs, ledger):
         return self._prices(txs,ledger)
+
+
+class FixturePortfolioMarket:
+    """Stored shared prices from the existing sector snapshot, no network."""
+    def __init__(self, conn):
+        _guard(conn)
+        if not conn.execute('SELECT 1 FROM sector_market_metadata LIMIT 1').fetchone():
+            raise ValueError('Sector market snapshot required')
+        self.conn=conn
+
+    def names(self):
+        return dict(self.conn.execute('SELECT stock_code,corp_name FROM sector_market_companies WHERE corp_name IS NOT NULL'))
+
+    def last_close(self, code, day):
+        row=self.conn.execute('SELECT close FROM sector_market_prices WHERE stock_code=%s AND trade_date<=%s AND close IS NOT NULL '
+                              'ORDER BY trade_date DESC LIMIT 1',(code,day)).fetchone()
+        return float(row[0]) if row else None
+
+    def prices(self, txs, ledger):
+        codes={row['stock_code'] for row in txs if row['stock_code']}
+        if not codes:
+            return {},{}
+        since=(date.fromisoformat(txs[0]['trade_date'])-timedelta(days=14)).isoformat()
+        series={}
+        for code,day,close in self.conn.execute('SELECT stock_code,trade_date,close FROM sector_market_prices '
+                'WHERE stock_code=ANY(%s) AND trade_date >= %s AND close IS NOT NULL ORDER BY stock_code,trade_date',
+                (list(codes),since)):
+            series.setdefault(code,[]).append((day,float(close)))
+        # Intraday quotes have a separate capture and freshness contract.
+        return series,{}
 
 
 def read_portfolio(conn, principal, *, names, prices):
