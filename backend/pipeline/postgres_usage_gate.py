@@ -80,6 +80,10 @@ def add_middleware(app, *, identity):
         token_usage, token_principal = usage.set(context), request_principal.set(user.id if user else None)
         try:
             response = await call_next(request)
+        except Exception:
+            if not context.refused:
+                raise
+            response = None  # the refusal propagated out of the handler: answer it below
         finally:
             usage.reset(token_usage)
             request_principal.reset(token_principal)
