@@ -157,6 +157,31 @@ class PostgreSQLChatChunkTests(unittest.TestCase):
         self.assertEqual(entity_id, 7)
         self.assertEqual(assumptions['assumed'][0]['entity_id'], 7)
 
+    def test_transcript_tool_uses_pg_snapshot_and_existing_aliases(self):
+        from psycopg.types.json import Jsonb
+        from unittest.mock import Mock
+        from pipeline.postgres_chat_tools import PostgreSQLChatTools
+        with self.fixture.pg() as conn:
+            for name, columns, ddl in (
+                ('transcript_follow', ['ticker', 'company_name', 'entity_id'],
+                 'CREATE TABLE transcript_follow(ticker TEXT,company_name TEXT,entity_id INTEGER)'),
+                ('transcripts', ['id', 'ticker', 'fiscal_year', 'fiscal_period', 'call_date', 'digest'],
+                 'CREATE TABLE transcripts(id INTEGER,ticker TEXT,fiscal_year INTEGER,fiscal_period TEXT,call_date TEXT,digest TEXT)'),
+            ):
+                conn.execute('INSERT INTO legacy_snapshot_tables VALUES (%s,%s,%s,1)', (name, Jsonb(columns), ddl))
+            conn.execute("INSERT INTO legacy_snapshot_rows VALUES ('transcript_follow',0,%s)",
+                         (Jsonb({'ticker': 'NVDA', 'company_name': 'NVIDIA', 'entity_id': 7}),))
+            conn.execute("INSERT INTO legacy_snapshot_rows VALUES ('transcripts',0,%s)",
+                         (Jsonb({'id': 3, 'ticker': 'NVDA', 'fiscal_year': 2026, 'fiscal_period': 'Q1',
+                                 'call_date': '2026-01-01', 'digest': '시험 컨콜 요약'}),))
+        rag = Mock()
+        rag.entity_scope.return_value = (None, None, {})
+        tools = PostgreSQLChatTools(self.fixture.pg, None, chunk_rag=rag)
+        result = tools.run_tool({'name': 'get_transcripts', 'args': {'companies': ['엔비디아', '없는회사']}})
+        self.assertEqual(result.items[0]['text'], '시험 컨콜 요약')
+        self.assertEqual(result.items[0]['href'], '/follow/transcripts?t=3')
+        self.assertIn('팔로우 목록에 없는 회사', result.note)
+
     def test_fixture_chat_api_persists_question_and_answer_in_pg(self):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient

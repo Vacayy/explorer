@@ -1,7 +1,7 @@
 """Experimental PG document tools for the isolated chat runtime.
 
-This currently supports document opening and basic search only. Other tools and
-filters fail explicitly; it is not a replacement for the full SQLite chat API.
+Document opening, search and saved earnings-call digests are experimental.
+Other tools fail explicitly; this is not a replacement for the full chat API.
 """
 from pipeline.chat_tools import ToolResult
 from models.spine import FeedDocument
@@ -38,6 +38,29 @@ class PostgreSQLChatTools:
         if name == 'open_doc':
             doc = self.reader.get(int(args['doc_id']))
             return ToolResult(name, args, [self._item(doc)] if doc else [], None if doc else '문서 없음')
+        if name == 'get_transcripts':
+            import sqlite3
+            from pipeline.chat_tools import get_transcripts
+            from pipeline.postgres_urgent_selection_fixture import open_snapshot
+            with self.connect() as pg:
+                pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                db, uri, _ = open_snapshot(pg, ('transcript_follow', 'transcripts'))
+                try:
+                    def connect():
+                        conn = sqlite3.connect(uri, uri=True)
+                        conn.row_factory = sqlite3.Row
+                        return conn
+
+                    def resolve_entity(name):
+                        if self.chunk_rag is None:
+                            raise UnsupportedPostgresChatTool('entity resolver is required for this company name')
+                        ident, _, _ = self.chunk_rag.entity_scope(name, prefer=('company',))
+                        return {'id': ident} if ident else None
+
+                    return get_transcripts(args['companies'], args.get('n_per', 1),
+                                           connection_factory=connect, entity_resolver=resolve_entity)
+                finally:
+                    db.close()
         if name != 'search_docs':
             raise UnsupportedPostgresChatTool(f'{name} is not implemented in the PG fixture')
         if (args.get('entity') or args.get('channel')) and self.chunk_rag is None:

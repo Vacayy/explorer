@@ -592,7 +592,7 @@ _US_NAME_ALIAS = {"아마존": "AMZN", "구글": "GOOGL", "알파벳": "GOOGL", 
                   "nebius": "NBIS", "coreweave": "CRWV", "dell": "DELL", "oracle": "ORCL", "microsoft": "MSFT", "amazon": "AMZN", "meta": "META"}
 
 
-def _resolve_ticker(conn, name: str) -> tuple[str | None, str]:
+def _resolve_ticker(conn, name: str, *, entity_resolver=None) -> tuple[str | None, str]:
     """회사명(한/영)·티커 → transcript_follow 티커. 순서: 티커 직접 → 별칭표 → follow company_name 부분일치 → 엔티티 id 매칭."""
     q = (name or "").strip()
     if not q:
@@ -607,7 +607,7 @@ def _resolve_ticker(conn, name: str) -> tuple[str | None, str]:
     for f in follows:
         if f["company_name"] and (q.lower() in f["company_name"].lower() or f["company_name"].lower() in q.lower()):
             return f["ticker"], f["company_name"]
-    ent = resolve_entity(conn, q, prefer=("company",))
+    ent = (entity_resolver(q) if entity_resolver is not None else resolve_entity(conn, q, prefer=("company",)))
     if ent:
         for f in follows:
             if f["entity_id"] == ent["id"]:
@@ -615,15 +615,16 @@ def _resolve_ticker(conn, name: str) -> tuple[str | None, str]:
     return None, q
 
 
-def get_transcripts(companies: list[str] | str, n_per: int = 1) -> ToolResult:
+def get_transcripts(companies: list[str] | str, n_per: int = 1, *, connection_factory=None,
+                    entity_resolver=None) -> ToolResult:
     """미국 기업 실적 컨콜 핵심 정리(실적·가이던스·경영진 코멘트·Q&A) — 회사별 최신 n건."""
     names = companies if isinstance(companies, list) else [companies]
     n_per = max(1, min(int(n_per or 1), 3))
-    conn = get_connection()
+    conn = connection_factory() if connection_factory is not None else get_connection()
     items, missing, unresolved = [], [], []
     try:
         for nm in names[:10]:
-            ticker, label = _resolve_ticker(conn, str(nm))
+            ticker, label = _resolve_ticker(conn, str(nm), entity_resolver=entity_resolver)
             if not ticker:
                 unresolved.append(str(nm))
                 continue

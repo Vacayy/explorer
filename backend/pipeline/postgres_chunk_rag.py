@@ -58,7 +58,7 @@ class PostgreSQLChunkRAG:
         finally:
             memory.close()
 
-    def entity_scope(self, name):
+    def entity_scope(self, name, *, prefer=()):
         """Apply the original entity resolver to PG snapshot metadata and documents."""
         from pipeline.chat_tools import entity_terms, resolve_entity_ex
         memory = sqlite3.connect(':memory:')
@@ -105,7 +105,7 @@ class PostgreSQLChunkRAG:
                         fts.close()
 
                 assumptions = {}
-                entity = resolve_entity_ex(memory, name, asm=assumptions, score_company=score_company)
+                entity = resolve_entity_ex(memory, name, prefer=prefer, asm=assumptions, score_company=score_company)
                 terms = entity_terms(memory, entity) if entity else None
                 self._check(pg)
                 return (int(entity['id']) if entity else None), terms, assumptions
