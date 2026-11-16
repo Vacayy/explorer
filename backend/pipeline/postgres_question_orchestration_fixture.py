@@ -40,8 +40,9 @@ def initialize_creation_runs(connect):
                    "WHERE status IN ('running','unknown')")
 
 
-def _begin_run(connect, text, created_by, narrative_id, source_doc_id, stock_code=None):
-    key = [text.strip(), created_by, narrative_id, source_doc_id] + ([stock_code] if stock_code else [])
+def _begin_run(connect, text, created_by, narrative_id, source_doc_id, stock_code=None, question_id=None):
+    key = [text.strip(), created_by, narrative_id, source_doc_id] + ([stock_code] if stock_code else []) \
+        + (['approve', question_id] if question_id is not None else [])
     request = json.dumps(key, ensure_ascii=False, separators=(',', ':'))
     digest = hashlib.sha256(request.encode()).hexdigest()
     run_id = uuid.uuid4()
@@ -66,11 +67,12 @@ def _record_run(connect, run_id, steps, status='running'):
 
 
 def create_question_native(connect, text, *, run_llm, search, created_by='user', narrative_id=None,
-                           source_doc_id=None, numeric_limit=40, stock_code=None, hint=''):
-    """stock_code ties a thesis/watch question to a stock; hint is added to the decomposition prompt only (as legacy)."""
+                           source_doc_id=None, numeric_limit=40, stock_code=None, hint='', question_id=None):
+    """stock_code ties a thesis/watch question to a stock; hint is added to the decomposition prompt only (as legacy).
+    question_id decomposes an existing proposed question (approve) instead of adding one."""
     if not text.strip():
         raise ValueError('질문이 비어 있습니다')
-    run_id = _begin_run(connect, text, created_by, narrative_id, source_doc_id, stock_code)
+    run_id = _begin_run(connect, text, created_by, narrative_id, source_doc_id, stock_code, question_id)
     steps = {}
     try:
         raw = run_llm(questions._DECOMPOSE_PROMPT.format(question=text.strip() + hint), task='question.decompose').text
@@ -85,7 +87,8 @@ def create_question_native(connect, text, *, run_llm, search, created_by='user',
         if not isinstance(plan, dict) or not isinstance(plan.get('sub_questions'), list):
             raise ValueError('질문 분해 결과가 올바르지 않습니다')
         stage = stage_plan_native(connect, text, plan, created_by=created_by, narrative_id=narrative_id,
-                                  source_doc_id=source_doc_id, run_id=run_id, stock_code=stock_code)
+                                  source_doc_id=source_doc_id, run_id=run_id, stock_code=stock_code,
+                                  question_id=question_id)
     except Exception:
         _record_run(connect, run_id, {'decompose': {'status': 'failed'}}, 'failed')
         raise

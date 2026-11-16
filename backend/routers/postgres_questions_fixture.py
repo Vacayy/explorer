@@ -183,6 +183,63 @@ def create_router(connect, *, run_llm=None, search=None):
             digest = _hash({'q': question, 'subs': subs, 'grounding': grounding})
             return {'status': 'ok', 'body': cached['body'], 'created_at': cached['created_at'],
                     'stale': cached['inputs_hash'] != digest}
+    @router.post('/propose')
+    def propose(limit: int = 3):
+        # Legacy generator ①: no model call. Narratives and their edge counts come from the read projection,
+        # the proposed questions go into the candidate's question tables.
+        from database import get_connection
+        db = get_connection()
+        try:
+            narratives = db.execute(
+                "SELECT n.id, COALESCE(n.core_question, n.title) AS title, "
+                "  (SELECT COUNT(*) FROM entity_relations er WHERE er.narrative_id=n.id) AS power "
+                "FROM narratives n WHERE n.superseded_at IS NULL AND n.title IS NOT NULL AND n.kind='topic' "
+                "ORDER BY power DESC, n.created_at DESC LIMIT 40").fetchall()
+        finally:
+            db.close()
+        proposed = 0
+        with connect() as conn:
+            _guard(conn)
+            conn.execute("SELECT pg_advisory_xact_lock(hashtextextended('native-question-create',0))")
+            now = "to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')"
+            for narrative in narratives:
+                if proposed >= limit:
+                    break
+                if not (narrative['title'] or '').strip() or conn.execute(
+                        "SELECT 1 FROM questions WHERE narrative_id=%s AND status != 'dismissed'", (narrative['id'],)).fetchone():
+                    continue
+                conn.execute("INSERT INTO questions(text,narrative_id,created_by,status,created_at,updated_at) "
+                             "VALUES(%s,%s,'system','proposed'," + now + ',' + now + ')', (narrative['title'].strip(), narrative['id']))
+                proposed += 1
+        return {'proposed': proposed}
+
+    @router.post('/{question_id}/approve')
+    def approve(question_id: int):
+        from pipeline.postgres_question_orchestration_fixture import create_question_native, QuestionRunUnresolved, QuestionModelUncertain
+        with connect() as conn:
+            _guard(conn)
+            row = conn.execute('SELECT text,status,narrative_id,source_doc_id,created_by FROM questions WHERE id=%s',
+                               (question_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, '질문 없음')
+        if row[1] != 'proposed':
+            return detail(question_id)
+        if run_llm is None or search is None:
+            raise HTTPException(503, '질문 분해가 준비되지 않았습니다')
+        try:
+            result = create_question_native(connect, row[0], run_llm=run_llm, search=search, created_by=row[4],
+                                            narrative_id=row[2], source_doc_id=row[3], question_id=question_id)
+        except QuestionRunUnresolved as exc:
+            raise HTTPException(409, {'message': str(exc), 'run_id': exc.run_id}) from exc
+        except QuestionModelUncertain as exc:
+            raise HTTPException(503, {'message': str(exc), 'run_id': exc.run_id}) from exc
+        except ValueError as exc:
+            raise HTTPException(503, '질문 분해 결과를 확인하지 못했습니다') from exc
+        tree = detail(question_id)
+        if result['status'] != 'completed':
+            tree['processing'] = {'status': result['status'], 'run_id': result['run_id'], 'steps': result['steps']}
+        return tree
+
     @router.post('/from-doc')
     def from_doc(body: FromDocRequest):
         # Legacy Q5 derivation: one model call over a document, nothing stored; in-process network blocked.
