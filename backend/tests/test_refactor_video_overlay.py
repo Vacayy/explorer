@@ -44,6 +44,16 @@ class VideoOverlayTests(unittest.TestCase):
         self.assertEqual(result.status_code, 409)
         generate.assert_not_called()
 
+    def test_changed_document_cannot_be_added_to_study(self):
+        source = {**self.source, 'content': 'original body'}
+        copy = {**source, 'content': 'different body'}
+        with patch.object(module, 'source_document', return_value=(source, {})), \
+             patch.object(module, 'copied_document', return_value=copy), \
+             patch.object(module.spine_study_projects, 'add') as add:
+            result = self.client.post('/api/spine/study-projects/3/documents', json={'document_ids': [7]})
+        self.assertEqual(result.status_code, 409)
+        add.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

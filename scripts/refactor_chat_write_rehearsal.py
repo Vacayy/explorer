@@ -13,7 +13,7 @@ from fastapi.encoders import jsonable_encoder
 import uvicorn
 
 from database import get_connection
-from routers import spine_ask, spine_chat_targets, spine_conversations, spine_doc, spine_study_projects
+from routers import spine_ask, spine_chat_targets, spine_conversations, spine_doc, spine_study, spine_study_projects
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -49,6 +49,27 @@ def copied_document(doc_id: int):
         if exc.status_code == 404:
             return None
         raise
+
+
+def check_study_document(doc_id: int):
+    source, _ = source_document(doc_id)
+    copy = copied_document(doc_id)
+    keys = ('id', 'source_type', 'url', 'title', 'published_at', 'content')
+    if not copy or not source.get('content') or any(source.get(k) != copy.get(k) for k in keys):
+        raise HTTPException(409, '미리보기와 스터디 사본의 문서가 달라 추가할 수 없습니다')
+
+
+@app.post('/api/spine/studies')
+def open_study(body: spine_study.OpenStudy):
+    check_study_document(body.document_id)
+    return spine_study.open_study(body)
+
+
+@app.post('/api/spine/study-projects/{pid}/documents')
+def add_study_documents(pid: int, body: spine_study_projects.Documents):
+    for doc_id in body.document_ids:
+        check_study_document(doc_id)
+    return spine_study_projects.add(pid, body)
 
 
 @app.get('/api/spine/doc/{doc_id}')
@@ -93,7 +114,7 @@ def owner_conversation(conversation_id: int):
 
 
 for router in (spine_ask.router, spine_chat_targets.router,
-               spine_conversations.router, spine_doc.router, spine_study_projects.router):
+               spine_conversations.router, spine_doc.router, spine_study.router, spine_study_projects.router):
     app.include_router(router)
 
 if __name__ == '__main__':
