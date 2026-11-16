@@ -21,8 +21,10 @@ def snapshot(conn):
 
 def publish(pg, before, after, *, run_id):
     """Apply one computation's graph diff in the caller's transaction; returns counts."""
+    from pipeline.postgres_owner_overrides import record_outputs
     pg.execute('SELECT pg_advisory_xact_lock(%s)', (GRAPH_LOCK,))
     added = changed = kept = 0
+    produced = []
     for table in GRAPH:
         old, new = before[table], after[table]
         for ident in sorted(set(new) - set(old)):
@@ -33,6 +35,7 @@ def publish(pg, before, after, *, run_id):
             else:
                 _apply_graph(pg, table, ident, None, new[ident])
             added += 1
+            produced.append((table, ident))
         for ident in sorted(i for i in set(old) & set(new) if old[i] != new[i]) + sorted(set(old) - set(new)):
             ordinal, current = _pg_graph_row(pg, table, ident)
             if current != old[ident]:
@@ -43,4 +46,6 @@ def publish(pg, before, after, *, run_id):
                 continue
             _apply_graph(pg, table, ident, ordinal, new.get(ident))
             changed += 1
+            produced.append((table, ident))
+    record_outputs(pg, run_id, produced)
     return {'added': added, 'changed': changed, 'kept': kept}

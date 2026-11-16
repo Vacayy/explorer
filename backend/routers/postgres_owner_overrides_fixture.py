@@ -77,7 +77,7 @@ def install(app, projection, factory):
 
             def store():
                 with factory() as pg, pg.transaction():
-                    overrides.apply(pg, before, overrides.rows(conn))
+                    overrides.apply(pg, before, overrides.rows(conn), source=f'{request.method} {request.url.path}')
                     if writes_graph:
                         graph.publish(pg, graph_before, graph.snapshot(conn), run_id=f'compute:{request.url.path}')
             await run_in_threadpool(store)

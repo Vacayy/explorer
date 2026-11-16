@@ -68,9 +68,21 @@ def rows(conn):
     return out
 
 
-def apply(conn, before, after):
+def record_outputs(conn, source, rows):
+    """Note rows the candidate itself produced, so the final sync can clean up or re-map them
+    (the MacBook keeps issuing IDs in the same space)."""
+    if conn.execute("SELECT to_regclass('candidate_outputs')").fetchone()[0] is None:
+        conn.execute("CREATE TABLE candidate_outputs (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,source TEXT NOT NULL,"
+                     "table_name TEXT NOT NULL,row_key TEXT NOT NULL,origin TEXT NOT NULL DEFAULT 'candidate',"
+                     'created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
+    for table, key in rows:
+        conn.execute('INSERT INTO candidate_outputs(source,table_name,row_key) VALUES (%s,%s,%s)', (source, table, str(key)))
+
+
+def apply(conn, before, after, *, source=None):
     """Store what one successful request changed; returns the number of changed rows."""
     changed = 0
+    touched = []
     conn.execute("SELECT pg_advisory_xact_lock(hashtextextended('owner-row-overrides',0))")
     for table in after:
         old, new = before[table], after[table]
@@ -87,6 +99,9 @@ def apply(conn, before, after):
                              'ON CONFLICT (table_name,key) DO UPDATE SET row_data=excluded.row_data,updated_at=now()',
                              (table, key, Jsonb(row) if row is not None else None, ordinal[0]))
                 changed += 1
+                touched.append((table, key))
+    if source and touched:
+        record_outputs(conn, source, touched)
     return changed
 
 
