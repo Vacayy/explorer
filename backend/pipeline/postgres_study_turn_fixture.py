@@ -82,8 +82,43 @@ class StudyTurnsFixture:
                 row=cur.fetchone()
                 if not row or row['status'] != 'pending':
                     return
+                # A previously committed answer means the external call may have
+                # succeeded before this worker died. Never call it again here.
+                cur.execute('SELECT id,role FROM chat_messages WHERE conversation_id=%s ORDER BY id DESC LIMIT 1', (row['conversation_id'],))
+                last=cur.fetchone()
+                if not last or last['id'] != row['message_id'] or last['role'] != 'user':
+                    return
                 context=json.loads(row['context_json'])
                 result=generate_answer(self.chat_store,self.tools,row['conversation_id'],row['question'],
                                        owner_chat_id=self.owner_chat_id,study_context=context)
                 cur.execute(f"UPDATE {table} SET status=%s,error=%s,context_json=%s,finished_at={NOW} WHERE id=%s AND status='pending'",
                     ('error' if result.get('error') else 'complete',result.get('error'),json.dumps(context,ensure_ascii=False),turn_id))
+
+    def recover(self, owner_id, turn_id, *, project=False):
+        table, key, owner_table = (('study_project_turns','project_id','study_projects') if project
+                                    else ('study_turns','study_id','study_sessions'))
+        with self.connect() as c:
+            _guard(c)
+            with c.cursor(row_factory=dict_row) as cur:
+                cur.execute(f'SELECT id FROM {owner_table} WHERE id=%s FOR UPDATE', (owner_id,))
+                if not cur.fetchone():
+                    raise HTTPException(404,'스터디를 찾을 수 없습니다')
+                cur.execute('SELECT pg_try_advisory_xact_lock(hashtextextended(%s,0)) AS acquired', (f'{table}:{turn_id}',))
+                if not cur.fetchone()['acquired']:
+                    raise HTTPException(409,'답변 생성이 진행 중입니다. 잠시 후 다시 확인해 주세요.')
+                cur.execute(f"""SELECT *, (extract(epoch from (timezone('utc',now()) - created_at::timestamp))) AS age
+                    FROM {table} WHERE id=%s AND {key}=%s FOR UPDATE""", (turn_id,owner_id))
+                row=cur.fetchone()
+                if not row or row['status'] != 'pending' or row['age'] is None or row['age'] < 600:
+                    raise HTTPException(409,'10분 이상 멈춘 요청만 정리할 수 있습니다.')
+                cur.execute('SELECT id,role FROM chat_messages WHERE conversation_id=%s ORDER BY id DESC LIMIT 1', (row['conversation_id'],))
+                last=cur.fetchone()
+                if last and last['id'] == row['message_id'] and last['role'] == 'user':
+                    message='스터디 답변 요청이 중단됐습니다. 같은 내용을 다시 보내 주세요.'
+                    cur.execute("INSERT INTO chat_messages(conversation_id,role,content) VALUES(%s,'assistant',%s)", (row['conversation_id'],message))
+                else:
+                    # A stored answer is retained; whether the model call fully
+                    # finished cannot be inferred from a bare assistant row.
+                    message='저장된 대화는 보존했지만 요청의 완료 상태를 확인하지 못했습니다.'
+                cur.execute(f"UPDATE {table} SET status='error',error=%s,finished_at={NOW} WHERE id=%s AND status='pending'", (message,turn_id))
+                return {'ok':True}

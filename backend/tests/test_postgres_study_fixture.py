@@ -165,3 +165,48 @@ class StudyFixtureTests(ChatPreviewForkTests):
                 self.assertEqual(seen[0]['annotations'][0]['exact'],'😀')
                 self.assertFalse(client.post(f'/api/spine/study-projects/{pid}/ask',json=body).json()['created'])
                 self.assertEqual(len(seen),1)
+
+    def test_recovery_never_repeats_model_after_answer_was_saved(self):
+        from unittest.mock import patch
+        from pipeline.postgres_conversations import PostgreSQLConversations
+        from pipeline.postgres_study_turn_fixture import StudyTurnsFixture
+        from routers.spine_study import StudyQuestion
+        with self.target() as pg:
+            fork_chat_preview(self.source,pg,self.fixture.schema);import_studies(self.source,pg)
+        store=PostgreSQLConversations(self.target);turns=StudyTurnsFixture(self.target,store,tools=None)
+        body=StudyQuestion(question='질문',request_key='recover-case-1',research='off')
+        first=turns.queue(4,body)
+        # Simulates a worker dying after its assistant message commits but
+        # before the turn status is recorded.
+        store.append_assistant(first['conversation_id'],'이미 저장된 답변')
+        with patch('pipeline.postgres_study_turn_fixture.generate_answer',side_effect=AssertionError('duplicate model call')):
+            turns.execute(first['id'])
+        with self.assertRaises(HTTPException) as early:
+            turns.recover(4,first['id'])
+        self.assertEqual(early.exception.status_code,409)
+        with self.target() as pg:
+            pg.execute("UPDATE study_turns SET created_at='2000-01-01 00:00:00' WHERE id=%s",(first['id'],))
+        self.assertEqual(turns.recover(4,first['id']),{'ok':True})
+        _,messages=store.detail(first['conversation_id'])
+        self.assertEqual([m['content'] for m in messages],['질문','이미 저장된 답변'])
+        self.assertFalse(turns.queue(4,body)['created'])
+        self.assertEqual(StudyFixture(self.target).read(4)['turns'][0]['status'],'error')
+
+    def test_recovery_rejects_live_worker_and_records_interruption(self):
+        from pipeline.postgres_conversations import PostgreSQLConversations
+        from pipeline.postgres_study_turn_fixture import StudyTurnsFixture
+        from routers.spine_study import StudyQuestion
+        with self.target() as pg:
+            fork_chat_preview(self.source,pg,self.fixture.schema);import_studies(self.source,pg)
+        store=PostgreSQLConversations(self.target);turns=StudyTurnsFixture(self.target,store,tools=None)
+        first=turns.queue(4,StudyQuestion(question='질문',request_key='recover-case-2',research='off'))
+        with self.target() as pg:
+            pg.execute("UPDATE study_turns SET created_at='2000-01-01 00:00:00' WHERE id=%s",(first['id'],))
+        with self.target() as worker:
+            worker.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))',(f"study_turns:{first['id']}",))
+            with self.assertRaises(HTTPException) as busy:turns.recover(4,first['id'])
+            self.assertEqual(busy.exception.status_code,409)
+        self.assertEqual(turns.recover(4,first['id']),{'ok':True})
+        _,messages=store.detail(first['conversation_id'])
+        self.assertEqual([m['role'] for m in messages],['user','assistant'])
+        self.assertIn('중단',messages[-1]['content'])

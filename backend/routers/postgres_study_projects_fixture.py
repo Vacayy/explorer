@@ -28,4 +28,7 @@ def create_router(store, turns=None):
             if result['created']:
                 background.add_task(turns.execute,result['id'],project=True)
             return result
+        @router.post('/{pid}/turns/{tid}/recover')
+        def recover(pid: int, tid: int):
+            return turns.recover(pid,tid,project=True)
     return router

@@ -30,4 +30,8 @@ def create_router(store, turns=None):
                 background.add_task(turns.execute,result['id'])
             return result
 
+        @router.post('/{study_id}/turns/{turn_id}/recover')
+        def recover(study_id: int, turn_id: int):
+            return turns.recover(study_id,turn_id)
+
     return router

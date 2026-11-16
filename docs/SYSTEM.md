@@ -95,7 +95,7 @@
 ## 의도별 스터디 하이라이터 (D-175, 2026-09-18)
 
 - 단일·프로젝트 팔레트: 읽기 / 강조 / 이해하기 / 검토하기 / 관련 자료 / 코멘트. 강조는 저장만, AI 도구는 선택 종료 시 표시 저장과 질문 접수를 한 번에 수행한다. 본문 선택·Esc·키보드 적용, 표시별 답변·이력·후속 질문·취소·재시도·웹 확대·코멘트 초안 채택을 기존 통합 노트에서 제공한다.
-- 격리 PostgreSQL 시험 전용 `postgres_study_fixture.py`는 동일 SQLite 읽기 트랜잭션의 스터디·프로젝트·주석·턴·작업을 대화 사본 일치 확인 후 가져온다. `postgres_study_fixture` 라우터는 목록·상세·주석 생성/수정만 시험하며 운영에는 연결되지 않는다. 별도 `postgres_study_projects_fixture` 라우터는 프로젝트 생성·편집, 자료 검색·추가·제거 및 직접 붙여넣기를 시험한다. 격리 일반 스터디 대화의 질문 큐·문맥 복원·자료 검색을 PG runtime으로 주입하며 동일 요청 중복을 방지한다. 주석별 AI 작업·중단 복구 API 및 실제 전환은 미구현이다.
+- 격리 PostgreSQL 시험 전용 `postgres_study_fixture.py`는 동일 SQLite 읽기 트랜잭션의 스터디·프로젝트·주석·턴·작업을 대화 사본 일치 확인 후 가져온다. `postgres_study_fixture` 라우터는 목록·상세·주석 생성/수정만 시험하며 운영에는 연결되지 않는다. 별도 `postgres_study_projects_fixture` 라우터는 프로젝트 생성·편집, 자료 검색·추가·제거 및 직접 붙여넣기를 시험한다. 격리 일반 스터디 대화의 질문 큐·문맥 복원·자료 검색을 PG runtime으로 주입하며 동일 요청 중복을 방지한다. 10분 이상 중단된 요청은 명시적으로 복구하고 이미 저장된 답변은 보존한다. 주석별 AI 작업 및 실제 전환은 미구현이다.
 - `study_annotations.intent`를 추가하며 기존 데이터는 highlight로 승계. `study_annotation_actions`에 주석·명시적 의도·불변 context·버전·요청 hash·parent/retry·큐 상태·답변/검색 근거를 저장한다. `models/study_actions.py`, `pipeline/study_actions.py`, `pipeline/study_intents.py`; 초기화 migration은 `database.init_db`에서 실행한다.
 - `/api/spine/studies/{id}/actions` GET/POST, `actions/resume`, `actions/{action_id}/cancel|recover` POST. GET 생성 없음. 스터디/프로젝트별 FIFO, 대기+실행 최대 30개, 원자적 저장/멱등 접수, DB running UNIQUE와 claim token. 재시작 후 남은 대기는 명시적 resume 또는 새 접수로 진행하며 10분 넘게 멈춘 실행은 recover로 정리한다.
 - 표시 작업마다 독립 대화를 만들고 지정한 답변의 조상만 후속 질문에 복사한다. 기존 자유 대화·선택 요약 흐름은 별도 유지한다. 질문 시의 원문·앞뒤 최대 2,400자·소제목·저장 코멘트와 prompt version을 고정하고, 사용자 메모와 AI 결과를 구분한다.
