@@ -33,6 +33,16 @@ class InjectedStudyTests(unittest.TestCase):
         self.assertIn(('llm','study.plan'),runtime.calls)
         self.assertEqual(context['research']['intent'],'library')
 
-    def test_study_annotation_action_is_explicitly_unsupported(self):
-        with self.assertRaises(NotImplementedError):
-            chat.run_turn('질문',ctx={},runtime=Runtime(),study_context={'study_intent':'explain'})
+    def test_annotation_intent_uses_injected_model_and_search(self):
+        runtime=Runtime()
+        runtime.study_library_items=lambda items,context,seen: [i for i in items if i.get('doc_id') != 11]
+        runtime.run_llm=lambda prompt,**kwargs: SimpleNamespace(text='{"library_queries":["topic"],"web_query":null}')
+        context={'study_id':4,'study_intent':'related','scope':'선택','annotations':[{'exact':'문장'}],
+                 'prompt_version':'v1','title':'자료','published_at':None,'passage':{'text':'본문'},
+                 'research_mode':'auto','evidence':[{'title':'원문','text':'본문'}]}
+        with patch.object(study_coach,'get_connection',side_effect=AssertionError('SQLite called')), \
+             patch.object(chat,'_synthesize'), patch.object(chat,'_verify'):
+            turn=chat.run_turn('관련 자료',ctx={},runtime=runtime,study_context=context)
+        self.assertEqual(turn.route['study_task'],'related')
+        self.assertEqual(turn.evidence[-1]['doc_id'],12)
+        self.assertIn(('search','topic',6),runtime.calls)

@@ -27,11 +27,11 @@ DIRECTIONS = {
 }
 
 
-def plan(context, question):
+def plan(context, question, *, run_llm=None):
     intent, mode = context['study_intent'], context.get('research_mode', 'auto')
     fallback = {'library_queries': [context['annotations'][0]['exact'][:140]] if intent in ('related', 'critique') and mode != 'web' else [], 'web_query': None}
     try:
-        result = llm.run(json.dumps({
+        result = (run_llm or llm.run)(json.dumps({
             'intent': intent, 'mode': mode, 'question': question, 'title': context['title'],
             'published_at': context['published_at'], 'quote': context['annotations'][0]['exact'][:2500],
             'nearby': context['passage']['text'][:3000],
@@ -95,7 +95,8 @@ def augment(turn, context, status):
     turn.evidence = list(context['evidence'])
     turn.route.update(study_task=context['study_intent'], study_prompt_version=context['prompt_version'])
     status('선택한 문장의 맥락과 필요한 근거를 확인하는 중')
-    decision = plan(context, turn.question)
+    runtime = getattr(turn, 'runtime', None)
+    decision = plan(context, turn.question, run_llm=runtime.run_llm) if runtime is not None else plan(context, turn.question)
     research = {'intent': context['study_intent'], 'results': [], 'notes': [], 'plan': decision}
     if decision.get('error'):
         research['notes'].append(decision['error'])
@@ -108,10 +109,11 @@ def augment(turn, context, status):
         status('관련 수집 자료를 읽는 중' if kind == 'library' else '웹에서 근거를 확인하는 중')
         try:
             if kind == 'library':
-                result = search_docs(query, k=6)
-                items, note = _library_items(result.items, context, seen), result.note
+                result = runtime.study_search(query,k=6) if runtime is not None else search_docs(query,k=6)
+                items = runtime.study_library_items(result.items, context, seen) if runtime is not None else _library_items(result.items,context,seen)
+                note = result.note
             else:
-                items, note = web_evidence(query)
+                items, note = web_evidence(query,run_llm=runtime.run_llm) if runtime is not None else web_evidence(query)
             items = [i for i in items if not any(e.get('href') == i.get('href') and i.get('href') for e in turn.evidence)]
             turn.evidence.extend({**i, 'text':
                 (f"[출처 링크] {i['href']}\n" if i.get('href') else '')+

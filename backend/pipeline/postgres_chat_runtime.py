@@ -63,6 +63,28 @@ class PostgreSQLChatRuntime:
             _guard(c)
             return {row[0] for row in c.execute('SELECT document_id FROM study_sessions WHERE id=ANY(%s)', (ids,)) if row[0] is not None}
 
+    def study_library_items(self, items, context, seen):
+        from pipeline.postgres_graph_fixture import _guard
+        from pipeline.study_intents import _text_key
+        with self.store.connect() as c:
+            _guard(c)
+            original = c.execute('SELECT body,source_url FROM study_sessions WHERE id=%s',(context['study_id'],)).fetchone()
+            original_key = _text_key(original[0]) if original else None
+            out = []
+            for item in items:
+                if item.get('doc_id') == context.get('document_id') or not item.get('text','').strip():
+                    continue
+                row = c.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='raw_documents' AND row_data->>'id'=%s",(str(item.get('doc_id')),)).fetchone()
+                doc = row[0] if row else {}
+                body = (doc.get('markdown') or doc.get('raw_content') or '') if row else item['text']
+                key = _text_key(body)
+                url = doc.get('url') if row else item.get('href')
+                if key == original_key or key in seen or (url and (url in seen or (original and url == original[1]))):
+                    continue
+                seen.update([key,url or key])
+                out.append({**item,'read_scope':'검색 발췌','text':item['text'][:4000]})
+            return out
+
     def study_search(self, query, *, k):
         return self.run_tool({'name': 'search_docs', 'args': {'query': query, 'k': k}})
 

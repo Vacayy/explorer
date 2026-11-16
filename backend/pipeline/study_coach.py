@@ -130,8 +130,6 @@ def web_evidence(query, *, run_llm=None):
 
 def augment(turn, context, status):
     runtime = turn.runtime
-    if context.get('study_intent') and runtime is not None:
-        raise NotImplementedError('study annotation actions are not implemented for an injected runtime')
     if context.get('study_intent'):
         from pipeline.study_intents import augment as augment_intent
         return augment_intent(turn, context, status)

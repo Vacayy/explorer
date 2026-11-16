@@ -210,3 +210,67 @@ class StudyFixtureTests(ChatPreviewForkTests):
         _,messages=store.detail(first['conversation_id'])
         self.assertEqual([m['role'] for m in messages],['user','assistant'])
         self.assertIn('중단',messages[-1]['content'])
+
+    def test_imported_annotation_action_history_is_visible(self):
+        from pipeline.postgres_study_actions_fixture import StudyActionsFixture
+        self.source.rollback();self.source.execute('PRAGMA query_only=OFF')
+        self.source.execute('''INSERT INTO study_annotation_actions(study_id,annotation_id,owner_key,intent,request_key,request_hash,prompt_version,question,context_json,status,result_json)
+            VALUES(4,8,'study:4','explain','action-test','hash','v1','질문',?,'complete',?)''',
+            ('{"annotations":[{"id":8,"revision":1}]}','{"answer":"보존된 답변"}'))
+        self.source.commit();self.source.execute('PRAGMA query_only=ON');self.source.execute('BEGIN')
+        with self.target() as pg:
+            fork_chat_preview(self.source,pg,self.fixture.schema);import_studies(self.source,pg)
+        app=FastAPI();app.include_router(create_router(StudyFixture(self.target),actions=StudyActionsFixture(self.target)))
+        with TestClient(app) as client:
+            response=client.get('/api/spine/studies/4/actions')
+            self.assertEqual(response.status_code,200)
+            row=response.json()[0]
+            self.assertEqual(row['result']['answer'],'보존된 답변')
+            self.assertEqual(row['annotation_revision'],1)
+            self.assertNotIn('claim_token',row)
+            self.assertNotIn('request_hash',row)
+
+    def test_annotation_actions_queue_complete_and_followup(self):
+        from unittest.mock import patch
+        from pipeline.postgres_study_actions_fixture import StudyActionsFixture
+        from pipeline.postgres_conversations import PostgreSQLConversations
+        with self.target() as pg:
+            fork_chat_preview(self.source,pg,self.fixture.schema);import_studies(self.source,pg)
+        store=PostgreSQLConversations(self.target);actions=StudyActionsFixture(self.target,store,tools=None)
+        app=FastAPI();app.include_router(create_router(StudyFixture(self.target),actions=actions))
+        seen=[]
+        def answer(store,tools,cid,question,**kwargs):
+            seen.append(kwargs['study_context']);store.append_assistant(cid,'시험 답변');return {'answer':'시험 답변','citations':[]}
+        with patch('pipeline.postgres_chat_generation.generate_answer',side_effect=answer):
+            with TestClient(app) as client:
+                body={'intent':'explain','request_key':'action-case-1','selection':{'start':2,'end':3,'exact':'😀'}}
+                r=client.post('/api/spine/studies/4/actions',json=body);self.assertEqual(r.status_code,200)
+                action=r.json();aid=action['annotation_id']
+                history=client.get('/api/spine/studies/4/actions').json()
+                self.assertEqual(history[-1]['status'],'complete');self.assertEqual(history[-1]['result']['answer'],'시험 답변')
+                again=client.post('/api/spine/studies/4/actions',json=body)
+                self.assertFalse(again.json()['created']);self.assertEqual(len(seen),1)
+                bad=client.post('/api/spine/studies/4/actions',json={**body,'intent':'critique'})
+                self.assertEqual(bad.status_code,409)
+                follow={'intent':'explain','request_key':'action-case-2','annotation':{'id':aid,'revision':1},'parent_id':action['id'],'question':'왜 그런가요?'}
+                r=client.post('/api/spine/studies/4/actions',json=follow);self.assertEqual(r.status_code,200)
+                self.assertEqual(len(seen),2);self.assertEqual(seen[-1]['followup_chain'][0]['answer'],'시험 답변')
+                self.assertEqual(client.get('/api/spine/studies/4/actions').json()[-1]['status'],'complete')
+
+    def test_annotation_action_cancel_recover_and_owner_lock(self):
+        from pipeline.postgres_study_actions_fixture import StudyActionsFixture
+        from models.study_actions import AnnotationActionRequest
+        with self.target() as pg:fork_chat_preview(self.source,pg,self.fixture.schema);import_studies(self.source,pg)
+        actions=StudyActionsFixture(self.target)
+        first=actions.queue(4,AnnotationActionRequest(intent='explain',request_key='cancel-test-1',annotation={'id':8,'revision':1}))
+        self.assertEqual(actions.cancel(4,first['id']),{'ok':True})
+        self.assertEqual(actions.listing(4)[0]['status'],'cancelled')
+        second=actions.queue(4,AnnotationActionRequest(intent='explain',request_key='recover-test-1',annotation={'id':8,'revision':1}))
+        with self.target() as pg:
+            pg.execute("UPDATE study_annotation_actions SET status='running',started_at='2000-01-01 00:00:00',claim_token='x' WHERE id=%s",(second['id'],))
+        with self.target() as worker:
+            worker.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,2))',('study:4',))
+            with self.assertRaises(HTTPException) as busy:actions.recover(4,second['id'])
+            self.assertEqual(busy.exception.status_code,409)
+        self.assertEqual(actions.recover(4,second['id']),{'ok':True})
+        self.assertEqual(actions.listing(4)[-1]['status'],'error')

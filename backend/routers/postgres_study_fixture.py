@@ -1,9 +1,10 @@
 """Explicitly mounted isolated study read/annotation routes only."""
 from fastapi import APIRouter, BackgroundTasks
 from routers.spine_study import Annotation, EditAnnotation, StudyQuestion
+from models.study_actions import AnnotationActionRequest
 
 
-def create_router(store, turns=None):
+def create_router(store, turns=None, actions=None):
     router = APIRouter(prefix='/api/spine/studies', tags=['study'])
 
     @router.get('')
@@ -21,6 +22,32 @@ def create_router(store, turns=None):
     @router.patch('/{study_id}/annotations/{annotation_id}')
     def edit(study_id: int, annotation_id: int, body: EditAnnotation):
         return store.edit_annotation(study_id, annotation_id, body)
+
+    if actions is not None:
+        @router.get('/{study_id}/actions')
+        def list_actions(study_id: int):
+            return actions.listing(study_id)
+
+        @router.post('/{study_id}/actions')
+        def action(study_id: int, body: AnnotationActionRequest, background: BackgroundTasks):
+            result=actions.queue(study_id,body)
+            background.add_task(actions.drain,result['owner_key'])
+            return result
+
+        @router.post('/{study_id}/actions/resume')
+        def resume(study_id: int, background: BackgroundTasks):
+            background.add_task(actions.drain,actions.owner_for(study_id))
+            return {'ok':True}
+
+        @router.post('/{study_id}/actions/{action_id}/cancel')
+        def cancel(study_id: int,action_id: int):
+            return actions.cancel(study_id,action_id)
+
+        @router.post('/{study_id}/actions/{action_id}/recover')
+        def recover(study_id: int,action_id: int,background: BackgroundTasks):
+            result=actions.recover(study_id,action_id)
+            background.add_task(actions.drain,actions.owner_for(study_id))
+            return result
 
     if turns is not None:
         @router.post('/{study_id}/ask')
