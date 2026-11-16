@@ -44,6 +44,12 @@ def initialize(conn):
                    generation_id
             FROM ({definition.rstrip().rstrip(";")}) base''')
         conn.execute('DROP TABLE collected_snapshot_base')
+        # What each publish added, so a candidate-only document can be withdrawn by ID
+        # (MacBook keeps collecting in the same ID space; see the cut-over checklist).
+        conn.execute('CREATE TABLE collected_publications (document_id BIGINT PRIMARY KEY,list_ordinal BIGINT,'
+                     'enrichment_ids BIGINT[] NOT NULL,link_ids BIGINT[] NOT NULL,entity_ids BIGINT[] NOT NULL,'
+                     'keyword_ids BIGINT[] NOT NULL,relation_ids BIGINT[] NOT NULL,'
+                     'published_at TIMESTAMPTZ NOT NULL DEFAULT now())')
 
 
 def _rows(work, table, where, params):
@@ -127,4 +133,38 @@ def publish(conn, work, *, document_floor, entity_floor, keyword_floor, relation
                                                         'confidence': l['confidence']} for l in doc_links])))
             published.append({'id': ident, 'visible': visible, 'timeline': bool(timeline), 'groups': groups,
                               'links': len(doc_links)})
+            first = row is docs[0]  # graph additions are recorded once, with the oldest document
+            conn.execute('INSERT INTO collected_publications VALUES (%s,%s,%s,%s,%s,%s,%s)',
+                         (ident, ordinal if visible else None,
+                          [e['id'] for e in enrichments if e['doc_id'] == ident], [l['id'] for l in doc_links],
+                          [e['id'] for e in entities] if first else [], [k['id'] for k in keywords] if first else [],
+                          [r['id'] for r in relations] if first else []))
         return published
+
+
+def withdraw(conn, document_id):
+    """Remove one published collected document and the graph rows recorded with it."""
+    _guard(conn)
+    with conn.transaction():
+        conn.execute('SELECT pg_advisory_xact_lock(%s)', (GRAPH_LOCK,))
+        row = conn.execute('SELECT list_ordinal,enrichment_ids,link_ids,entity_ids,keyword_ids,relation_ids '
+                           'FROM collected_publications WHERE document_id=%s FOR UPDATE', (document_id,)).fetchone()
+        if row is None:
+            raise LookupError('Not a collected document')
+        ordinal, enrichments, links, entities, keywords, relations = row
+        conn.execute("DELETE FROM video_digest_overlay_rows WHERE table_name='raw_documents' AND row_ordinal=%s", (-document_id,))
+        for table, ids, offset in (('enrichments', enrichments, 1_000_000_000), ('entity_links', links, 1_000_000_000),
+                                   ('entities', entities, 0), ('entity_keywords', keywords, 0)):
+            conn.execute('DELETE FROM video_digest_overlay_rows WHERE table_name=%s AND row_ordinal=ANY(%s)',
+                         (table, [-offset - ident for ident in ids]))
+        conn.execute("DELETE FROM question_graph_overlay_rows WHERE table_name='entity_relations' "
+                     "AND (row_data->>'id')::bigint=ANY(%s)", (relations,))
+        conn.execute('DELETE FROM question_graph_overlay_relations WHERE id=ANY(%s)', (relations,))
+        if ordinal is not None:
+            conn.execute('DELETE FROM collected_document_filter_order WHERE list_ordinal=%s', (ordinal,))
+        conn.execute('DELETE FROM collected_document_list_projection WHERE document_id=%s', (document_id,))
+        for table in ('document_projection',):
+            conn.execute(f'DELETE FROM collected_{table} WHERE id=%s', (document_id,))
+        for table in ('timeline_source_projection', 'timeline_source_metadata', 'document_entity_order'):
+            conn.execute(f'DELETE FROM collected_{table} WHERE document_id=%s', (document_id,))
+        conn.execute('DELETE FROM collected_publications WHERE document_id=%s', (document_id,))
