@@ -3,6 +3,7 @@ import sqlite3
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pipeline.postgres_questions_fixture import import_questions,QuestionsFixture
+from pipeline.postgres_chat_preview_fork import fork_chat_preview
 from routers.postgres_questions_fixture import create_router
 from tests.test_postgres_chat_preview_fork import ChatPreviewForkTests
 
@@ -15,7 +16,7 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
         CREATE TABLE questions(id INTEGER PRIMARY KEY AUTOINCREMENT,text TEXT,narrative_id INTEGER,source_doc_id INTEGER,status TEXT,updated_at TEXT,lead_verdict TEXT,confirm_verdict TEXT,divergence TEXT,last_viewed_at TEXT,created_by TEXT,stock_code TEXT);
         CREATE TABLE sub_questions(id INTEGER PRIMARY KEY,question_id INTEGER,text TEXT,verdict TEXT,falsifier TEXT);
         CREATE TABLE proxy_registry(id INTEGER PRIMARY KEY,key TEXT UNIQUE,sub_question_id INTEGER,label TEXT,modality TEXT,yes_direction TEXT,unit TEXT,tickers TEXT,extract_hint TEXT,active INTEGER);
-        CREATE TABLE proxy_observations(id INTEGER PRIMARY KEY,proxy_id INTEGER,transcript_id INTEGER,observed_at TEXT,value_num REAL,value_text TEXT,direction TEXT,confidence REAL,source_type TEXT);
+        CREATE TABLE proxy_observations(id INTEGER PRIMARY KEY,proxy_id INTEGER,transcript_id INTEGER,observed_at TEXT,value_num REAL,value_text TEXT,direction TEXT,confidence REAL,source_type TEXT,source_id TEXT,created_at TEXT);
         CREATE TABLE question_reports(id INTEGER PRIMARY KEY,question_id INTEGER,body TEXT,inputs_hash TEXT,created_at TEXT);
         CREATE TABLE proxy_scans(proxy_id INTEGER,transcript_id INTEGER);
         CREATE TABLE scenarios(topic TEXT,event TEXT,answer TEXT,beneficiaries TEXT,created_at TEXT,question_id INTEGER);
@@ -25,7 +26,7 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
         INSERT INTO sub_questions VALUES(2,1,'하위 질문','unknown',NULL);
         INSERT INTO proxy_registry VALUES(3,'q1_signal_0',2,'관측','numeric','up','개',NULL,NULL,1);
         INSERT INTO transcripts VALUES(4,10,'ABC',2026,'Q1');
-        INSERT INTO proxy_observations VALUES(5,3,4,'2026-01-01',1,NULL,'up',0.8,'transcript');
+        INSERT INTO proxy_observations VALUES(5,3,4,'2026-01-01',1,NULL,'up',0.8,'transcript','4',NULL);
         INSERT INTO raw_documents VALUES(10,'자료','transcript');
         INSERT INTO scenarios VALUES('주제','사건','답변','[]','2026-01-01',1);
         CREATE TABLE entity_relations(id INTEGER PRIMARY KEY,narrative_id INTEGER,promoted_knowledge_id INTEGER);
@@ -97,3 +98,68 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
         with ThreadPoolExecutor(max_workers=2) as pool:ids=list(pool.map(make,(1,2)))
         self.assertEqual(set(ids),{51,52})
         self.assertEqual(len(QuestionsFixture(self.target).listing()),3)
+
+    def test_sentiment_uses_pg_search_and_daily_idempotence(self):
+        from types import SimpleNamespace
+        from psycopg.types.json import Jsonb
+        from pipeline.postgres_question_sentiment_fixture import extract_sentiment
+        with self.fixture.pg() as pg:
+            for table in ('raw_documents','enrichments'):
+                pg.execute('INSERT INTO legacy_snapshot_tables VALUES(%s,%s,%s,1) ON CONFLICT DO NOTHING',(table,Jsonb([]),'fixture'))
+            pg.execute("INSERT INTO legacy_snapshot_rows VALUES('raw_documents',90001,%s)",(Jsonb({'id':10,'title':'원문'}),))
+            pg.execute("INSERT INTO legacy_snapshot_rows VALUES('enrichments',90001,%s)",(Jsonb({'doc_id':10,'summary':'실험 요약'}),))
+            pg.execute("INSERT INTO snapshot_metadata(singleton,snapshot_at,source_observed_at,document_count,list_row_count,generation_id) VALUES(true,'fixture',now(),1,1,'00000000-0000-0000-0000-000000000001') ON CONFLICT(singleton) DO NOTHING")
+        with self.target() as pg:
+            fork_chat_preview(self.source,pg,self.fixture.schema);import_questions(self.q,pg)
+            pg.execute("UPDATE question_capture_rows SET row_data=jsonb_set(row_data,'{modality}',to_jsonb('sentiment'::text)) WHERE table_name='proxy_registry' AND row_data->>'id'='3'")
+        calls=[]
+        def search(q,*,k):calls.append(('search',k));return SimpleNamespace(items=[{'doc_id':10}])
+        def model(prompt,**kw):calls.append(('llm',kw['task']));return SimpleNamespace(text='{"direction":"up","value_text":"호전"}')
+        result=extract_sentiment(self.target,1,search=search,run_llm=model)
+        self.assertEqual(result,{'extracted':1,'stale':0})
+        self.assertEqual(extract_sentiment(self.target,1,search=search,run_llm=model)['extracted'],0)
+        self.assertEqual(calls,[('search',8),('llm','proxy.sentiment')])
+        tree=QuestionsFixture(self.target).detail(1)
+        self.assertEqual(tree['sub_questions'][0]['proxies'][0]['obs_count'],2)
+        self.assertEqual(tree['sub_questions'][0]['proxies'][0]['observations'][0]['direction'],'up')
+
+    def test_sentiment_drops_result_if_proxy_changes_during_model_call(self):
+        from types import SimpleNamespace
+        from psycopg.types.json import Jsonb
+        from pipeline.postgres_question_sentiment_fixture import extract_sentiment
+        with self.fixture.pg() as pg:
+            for table in ('raw_documents','enrichments'):
+                pg.execute('INSERT INTO legacy_snapshot_tables VALUES(%s,%s,%s,1) ON CONFLICT DO NOTHING',(table,Jsonb([]),'fixture'))
+            pg.execute("INSERT INTO legacy_snapshot_rows VALUES('raw_documents',90002,%s)",(Jsonb({'id':10,'title':'원문'}),))
+            pg.execute("INSERT INTO legacy_snapshot_rows VALUES('enrichments',90002,%s)",(Jsonb({'doc_id':10,'summary':'요약'}),))
+            pg.execute("INSERT INTO snapshot_metadata(singleton,snapshot_at,source_observed_at,document_count,list_row_count,generation_id) VALUES(true,'fixture',now(),1,1,'00000000-0000-0000-0000-000000000001') ON CONFLICT(singleton) DO NOTHING")
+        with self.target() as pg:
+            fork_chat_preview(self.source,pg,self.fixture.schema);import_questions(self.q,pg)
+            pg.execute("UPDATE question_capture_rows SET row_data=jsonb_set(row_data,'{modality}',to_jsonb('sentiment'::text)) WHERE table_name='proxy_registry' AND row_data->>'id'='3'")
+        def search(q,*,k):return SimpleNamespace(items=[{'doc_id':10}])
+        def model(prompt,**kw):
+            with self.target() as pg:
+                pg.execute("UPDATE question_capture_rows SET row_data=jsonb_set(row_data,'{label}',to_jsonb('변경됨'::text)) WHERE table_name='proxy_registry' AND row_data->>'id'='3'")
+            return SimpleNamespace(text='{"direction":"up","value_text":"호전"}')
+        self.assertEqual(extract_sentiment(self.target,1,search=search,run_llm=model),{'extracted':0,'stale':1})
+        self.assertEqual(QuestionsFixture(self.target).detail(1)['sub_questions'][0]['proxies'][0]['obs_count'],1)
+
+    def test_sentiment_drops_result_if_source_summary_changes(self):
+        from types import SimpleNamespace
+        from psycopg.types.json import Jsonb
+        from pipeline.postgres_question_sentiment_fixture import extract_sentiment
+        with self.fixture.pg() as pg:
+            for table in ('raw_documents','enrichments'):
+                pg.execute('INSERT INTO legacy_snapshot_tables VALUES(%s,%s,%s,1) ON CONFLICT DO NOTHING',(table,Jsonb([]),'fixture'))
+            pg.execute("INSERT INTO legacy_snapshot_rows VALUES('raw_documents',90003,%s)",(Jsonb({'id':10,'title':'원문'}),))
+            pg.execute("INSERT INTO legacy_snapshot_rows VALUES('enrichments',90003,%s)",(Jsonb({'doc_id':10,'summary':'이전 요약'}),))
+            pg.execute("INSERT INTO snapshot_metadata(singleton,snapshot_at,source_observed_at,document_count,list_row_count,generation_id) VALUES(true,'fixture',now(),1,1,'00000000-0000-0000-0000-000000000001') ON CONFLICT(singleton) DO NOTHING")
+        with self.target() as pg:
+            fork_chat_preview(self.source,pg,self.fixture.schema);import_questions(self.q,pg)
+            pg.execute("UPDATE question_capture_rows SET row_data=jsonb_set(row_data,'{modality}',to_jsonb('sentiment'::text)) WHERE table_name='proxy_registry' AND row_data->>'id'='3'")
+        def search(q,*,k):return SimpleNamespace(items=[{'doc_id':10}])
+        def model(prompt,**kw):
+            with self.fixture.pg() as pg:
+                pg.execute("UPDATE legacy_snapshot_rows SET row_data=jsonb_set(row_data,'{summary}',to_jsonb('수정된 요약'::text)) WHERE table_name='enrichments' AND row_ordinal=90003")
+            return SimpleNamespace(text='{"direction":"up"}')
+        self.assertEqual(extract_sentiment(self.target,1,search=search,run_llm=model),{'extracted':0,'stale':1})
