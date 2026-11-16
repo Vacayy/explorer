@@ -107,3 +107,25 @@ class PostgreSQLChatChunkTests(unittest.TestCase):
             conn.execute("DELETE FROM legacy_snapshot_tables WHERE table_name='blog_sources'")
         with self.assertRaises(ChatChunkImportConflict):
             adapter.apply_filters(docs, None, None, None, None)
+
+    def test_channel_scope_reuses_original_matcher_on_pg_metadata(self):
+        from psycopg.types.json import Jsonb
+        with self.fixture.pg() as conn:
+            generation = str(conn.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()[0])
+            for table in ('telegram_channels', 'blog_sources', 'youtube_channels', 'scrap_links'):
+                conn.execute("INSERT INTO legacy_snapshot_tables VALUES (%s,'[]'::jsonb,'fixture',0)", (table,))
+            conn.execute("INSERT INTO legacy_snapshot_rows VALUES ('telegram_channels',0,%s)",
+                         (Jsonb({'channel_name': 'tech', 'display_name': '기술 소식'}),))
+            conn.execute("INSERT INTO legacy_snapshot_rows VALUES ('raw_documents',99,%s)",
+                         (Jsonb({'id': 99, 'source_type': 'telegram', 'source_id': 'tech/1',
+                                 'url': '', 'published_at': '2026-01-01'}),))
+        class Chunks:
+            connect = self.fixture.pg
+        chunks = Chunks()
+        chunks.generation = generation
+        adapter = PostgreSQLChunkRAG(chunks, lambda *_: None)
+        ids, names, coverage = adapter.channel_scope('기술')
+        self.assertEqual(ids, {99})
+        self.assertEqual(names, ['기술 소식'])
+        self.assertIn('1건', coverage)
+        self.assertIsNone(adapter.channel_scope('없는 채널'))

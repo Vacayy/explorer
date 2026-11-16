@@ -40,8 +40,8 @@ class PostgreSQLChatTools:
             return ToolResult(name, args, [self._item(doc)] if doc else [], None if doc else '문서 없음')
         if name != 'search_docs':
             raise UnsupportedPostgresChatTool(f'{name} is not implemented in the PG fixture')
-        if args.get('entity') or args.get('channel'):
-            raise UnsupportedPostgresChatTool('entity and channel filters are not implemented in the PG fixture')
+        if args.get('entity') or (args.get('channel') and self.chunk_rag is None):
+            raise UnsupportedPostgresChatTool('requested filter is not implemented in the PG fixture')
         query = (args.get('query') or '').strip()
         if not query:
             raise ValueError('search query is empty')
@@ -53,12 +53,22 @@ class PostgreSQLChatTools:
         limit = max(1, min(int(args.get('k', 12)), 20))
         if self.chunk_rag is not None:
             from pipeline.rag import retrieve_docs
+            scope = self.chunk_rag.channel_scope(args['channel']) if args.get('channel') else None
+            if args.get('channel') and scope is None:
+                return ToolResult(name, args, [], f"'{args['channel']}' 채널·블로거를 구독 소스에서 찾지 못함")
             docs = retrieve_docs(query, k=limit, since_days=args.get('since_days'), source=args.get('source'),
-                                 variants=variants or None, runtime=self.chunk_rag)
+                                 variants=variants or None, doc_ids=scope[0] if scope else None, runtime=self.chunk_rag)
+            note = '실험용 PG 청크 검색; 출처명 및 출처별 부분일치 폴백 미구현'
+            if not docs and scope and scope[0]:
+                docs = sorted(self.chunk_rag.fetch_docs(list(scope[0])),
+                              key=lambda d: d.get('published_at') or '', reverse=True)[:limit]
+                note = '의미 검색에 걸린 대목이 없어 이 채널의 최근 글을 최신순으로 돌려줌'
             items = [{'kind': 'doc', 'doc_id': d['id'], 'title': d['title'], 'text': d['excerpt'],
                       'date': (d['published_at'] or '')[:10], 'href': f"/doc/{d['id']}",
                       'source_type': d['source_type']} for d in docs]
-            return ToolResult(name, args, items, '실험용 PG 청크 검색; 출처명 및 빈 결과 폴백 미구현')
+            if scope:
+                note += f" ('{args['channel']}' → {', '.join(dict.fromkeys(scope[1]))} 범위 검색) · {scope[2]}"
+            return ToolResult(name, args, items, note)
         found = []
         seen = set()
         items = []

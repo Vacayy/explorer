@@ -33,7 +33,11 @@ class ChunkRAGTests(unittest.TestCase):
         self.assertEqual(result.items[0]['doc_id'], 7)
         self.assertIs(retrieve.call_args.kwargs['runtime'], runtime)
         with self.assertRaises(UnsupportedPostgresChatTool):
+            tools.run_tool({'name': 'search_docs', 'args': {'query': '질문', 'entity': '기업'}})
+        runtime.channel_scope.return_value = ({7}, ['채널'], '수집 범위')
+        with patch('pipeline.rag.retrieve_docs', return_value=docs) as retrieve:
             tools.run_tool({'name': 'search_docs', 'args': {'query': '질문', 'channel': '채널'}})
+        self.assertEqual(retrieve.call_args.kwargs['doc_ids'], {7})
 
     def test_shared_filters_preserve_existing_mute_and_entity_rules(self):
         from pipeline.rag import _filter_with_settings
