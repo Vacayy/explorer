@@ -86,8 +86,12 @@ def import_studies(source, target):
                         sql.Identifier(table), sql.SQL(',').join(map(sql.Identifier, columns)),
                         sql.SQL(',').join([sql.Placeholder()] * len(columns))), rows[table])
             if 'id' in columns:
+                has_sequence = source.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'").fetchone()
+                prior = source.execute('SELECT seq FROM sqlite_sequence WHERE name=?', (table,)).fetchone() if has_sequence else None
+                high_water = int(prior[0]) if prior and prior[0] is not None else 0
                 target.execute('SELECT setval(pg_get_serial_sequence(%s,%s), GREATEST(COALESCE((SELECT max(id) FROM '
-                               + table + '),0),1), (SELECT count(*)>0 FROM ' + table + '))', (table, 'id'))
+                               + table + '),0),%s,1), (GREATEST(COALESCE((SELECT max(id) FROM '
+                               + table + '),0),%s)>0))', (table, 'id', high_water, high_water))
         target.execute('CREATE UNIQUE INDEX study_session_document_project ON study_sessions(document_id,project_id)')
         target.execute('CREATE UNIQUE INDEX study_turn_request ON study_turns(study_id,request_key)')
         target.execute('CREATE UNIQUE INDEX study_project_turn_request ON study_project_turns(project_id,request_key)')

@@ -42,6 +42,25 @@ class StudyFixtureTests(ChatPreviewForkTests):
         with self.assertRaises(HTTPException):
             store.add_annotation(4, SimpleNamespace(kind='highlight', start=2, end=3, exact='문', comment=''))
 
+    def test_deleted_annotation_id_is_not_reused(self):
+        self.source.rollback()
+        self.source.execute('PRAGMA query_only=OFF')
+        definition = self.source.execute("SELECT sql FROM sqlite_master WHERE name='study_annotations'").fetchone()[0]
+        self.source.execute('ALTER TABLE study_annotations RENAME TO old_annotations')
+        self.source.execute(definition.replace('id INTEGER PRIMARY KEY,', 'id INTEGER PRIMARY KEY AUTOINCREMENT,', 1))
+        self.source.execute('INSERT INTO study_annotations SELECT * FROM old_annotations')
+        self.source.execute('DROP TABLE old_annotations')
+        self.source.execute("INSERT INTO study_annotations(id,study_id,kind,start_offset,end_offset,exact) VALUES(100,4,'highlight',2,3,'😀')")
+        self.source.execute('DELETE FROM study_annotations WHERE id=100')
+        self.source.commit()
+        self.source.execute('PRAGMA query_only=ON')
+        self.source.execute('BEGIN')
+        with self.target() as pg:
+            fork_chat_preview(self.source, pg, self.fixture.schema)
+            import_studies(self.source, pg)
+        new = StudyFixture(self.target).add_annotation(4, SimpleNamespace(kind='comment', start=2, end=3, exact='😀', comment='메모'))
+        self.assertGreater(new['id'], 100)
+
     def test_existing_http_paths_survive_app_recreation(self):
         with self.target() as pg:
             fork_chat_preview(self.source, pg, self.fixture.schema)
