@@ -109,7 +109,7 @@
 - 스터디 이관 시 SQLite `sqlite_sequence`가 있는 테이블은 삭제된 ID를 포함한 발급 상한을 PostgreSQL에도 보존한다. 일반 `INTEGER PRIMARY KEY` 테이블처럼 SQLite에 삭제된 ID 상한이 저장되지 않은 경우 그 과거 상한은 복원할 수 없다.
 - 격리 PG의 기존 `POST /api/spine/studies`는 같은 자료 snapshot에서 문서 본문을 고정해 스터디를 열거나 기존 스터디를 재사용한다. 동일 문서 동시 생성은 트랜잭션 잠금으로 직렬화한다. 별도 스크립트는 같은 SQLite 읽기 트랜잭션에서 대화·스터디 테이블과 문서 식별자만 보존하며 전체 원본 백업을 대체하지 않는다.
 - `scripts/refactor_single_path_preview.py`는 격리 전용 문서 조회, 기존 대화 및 스터디·주석 라우터를 하나의 PG 스키마에 연결한다. 별도 generation pointer를 거부하며 자료와 대화 검색은 지연 생성되는 공통 키워드·문서 벡터 인덱스를 사용한다. 본문 해시가 다르거나 없는 벡터는 제외하고 키워드 검색은 유지하며 제외 건수를 검색 응답 헤더에 표시한다. 대화의 엔티티 범위는 동일 snapshot의 연결 관계로 제한한다. 공개 인증·운영 배포용이 아니며 청크 기반 검색, 기존 비문서 첨부와 미지원 도구는 여전히 제한된다.
-- 격리 대화 대상 검색은 같은 PG 문서 projection에서 자료 제목을 검색하고 그 ID를 질문에 붙인다. 종목·인물 등 다른 대상 유형은 미지원 응답을 반환한다.
+- 격리 대화 대상 검색은 같은 PG 문서 projection에서 자료 제목과 국내 종목 snapshot에서 이름·코드를 검색해 질문에 붙인다. 국내 종목은 서버에서 종목명을 확인하고 동일 세대의 저장 종가를 근거로 사용하며 실시간·재무·공시 근거는 아직 제공하지 않는다. 인물 등 다른 대상 유형은 미지원 응답을 반환한다.
 - `study_annotations.intent`를 추가하며 기존 데이터는 highlight로 승계. `study_annotation_actions`에 주석·명시적 의도·불변 context·버전·요청 hash·parent/retry·큐 상태·답변/검색 근거를 저장한다. `models/study_actions.py`, `pipeline/study_actions.py`, `pipeline/study_intents.py`; 초기화 migration은 `database.init_db`에서 실행한다.
 - `/api/spine/studies/{id}/actions` GET/POST, `actions/resume`, `actions/{action_id}/cancel|recover` POST. GET 생성 없음. 스터디/프로젝트별 FIFO, 대기+실행 최대 30개, 원자적 저장/멱등 접수, DB running UNIQUE와 claim token. 재시작 후 남은 대기는 명시적 resume 또는 새 접수로 진행하며 10분 넘게 멈춘 실행은 recover로 정리한다.
 - 표시 작업마다 독립 대화를 만들고 지정한 답변의 조상만 후속 질문에 복사한다. 기존 자유 대화·선택 요약 흐름은 별도 유지한다. 질문 시의 원문·앞뒤 최대 2,400자·소제목·저장 코멘트와 prompt version을 고정하고, 사용자 메모와 AI 결과를 구분한다.

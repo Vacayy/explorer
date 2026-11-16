@@ -27,7 +27,26 @@ class PostgreSQLChatTools:
         self.reader = PostgreSQLDocumentReader(connect)
 
     def gather_attached_refs(self, refs):
-        raise UnsupportedPostgresChatTool('non-document attached targets are not implemented')
+        from pipeline.postgres_conversations import PostgreSQLConversations
+        items, empty = [], []
+        with self.connect() as conn:
+            PostgreSQLConversations._check_market_generation(conn)
+            for ref in refs:
+                if ref.get('kind') == 'doc':
+                    continue
+                if ref.get('kind') != 'stock':
+                    raise UnsupportedPostgresChatTool('target type is not implemented')
+                code = str(ref['ref'])
+                label = PostgreSQLConversations.stock_label(conn, code)
+                row = conn.execute('SELECT trade_date,close FROM sector_market_prices '
+                    'WHERE stock_code=%s AND close IS NOT NULL ORDER BY trade_date DESC LIMIT 1', (code,)).fetchone()
+                if not label or not row:
+                    empty.append('국내 종목 ' + (label or code))
+                    continue
+                items.append({'kind': 'quote', 'title': f'{label}({code}) 저장 시세',
+                    'text': f'{row[0]} 기준 저장 종가 {row[1]:,}원. 실시간 시세가 아닙니다. 재무·공시 자료는 이 항목에 포함되지 않습니다.',
+                    'date': row[0], 'doc_id': None, 'href': f'/analyze/{code}/summary', 'tool': 'attached_targets'})
+        return items[:12], empty
 
     @staticmethod
     def _item(doc):

@@ -17,6 +17,10 @@ class DocumentNotFound(LookupError):
     pass
 
 
+class TargetNotFound(LookupError):
+    pass
+
+
 class ConversationImportConflict(RuntimeError):
     pass
 
@@ -131,6 +135,36 @@ class PostgreSQLConversations:
                 for ident, doc in rows]
 
     @staticmethod
+    def _check_market_generation(conn):
+        row = conn.execute('SELECT m.linked_document_generation,m.generation_id=s.generation_id '
+                           'FROM sector_market_metadata m CROSS JOIN snapshot_metadata s '
+                           'WHERE m.singleton AND s.singleton').fetchone()
+        if row != (True, True):
+            raise ValueError('Market snapshot does not match document generation')
+
+    def search_stock_targets(self, query, *, limit):
+        from pipeline.chat_targets import stock_rank
+        if not query:
+            return []
+        with self.connect() as conn:
+            self._check_market_generation(conn)
+            rows = conn.execute("""SELECT c.stock_code,c.corp_name,p.trade_date,p.close,p.market_cap
+                FROM sector_market_companies c LEFT JOIN LATERAL (
+                  SELECT trade_date,close,market_cap FROM sector_market_prices
+                  WHERE stock_code=c.stock_code AND close IS NOT NULL ORDER BY trade_date DESC LIMIT 1
+                ) p ON TRUE WHERE strpos(lower(COALESCE(c.corp_name,'')),lower(%s))>0
+                    OR strpos(c.stock_code,%s)>0""", (query, query)).fetchall()
+        rows.sort(key=lambda r: (stock_rank(r[1] or '', r[0], query), -(r[4] or 0), r[1] or ''))
+        return [{'kind': 'stock', 'ref': code, 'label': name or code, 'code': code,
+                 'sub': code, 'date': day} for code, name, day, _, _ in rows[:limit]]
+
+    @classmethod
+    def stock_label(cls, conn, code):
+        cls._check_market_generation(conn)
+        row = conn.execute('SELECT corp_name FROM sector_market_companies WHERE stock_code=%s', (code,)).fetchone()
+        return (row[0] or code) if row else None
+
+    @staticmethod
     def _owned(cursor, conversation_id, owner_chat_id, *, lock=False):
         suffix = ' FOR UPDATE' if lock else ''
         cursor.execute(
@@ -186,10 +220,16 @@ class PostgreSQLConversations:
             previous += [{'kind': 'doc', 'ref': str(i), 'label': ''} for i in state.get('attached_doc_ids', [])
                          if not any(r.get('kind') == 'doc' and str(r.get('ref')) == str(i) for r in previous)]
             if refs is not None:
-                if any(r.get('kind') != 'doc' for r in previous + refs):
-                    raise ValueError('non-document targets are not supported in the fixture')
+                if any(r.get('kind') not in ('doc', 'stock') for r in previous + refs):
+                    raise ValueError('target type is not supported in the fixture')
                 selected, added = merge_refs(previous, refs, max_new=max_new)
                 for ref in added:
+                    if ref['kind'] == 'stock':
+                        label = self.stock_label(conn, ref['ref'])
+                        if not label:
+                            raise TargetNotFound(ref['ref'])
+                        ref['label'] = label
+                        continue
                     try:
                         ident = int(ref['ref'])
                     except ValueError as exc:
@@ -206,7 +246,7 @@ class PostgreSQLConversations:
                             raise DocumentNotFound(ident)
                     ref['label'] = ref['label'] or document['detail_document'].get('title') or str(ident)
                 state['attached_refs'] = selected
-                state['attached_doc_ids'] = [int(r['ref']) for r in selected]
+                state['attached_doc_ids'] = [int(r['ref']) for r in selected if r['kind'] == 'doc']
                 attachments = selected or None
             else:
                 attachments = None
