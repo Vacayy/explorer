@@ -388,3 +388,22 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
         return Response(status_code=204)
 
     return router
+
+
+def create_proxy_router(connect, *, run_llm=None):
+    """POST /api/spine/transcript/proxies/extract (legacy extract_proxies: all active proxies, 40 scans per press)."""
+    router = APIRouter(prefix='/api/spine/transcript')
+
+    @router.post('/proxies/extract')
+    def extract(request: Request):
+        from pipeline.postgres_question_numeric_fixture import extract_all_numeric_native
+        if run_llm is None:
+            return {'extracted': 0, 'skipped': 0, 'reason': 'llm 미가용'}
+        # Optional lower limit for a deliberate local fixture test only; the button keeps the legacy 40.
+        test_limit = request.headers.get('x-explorer-fixture-model-limit')
+        if test_limit is not None and (not test_limit.isdigit() or not 1 <= int(test_limit) <= 4):
+            raise HTTPException(400, '시험 호출 제한이 올바르지 않습니다')
+        result = extract_all_numeric_native(connect, run_llm=run_llm, limit=int(test_limit) if test_limit else 40)
+        return {'extracted': result['extracted'], 'scanned': result['scanned']}
+
+    return router
