@@ -426,18 +426,7 @@ def _derive_owner_records(root, pg):
             table, column = SOURCE_TABLES[kind]
             root.execute(f'UPDATE {table} SET is_active=COALESCE(?,is_active),collect_enabled=COALESCE(?,collect_enabled) '
                          f'WHERE {column}=?', (active, collect, key))
-    if pg.execute("SELECT to_regclass('owner_narrative_decisions')").fetchone()[0] is not None:
-        # Admin decisions over the collected candidates; a dismissal lapses after its date (legacy: 14 days).
-        from pipeline.market_today_links import _today_kst
-        today = _today_kst().isoformat()
-        for tag, status, topic, mode, aliases, until in pg.execute(
-                'SELECT tag,status,narrative_topic,mode,alias_tags,dismissed_until FROM owner_narrative_decisions'):
-            if status == 'dismissed' and (until or '') < today:
-                continue
-            patch = {key: value for key, value in (('mode', mode), ('alias_tags', aliases)) if value is not None}
-            root.execute("UPDATE narrative_candidates SET status=?,narrative_topic=?,dismissed_until=?,"
-                         "detail_json=json_patch(COALESCE(detail_json,'{}'),?) WHERE tag=?",
-                         (status, topic, until, json.dumps(patch, ensure_ascii=False), tag))
+    derive_owner_narrative_decisions(root, pg)
     if pg.execute("SELECT to_regclass('owner_trade_follow')").fetchone()[0] is not None:
         # The owner's on/off wins (a collector re-seed would switch items back on); names stay the collector's.
         for hs, name, group, active, updated in pg.execute(
@@ -460,3 +449,20 @@ def derive_owner_transcript_follow(root, pg):
     root.execute('UPDATE transcript_follow SET core_pinned=0')
     root.executemany('UPDATE transcript_follow SET core_pinned=? WHERE ticker=?',
                      pg.execute('SELECT core_pinned,ticker FROM owner_transcript_pins').fetchall())
+
+
+def derive_owner_narrative_decisions(root, pg):
+    """Admin decisions over the collected narrative candidates."""
+    if pg.execute("SELECT to_regclass('owner_narrative_decisions')").fetchone()[0] is None:
+        return
+    # Admin decisions over the collected candidates; a dismissal lapses after its date (legacy: 14 days).
+    from pipeline.market_today_links import _today_kst
+    today = _today_kst().isoformat()
+    for tag, status, topic, mode, aliases, until in pg.execute(
+            'SELECT tag,status,narrative_topic,mode,alias_tags,dismissed_until FROM owner_narrative_decisions'):
+        if status == 'dismissed' and (until or '') < today:
+            continue
+        patch = {key: value for key, value in (('mode', mode), ('alias_tags', aliases)) if value is not None}
+        root.execute("UPDATE narrative_candidates SET status=?,narrative_topic=?,dismissed_until=?,"
+                     "detail_json=json_patch(COALESCE(detail_json,'{}'),?) WHERE tag=?",
+                     (status, topic, until, json.dumps(patch, ensure_ascii=False), tag))

@@ -168,8 +168,7 @@ def create_router(factory, timeline):
 
     @router.post('/api/spine/narrative-candidates/{tag}/approve', response_model=CandidateAction)
     def approve_candidate(tag: str = Path(..., max_length=80)):
-        # Same decision as market_today_links.approve; a merge's re-linking of past sessions happens at the
-        # collector's next Market Today run, which links approved candidates.
+        # Same decision as market_today_links.approve, including a merge's immediate re-linking of past sessions.
         row = candidate(tag)
         if not row or row['status'] != 'pending':
             raise HTTPException(409, '지금 처리할 수 있는 후보가 아닙니다')
@@ -179,6 +178,11 @@ def create_router(factory, timeline):
         topic = merge['topic'] if merge else (detail.get('tags') or [row['name']])[0]
         with connection() as conn:
             records.decide_narrative(conn, tag, 'approved', narrative_topic=topic, mode=mode, alias_tags=aliases)
+            sessions = [session['mt_id'] for session in json.loads(row['sessions_json'] or '[]')]
+            if merge and sessions:
+                import database
+                from pipeline.postgres_collector_bridge import relink_market_today
+                relink_market_today(conn, database.DB_PATH, sessions)
         return {'tag': tag, 'status': 'approved', 'mode': mode, 'narrative_topic': topic, 'dismissed_until': None}
 
     @router.post('/api/spine/narrative-candidates/{tag}/dismiss', response_model=CandidateAction)

@@ -106,3 +106,48 @@ def apply_entity_merges(pg, collector_path):
                        (merge_id, loser, survivor))
             applied.append((merge_id, loser, survivor))
     return {'applied': applied, 'waiting': waiting}
+
+
+def relink_market_today(pg, projection_path, mt_ids):
+    """Re-run the legacy Market Today narrative linker for some sessions and store the result in PG.
+
+    What `market_today_links.approve` does at once for a merge approval: the unchanged linker runs on a
+    private SQLite that reads the projection (attached read-only) and holds writable copies of the two
+    tables it writes plus the candidates with the admin decisions applied; only its result for these
+    sessions replaces the collected rows. The collector computes the same at its next run.
+    """
+    from pipeline.market_today_links import link_narratives
+    from pipeline.postgres_legacy_projection import derive_owner_narrative_decisions
+    _guard(pg)
+    db = sqlite3.connect(':memory:')
+    db.row_factory = sqlite3.Row
+    try:
+        db.execute('ATTACH DATABASE ? AS src', (f'file:{projection_path}?mode=ro',))
+        marks = ','.join('?' * len(mt_ids))
+        for table, where in (('market_today', f'id IN ({marks})'), ('market_today_links', f'mt_id IN ({marks})'),
+                             ('narrative_candidates', '1=1')):
+            ddl = db.execute('SELECT sql FROM src.sqlite_master WHERE type=\'table\' AND name=?', (table,)).fetchone()[0]
+            db.execute(ddl)  # main.<table> shadows src.<table> for the linker's unqualified names
+            db.execute(f'INSERT INTO main.{table} SELECT * FROM src.{table} WHERE {where}', mt_ids if where != '1=1' else ())
+        derive_owner_narrative_decisions(db, pg)
+        for mt_id in mt_ids:
+            link_narratives(db, mt_id)
+        links = [dict(row) for row in db.execute(f'SELECT * FROM main.market_today_links WHERE mt_id IN ({marks}) ORDER BY rowid', mt_ids)]
+        sessions = {row['id']: dict(row) for row in db.execute(f'SELECT * FROM main.market_today WHERE id IN ({marks})', mt_ids)}
+    finally:
+        db.close()
+    with pg.transaction():
+        pg.execute('LOCK TABLE legacy_supplement_tables IN EXCLUSIVE MODE')  # not during a collected-table refresh
+        pg.execute("DELETE FROM legacy_supplement_rows WHERE table_name='market_today_links' AND (row_data->>'mt_id')::bigint=ANY(%s)",
+                   (list(mt_ids),))
+        start = pg.execute("SELECT COALESCE(max(row_ordinal),-1)+1 FROM legacy_supplement_rows WHERE table_name='market_today_links'").fetchone()[0]
+        for position, row in enumerate(links):
+            pg.execute("INSERT INTO legacy_supplement_rows VALUES ('market_today_links',%s,%s)",
+                       (start + position, json.dumps(row, ensure_ascii=False)))
+        for mt_id, row in sessions.items():
+            pg.execute("UPDATE legacy_supplement_rows SET row_data=%s WHERE table_name='market_today' AND (row_data->>'id')::bigint=%s",
+                       (json.dumps(row, ensure_ascii=False), mt_id))
+        for table in ('market_today_links', 'market_today'):
+            pg.execute('UPDATE legacy_supplement_tables SET row_count=(SELECT count(*) FROM legacy_supplement_rows WHERE table_name=%s) '
+                       'WHERE table_name=%s', (table, table))
+    return len(links)
