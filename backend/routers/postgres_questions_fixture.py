@@ -1,6 +1,6 @@
 """Read existing question-tracker data from a disposable PG fixture."""
 import json
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from psycopg.rows import dict_row
 from pipeline.postgres_graph_fixture import _guard
 
@@ -84,4 +84,53 @@ def create_router(connect):
             cur.execute("UPDATE questions SET last_viewed_at=to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS') "
                         'WHERE id=%s', (question_id,))
             return question
+
+    @router.get('/{question_id}/synthesis')
+    def synthesis(question_id: int):
+        from pipeline.question_report import _hash
+        with connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+            conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            _guard(conn)
+            cur.execute('SELECT * FROM questions WHERE id=%s', (question_id,))
+            question = cur.fetchone()
+            if not question:
+                raise HTTPException(404, '질문 없음')
+            cur.execute('SELECT id,text,verdict FROM sub_questions WHERE question_id=%s ORDER BY id', (question_id,))
+            subs = cur.fetchall()
+            if not subs:
+                return {'status': 'empty', 'body': None, 'created_at': None, 'stale': False}
+            for sub in subs:
+                cur.execute('SELECT id,label,modality,unit FROM proxy_registry '
+                            'WHERE sub_question_id=%s AND active=1 ORDER BY id', (sub['id'],))
+                proxies = cur.fetchall()
+                for proxy in proxies:
+                    cur.execute('SELECT observed_at,value_num,value_text,direction FROM proxy_observations '
+                                'WHERE proxy_id=%s ORDER BY observed_at DESC NULLS LAST,id DESC LIMIT 1', (proxy['id'],))
+                    proxy['obs'] = cur.fetchone()
+                sub['proxies'] = proxies
+            grounding = []
+            if question['narrative_id']:
+                cur.execute("SELECT count(*) AS n FROM legacy_snapshot_tables WHERE table_name IN ('entity_relations','knowledge')")
+                if cur.fetchone()['n'] != 2:
+                    raise HTTPException(503, '보고서의 근거 자료가 준비되지 않았습니다')
+                cur.execute("SELECT k.row_data->>'id' AS knowledge_id, min(e.row_ordinal) AS ordinal "
+                            "FROM legacy_snapshot_rows e JOIN legacy_snapshot_rows k ON k.table_name='knowledge' "
+                            "AND k.row_data->>'id'=e.row_data->>'promoted_knowledge_id' "
+                            "WHERE e.table_name='entity_relations' AND e.row_data->>'narrative_id'=%s "
+                            "GROUP BY k.row_data->>'id' ORDER BY ordinal", (str(question['narrative_id']),))
+                grounding = [{'knowledge_id': int(row['knowledge_id'])} for row in cur.fetchall()]
+            cur.execute('SELECT body,inputs_hash,created_at FROM question_reports WHERE question_id=%s ORDER BY id DESC LIMIT 1', (question_id,))
+            cached = cur.fetchone()
+            if not cached:
+                return {'status': 'empty', 'body': None, 'created_at': None, 'stale': True}
+            digest = _hash({'q': question, 'subs': subs, 'grounding': grounding})
+            return {'status': 'ok', 'body': cached['body'], 'created_at': cached['created_at'],
+                    'stale': cached['inputs_hash'] != digest}
+    @router.delete('/{question_id}', status_code=204)
+    def dismiss(question_id: int):
+        with connect() as conn:
+            _guard(conn)
+            conn.execute("UPDATE questions SET status='dismissed' WHERE id=%s", (question_id,))
+        return Response(status_code=204)
+
     return router
