@@ -26,6 +26,21 @@ CHAT_COLUMNS = {
 }
 
 
+# Report existing broken links without silently discarding them. These queries
+# work in both databases and include chat ownership for turn messages.
+RELATION_GAPS = {
+    'session_project': "SELECT count(*) FROM study_sessions s LEFT JOIN study_projects p ON p.id=s.project_id WHERE s.project_id<>0 AND p.id IS NULL",
+    'session_chat': "SELECT count(*) FROM study_sessions s LEFT JOIN conversations c ON c.id=s.conversation_id WHERE s.conversation_id IS NOT NULL AND c.id IS NULL",
+    'project_chat': "SELECT count(*) FROM study_projects p LEFT JOIN conversations c ON c.id=p.conversation_id WHERE p.conversation_id IS NOT NULL AND c.id IS NULL",
+    'annotation_session': "SELECT count(*) FROM study_annotations a LEFT JOIN study_sessions s ON s.id=a.study_id WHERE s.id IS NULL",
+    'member': "SELECT count(*) FROM study_project_members m LEFT JOIN study_sessions s ON s.id=m.study_id LEFT JOIN study_projects p ON p.id=m.project_id WHERE s.id IS NULL OR p.id IS NULL",
+    'study_turn': "SELECT count(*) FROM study_turns t LEFT JOIN study_sessions s ON s.id=t.study_id LEFT JOIN conversations c ON c.id=t.conversation_id LEFT JOIN chat_messages m ON m.id=t.message_id AND m.conversation_id=t.conversation_id WHERE s.id IS NULL OR c.id IS NULL OR m.id IS NULL",
+    'project_turn': "SELECT count(*) FROM study_project_turns t LEFT JOIN study_projects p ON p.id=t.project_id LEFT JOIN conversations c ON c.id=t.conversation_id LEFT JOIN chat_messages m ON m.id=t.message_id AND m.conversation_id=t.conversation_id WHERE p.id IS NULL OR c.id IS NULL OR m.id IS NULL",
+    'action_chain': "SELECT count(*) FROM study_annotation_actions a LEFT JOIN study_annotation_actions p ON p.id=a.parent_id LEFT JOIN study_annotation_actions r ON r.id=a.retry_of WHERE (a.parent_id IS NOT NULL AND p.id IS NULL) OR (a.retry_of IS NOT NULL AND r.id IS NULL)",
+    'action_annotation_chat': "SELECT count(*) FROM study_annotation_actions a LEFT JOIN study_annotations n ON n.id=a.annotation_id AND n.study_id=a.study_id LEFT JOIN conversations c ON c.id=a.conversation_id WHERE n.id IS NULL OR (a.conversation_id IS NOT NULL AND c.id IS NULL)",
+}
+
+
 def import_studies(source, target):
     """Import all study records atomically into an empty disposable schema.
 
@@ -78,6 +93,9 @@ def import_studies(source, target):
         target.execute('CREATE UNIQUE INDEX study_project_turn_request ON study_project_turns(project_id,request_key)')
         target.execute('CREATE UNIQUE INDEX study_action_request ON study_annotation_actions(study_id,request_key)')
         target.execute("CREATE UNIQUE INDEX study_action_running ON study_annotation_actions(owner_key) WHERE status='running'")
+        for name, query in RELATION_GAPS.items():
+            if source.execute(query).fetchone()[0] != target.execute(query).fetchone()[0]:
+                raise ValueError('Study relation mismatch: ' + name)
     return {name: len(value) for name, value in rows.items()}
 
 
