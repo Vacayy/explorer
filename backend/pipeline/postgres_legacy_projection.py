@@ -6,7 +6,10 @@ Instead of re-implementing them, this writes every `legacy_snapshot_tables` row
 single repeatable-read transaction, and hands legacy code read-only connections.
 A changed overlay triggers a background rebuild; readers keep the previous file
 until the new one is complete, so they never see a half-built projection.
+Bodies of documents older than BODY_DAYS are left empty (metadata stays): the
+connected legacy reads only use recent bodies and the latest memo.
 """
+import logging
 import os
 import sqlite3
 import threading
@@ -18,7 +21,29 @@ from pipeline.postgres_graph_fixture import _guard
 
 # PG-native ledgers that replaced a legacy table; legacy reads must see their rows.
 NATIVE = ('study_projects',)
+# Everything the projection reads that can change after the base load.
+VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'question_graph_overlay_rows',
+             'legacy_supplement_tables', 'legacy_supplement_rows', *NATIVE)
 CHECK_SECONDS = 10
+BODY_DAYS = 45
+log = logging.getLogger(__name__)
+
+
+def initialize_projection_version(target):
+    """One counter row bumped by statement triggers on every table the projection reads."""
+    _guard(target)
+    schema = target.execute('SELECT quote_ident(current_schema())').fetchone()[0]
+    with target.transaction():
+        if target.execute("SELECT to_regclass('legacy_projection_version')").fetchone()[0] is not None:
+            raise ValueError('Projection version already initialized')
+        target.execute('CREATE TABLE legacy_projection_version (singleton BOOLEAN PRIMARY KEY DEFAULT true CHECK(singleton),'
+                       'counter BIGINT NOT NULL)')
+        target.execute('INSERT INTO legacy_projection_version VALUES (true,0)')
+        target.execute(f'CREATE FUNCTION legacy_projection_bump() RETURNS trigger LANGUAGE plpgsql AS '
+                       f'$$BEGIN UPDATE {schema}.legacy_projection_version SET counter=counter+1; RETURN NULL; END$$')
+        for table in VERSIONED:
+            target.execute(f'CREATE TRIGGER legacy_projection_bump AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON {table} '
+                           'FOR EACH STATEMENT EXECUTE FUNCTION legacy_projection_bump()')
 
 
 class LegacyProjection:
@@ -32,11 +57,10 @@ class LegacyProjection:
         self.current = None  # (path, version)
         self.building = False
         self.checked = 0.0
+        self.failures = 0
 
     def _version(self, pg):
-        # Cumulative tuple changes of writable overlays; stats lag slightly, rebuilds follow.
-        changes = pg.execute("SELECT coalesce(sum(n_tup_ins+n_tup_upd+n_tup_del),0) FROM pg_stat_user_tables "
-                             "WHERE schemaname=current_schema()").fetchone()[0]
+        changes = pg.execute('SELECT counter FROM legacy_projection_version WHERE singleton').fetchone()[0]
         generation = pg.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()[0]
         return f'{generation}:{changes}'
 
@@ -50,6 +74,8 @@ class LegacyProjection:
                 pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
                 _guard(pg)
                 version = self._version(pg)
+                cutoff = pg.execute("SELECT to_char(timezone('utc',now()) - %s * interval '1 day','YYYY-MM-DD')",
+                                    (BODY_DAYS,)).fetchone()[0]
                 tables = pg.execute('SELECT table_name,columns,schema_sql FROM legacy_snapshot_tables ORDER BY table_name').fetchall()
                 for name, columns, ddl in tables:
                     root.execute(ddl)
@@ -60,7 +86,14 @@ class LegacyProjection:
                     insert = f'INSERT INTO "{name}" ({quoted}) VALUES ({",".join("?" for _ in columns)})'
                     with pg.cursor(name=f'p{uuid.uuid4().hex}') as cursor:
                         cursor.execute('SELECT row_data FROM legacy_snapshot_rows WHERE table_name=%s ORDER BY row_ordinal', (name,))
-                        root.executemany(insert, (tuple(row[0].get(column) for column in columns) for row in cursor))
+                        if name == 'raw_documents':
+                            required = {row[1] for row in root.execute('PRAGMA table_info("raw_documents")') if row[3]}
+                            empty = {column: '' if column in required else None for column in ('raw_content', 'markdown')}
+                            rows = (row[0] if row[0].get('source_type') == 'memo' or (row[0].get('published_at') or '') >= cutoff
+                                    else {**row[0], **empty} for row in cursor)
+                        else:
+                            rows = (row[0] for row in cursor)
+                        root.executemany(insert, (tuple(data.get(column) for column in columns) for data in rows))
                 from pipeline.study_projects import SCHEMA
                 root.executescript(SCHEMA)
                 for name in NATIVE:
@@ -83,8 +116,13 @@ class LegacyProjection:
     def _refresh(self):
         try:
             built = self._build()
-        except Exception:
+            self.failures = 0
+        except Exception as exc:
             built = None
+            self.failures += 1
+            # The previous projection keeps serving; say so instead of going silently stale.
+            log.warning('Legacy projection rebuild failed (%s, %d in a row); serving the previous one',
+                        type(exc).__name__, self.failures)
         with self.lock:
             self.building = False
             if built:
