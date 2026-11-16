@@ -13,7 +13,7 @@ from fastapi.encoders import jsonable_encoder
 import uvicorn
 
 from database import get_connection
-from routers import spine_ask, spine_chat_targets, spine_conversations, spine_doc, spine_study, spine_study_projects
+from routers import spine_ask, spine_chat_targets, spine_conversations, spine_doc, spine_questions, spine_study, spine_study_projects
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -72,6 +72,14 @@ def add_study_documents(pid: int, body: spine_study_projects.Documents):
     return spine_study_projects.add(pid, body)
 
 
+@app.post('/api/spine/questions', status_code=201)
+def create_question(body: spine_questions.AskRequest):
+    if body.source_doc_id is not None:
+        check_study_document(body.source_doc_id)
+    # Keep original decomposition, related observation extraction and rollup.
+    return spine_questions.create(body)
+
+
 @app.get('/api/spine/doc/{doc_id}')
 def document(doc_id: int, response: Response, generation: str | None = None):
     source, headers = source_document(doc_id, generation)
@@ -114,7 +122,8 @@ def owner_conversation(conversation_id: int):
 
 
 for router in (spine_ask.router, spine_chat_targets.router,
-               spine_conversations.router, spine_doc.router, spine_study.router, spine_study_projects.router):
+               spine_conversations.router, spine_doc.router, spine_questions.router,
+               spine_study.router, spine_study_projects.router):
     app.include_router(router)
 
 if __name__ == '__main__':

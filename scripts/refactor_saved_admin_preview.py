@@ -5,12 +5,11 @@ or write endpoint is started. Observe's in-process usage queue is empty here.
 """
 from datetime import datetime, timedelta
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 import uvicorn
 
 from database import get_connection
 from pipeline import observe
-from pipeline.questions import get_tree
 from routers import spine_admin
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -30,15 +29,6 @@ def runs(limit: int = 50):
 @app.get('/api/spine/admin/observe')
 def observation(days: int = 7):
     return observe.summary(max(1, min(days, 90)))
-
-
-@app.get('/api/spine/questions/{question_id}')
-def question_detail(question_id: int):
-    # Original handler also updates last_viewed_at; keep this snapshot read-only.
-    result = get_tree(question_id)
-    if 'error' in result:
-        raise HTTPException(404, '질문 없음')
-    return result
 
 
 @app.get('/api/stock-prices/{stock_code}')
