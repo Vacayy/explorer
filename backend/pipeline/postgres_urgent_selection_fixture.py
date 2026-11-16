@@ -12,7 +12,7 @@ TABLES = ('entities','entity_links','raw_documents','enrichments','narratives',
           'signals','market_today','market_today_links','narrative_candidates')
 
 
-def open_snapshot(conn, tables):
+def open_snapshot(conn, tables, *, document_ids=None):
     _guard(conn)
     meta = {name:(columns,ddl) for name,columns,ddl in conn.execute(
         'SELECT table_name,columns,schema_sql FROM legacy_snapshot_tables WHERE table_name=ANY(%s)',(list(tables),))}
@@ -30,7 +30,11 @@ def open_snapshot(conn, tables):
                 raise ValueError('Narrative snapshot schema mismatch')
             quoted=','.join('"'+column.replace('"','""')+'"' for column in columns)
             placeholders=','.join('?' for _ in columns)
-            rows=conn.execute('SELECT row_data FROM legacy_snapshot_rows WHERE table_name=%s ORDER BY row_ordinal',(name,))
+            if name=='raw_documents' and document_ids is not None:
+                rows=conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name=%s AND row_data->>'id'=ANY(%s) ORDER BY row_ordinal",
+                                  (name,[str(ident) for ident in document_ids]))
+            else:
+                rows=conn.execute('SELECT row_data FROM legacy_snapshot_rows WHERE table_name=%s ORDER BY row_ordinal',(name,))
             root.executemany('INSERT INTO "'+name+'" ('+quoted+') VALUES ('+placeholders+')',
                              (tuple(row[0].get(column) for column in columns) for row in rows))
         root.commit()

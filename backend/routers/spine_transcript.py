@@ -80,6 +80,13 @@ class FollowReq(BaseModel):
 @router.get("/follow", response_model=list[FollowRow])
 def list_follow():
     conn = get_connection()
+    try:
+        return list_follow_from_connection(conn)
+    finally:
+        conn.close()
+
+
+def list_follow_from_connection(conn):
     from pipeline.call_momentum import season
     from pipeline.sec_filings import industry_label
     from datetime import date as _date
@@ -134,7 +141,6 @@ def list_follow():
                              season_updated=bool(latest_results and latest_results >= season_start),
                              ko_names=ko.get(r["entity_id"], []),
                              upcoming_expectation=r["ticker"] in upcoming_exp))
-    conn.close()
     return out
 
 

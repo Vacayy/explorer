@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from pipeline.postgres_signals_fixture import _guard_read
 from pipeline.postgres_doc_graph_fixture import document_graph
 from pipeline.transcript import cy_label
-from routers.spine_transcript import Detail, QuarterRow, RecentCall
+from routers.spine_transcript import Detail, QuarterRow, RecentCall, list_follow_from_connection
 
 
 def _ready(conn):
@@ -44,6 +44,21 @@ def recent_calls(conn, *, days=7, limit=40, now=None):
             call_date=transcript.get('call_date'),provider=transcript.get('provider'),fetched_at=transcript.get('fetched_at'),
             has_digest=bool(transcript.get('digest'))))
     return result
+
+
+def follow_list(conn):
+    """Run the original follow calculation on only its captured inputs."""
+    from pipeline.postgres_urgent_selection_fixture import open_snapshot
+    _ready(conn)
+    tables=('transcript_follow','transcripts','entity_keywords','earnings_releases',
+            'transcript_calendar','earnings_expectations','earnings_events','raw_documents')
+    ids=[row[0] for row in conn.execute("SELECT DISTINCT row_data->>'doc_id' FROM legacy_snapshot_rows "
+                                       "WHERE table_name='earnings_releases' AND row_data->>'doc_id' IS NOT NULL")]
+    db,_,_=open_snapshot(conn,tables,document_ids=ids)
+    try:
+        return list_follow_from_connection(db)
+    finally:
+        db.close()
 
 
 def transcript_detail(conn, transcript_id):
