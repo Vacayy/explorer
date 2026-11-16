@@ -11,10 +11,15 @@ reader from the work copy. A document the candidate itself changed since the
 copy was taken is not overwritten: its three versions (run start, collected,
 candidate) are kept in `collected_change_conflicts`, and `reprocess_conflicts`
 merges them field by field later, so the change is never lost; only a field
-both sides changed differently is left as `needs_review`.
+both sides changed differently is left as `needs_review`. Changes this path
+cannot publish yet (deleted documents, revisions of candidate-collected
+documents) are kept the same way as `unsupported`, never counted as published.
+Comparing and publishing load whole tables, so they run only in a one-shot
+container (`scripts/refactor_run_collector_once.sh`), never in the preview API.
 """
 import hashlib
 import json
+import os
 import sqlite3
 
 from psycopg.types.json import Jsonb
@@ -22,6 +27,11 @@ from psycopg.types.json import Jsonb
 from pipeline.postgres_graph_fixture import GRAPH_LOCK, _guard
 
 LINK_OFFSET = 1_000_000_000  # same ordinal space as collected publications
+
+
+def _require_oneshot():
+    if os.environ.get('EXPLORER_ONESHOT') != '1':
+        raise RuntimeError('Run collector comparison only through scripts/refactor_run_collector_once.sh')
 
 
 def _digest(value):
@@ -45,10 +55,12 @@ def _documents(work, floor):
 
 def capture(work, document_floor):
     """Record the work copy's documents before the collector runs."""
+    _require_oneshot()
     return _documents(work, document_floor)
 
 
 def changed_documents(work, before, document_floor):
+    _require_oneshot()
     after = _documents(work, document_floor)
     changed = sorted(ident for ident, state in after.items() if before.get(ident) not in (None, state))
     removed = sorted(set(before) - set(after))
@@ -66,8 +78,9 @@ def initialize(conn):
             raise ValueError('Collected change conflicts already initialized')
         conn.execute('CREATE TABLE collected_change_conflicts (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,'
                      'run_id TEXT NOT NULL,document_id BIGINT NOT NULL,before_state JSONB NOT NULL,collected_state JSONB NOT NULL,'
-                     "candidate_state JSONB NOT NULL,status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','merged','needs_review')),"
-                     'fields JSONB,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),resolved_at TIMESTAMPTZ)')
+                     "candidate_state JSONB NOT NULL,status TEXT NOT NULL DEFAULT 'pending' "
+                     "CHECK(status IN ('pending','merged','needs_review','unsupported')),"
+                     'fields JSONB,reason TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),resolved_at TIMESTAMPTZ)')
 
 
 def _sqlite_state(db, ident):
@@ -192,33 +205,39 @@ def publish_revisions(conn, work, origin, doc_ids, *, run_id):
 
     `origin` is the read-only snapshot the work copy was taken from (held open for the run).
     """
+    _require_oneshot()
     _guard(conn)
     work.row_factory = sqlite3.Row  # the legacy reader indexes rows by name
-    published, conflicted, skipped = [], [], []
+    published, kept = [], []
+
+    def keep(ident, before, collected, current, status, reason):
+        # Not published: all three versions stay for a later merge or a later supported path.
+        conn.execute('INSERT INTO collected_change_conflicts(run_id,document_id,before_state,collected_state,candidate_state,'
+                     'status,reason) VALUES (%s,%s,%s,%s,%s,%s,%s)',
+                     (run_id, ident, Jsonb(before), Jsonb(collected), Jsonb(current), status, reason))
+        kept.append((ident, status, reason))
+
     with conn.transaction():
         conn.execute('SELECT pg_advisory_xact_lock(%s)', (GRAPH_LOCK,))
         for ident in doc_ids:
+            before, collected, current = _sqlite_state(origin, ident), _sqlite_state(work, ident), _pg_state(conn, ident)
             ordinal, reason = _base_ordinal(conn, ident)
-            collected = _sqlite_state(work, ident)
-            if reason is None and collected['raw'] is None:
-                reason = 'missing in the work copy'
-            if reason:
-                skipped.append((ident, reason))
-                continue
-            before, current = _sqlite_state(origin, ident), _pg_state(conn, ident)
-            if _fingerprint(current) != _fingerprint(before):
-                # The candidate changed it since the copy: keep all three versions for a later merge.
-                conn.execute('INSERT INTO collected_change_conflicts(run_id,document_id,before_state,collected_state,candidate_state) '
-                             'VALUES (%s,%s,%s,%s,%s)', (run_id, ident, Jsonb(before), Jsonb(collected), Jsonb(current)))
-                conflicted.append(ident)
-                continue
-            reason = _write(conn, ident, ordinal, collected, work)
-            (skipped.append((ident, reason)) if reason else published.append(ident))
-    return {'published': published, 'conflicted': conflicted, 'skipped': skipped}
+            if collected['raw'] is None:
+                keep(ident, before, collected, current, 'unsupported', 'deleted by the collector')
+            elif reason:
+                keep(ident, before, collected, current, 'unsupported', reason)
+            elif _fingerprint(current) != _fingerprint(before):
+                keep(ident, before, collected, current, 'pending', 'changed in the candidate meanwhile')
+            elif reason := _write(conn, ident, ordinal, collected, work):
+                keep(ident, before, collected, current, 'pending', reason)
+            else:
+                published.append(ident)
+    return {'published': published, 'kept': kept}
 
 
 def reprocess_conflicts(conn):
     """Merge every pending conflict onto the candidate's current state; run before each collection."""
+    _require_oneshot()
     _guard(conn)
     merged, review, waiting = [], [], []
     with conn.transaction():
@@ -228,6 +247,7 @@ def reprocess_conflicts(conn):
                 'ORDER BY id FOR UPDATE').fetchall():
             ordinal, reason = _base_ordinal(conn, ident)
             if reason:
+                conn.execute('UPDATE collected_change_conflicts SET reason=%s WHERE id=%s', (reason, cid))
                 waiting.append((cid, reason))
                 continue
             state, fields = _merge(before, collected, _pg_state(conn, ident))
@@ -238,8 +258,27 @@ def reprocess_conflicts(conn):
                 continue
             reason = _write(conn, ident, ordinal, state, _document_db(conn, state))
             if reason:
+                conn.execute('UPDATE collected_change_conflicts SET reason=%s WHERE id=%s', (reason, cid))
                 waiting.append((cid, reason))
                 continue
             conn.execute("UPDATE collected_change_conflicts SET status='merged',resolved_at=now() WHERE id=%s", (cid,))
             merged.append((cid, ident))
     return {'merged': merged, 'needs_review': review, 'waiting': waiting}
+
+
+def publish_run(conn, work, origin, before, *, document_floor, entity_floor, keyword_floor, relation_floor, run_id):
+    """One collection run in one transaction: new rows first (so new entities exist), then revisions."""
+    from pipeline.postgres_collected_documents_fixture import publish
+    _require_oneshot()
+    changed, removed = changed_documents(work, before, document_floor)
+    with conn.transaction():
+        added = publish(conn, work, document_floor=document_floor, entity_floor=entity_floor,
+                        keyword_floor=keyword_floor, relation_floor=relation_floor)
+        revised = publish_revisions(conn, work, origin, [*changed, *removed], run_id=run_id)
+    return {'added': [doc['id'] for doc in added], 'revised': revised['published'], 'kept': revised['kept']}
+
+
+def unprocessed(conn):
+    """What collector changes are still not in the candidate, by status."""
+    return conn.execute("SELECT status,count(*),array_agg(document_id ORDER BY id) FROM collected_change_conflicts "
+                        "WHERE status<>'merged' GROUP BY status ORDER BY status").fetchall()

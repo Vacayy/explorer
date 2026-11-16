@@ -167,15 +167,16 @@ def publish(conn, work, *, document_floor, entity_floor, keyword_floor, relation
     from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
     _guard(conn)
     docs = sorted(_rows(work, 'raw_documents', 'id > ?', (document_floor,)), key=lambda row: (row['published_at'] or '', row['id']))
-    if not docs:
-        return []
     ids = [row['id'] for row in docs]
     marks = ','.join('?' * len(ids))
-    enrichments = _rows(work, 'enrichments', f'doc_id IN ({marks})', ids)
-    links = _rows(work, 'entity_links', f'doc_id IN ({marks}) ORDER BY id', ids)
+    enrichments = _rows(work, 'enrichments', f'doc_id IN ({marks})', ids) if ids else []
+    links = _rows(work, 'entity_links', f'doc_id IN ({marks}) ORDER BY id', ids) if ids else []
+    # Re-linking existing documents can add graph rows without any new document.
     entities = _rows(work, 'entities', 'id > ?', (entity_floor,))
     keywords = _rows(work, 'entity_keywords', 'id > ?', (keyword_floor,))
     relations = _rows(work, 'entity_relations', 'id > ?', (relation_floor,))
+    if not (docs or entities or keywords or relations):
+        return []
     reader = PostgreSQLRawDocumentReader(None)
     with conn.transaction():
         conn.execute('SELECT pg_advisory_xact_lock(%s)', (GRAPH_LOCK,))
@@ -234,6 +235,10 @@ def publish(conn, work, *, document_floor, entity_floor, keyword_floor, relation
                           [e['id'] for e in enrichments if e['doc_id'] == ident], [l['id'] for l in doc_links],
                           [e['id'] for e in entities] if first else [], [k['id'] for k in keywords] if first else [],
                           [r['id'] for r in relations] if first else []))
+        if not docs:  # graph-only additions: kept under a negative key so `withdraw` can remove them too
+            key = conn.execute('SELECT LEAST(COALESCE(min(document_id),0),0)-1 FROM collected_publications').fetchone()[0]
+            conn.execute("INSERT INTO collected_publications VALUES (%s,NULL,'{}','{}',%s,%s,%s)",
+                         (key, [e['id'] for e in entities], [k['id'] for k in keywords], [r['id'] for r in relations]))
         if pending:
             _place(conn, pending)
         return published
