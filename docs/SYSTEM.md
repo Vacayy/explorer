@@ -808,3 +808,5 @@ fixture snapshot 교체는 호출자가 공간 점검 함수를 명시하지 않
 격리 회원 앱에는 합성 계정과 합성 시세만 쓰는 localhost HTTPS 브라우저 시험 스크립트가 있다. 운영 인증·실제 원장은 사용하지 않으며 Google OAuth와 다른 포트폴리오 기능 검증을 대체하지 않는다.
 
 격리 포트폴리오 fixture는 명시한 principal과 원본 group ID를 1:1로 연결하고 거래 ID를 보존하는 합성 매핑을 제공한다. 원본 archive를 변경하지 않으며 보유 목록은 거래를 재생해 계산한다. 기존 보유 목록과의 대조 및 실제 소유자 매핑은 아직 수행하지 않았다.
+
+`scripts/run-refactor-member-preview.sh`는 localhost 19446에 합성 회원 전용 HTTPS 미리보기를 띄우고 종료 시 시험 컨테이너·임시 DB·세션을 제거한다. 합성 세션은 브라우저에 자동 적용되지 않으며 실제 Google 로그인이나 운영 전환을 뜻하지 않는다.
