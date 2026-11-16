@@ -86,7 +86,7 @@ class SnapshotReplacementTests(unittest.TestCase):
     def pg(self):
         return psycopg.connect(self.dsn, options=f'-c search_path={self.schema}')
 
-    def load(self, at, *, include_linking=False, include_signals=False, include_events=False, include_centroids=False, include_telegram_marks=False, include_narrative_inputs=False, include_narrative_graph=False, include_knowledge=False):
+    def load(self, at, *, include_linking=False, include_signals=False, include_events=False, include_centroids=False, include_telegram_marks=False, include_narrative_inputs=False, include_narrative_graph=False, include_knowledge=False, include_portfolio=False):
         source = sqlite3.connect(self.fixture.path.as_uri() + '?mode=ro', uri=True)
         source.row_factory = sqlite3.Row
         if include_centroids:
@@ -100,9 +100,27 @@ class SnapshotReplacementTests(unittest.TestCase):
         source.execute('BEGIN')
         try:
             with patch('pipeline.visibility.feed_mute_sql', return_value=('1=1', [])):
-                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None, include_linking=include_linking, include_signals=include_signals, include_events=include_events, include_centroids=include_centroids, include_telegram_marks=include_telegram_marks, include_narrative_inputs=include_narrative_inputs, include_narrative_graph=include_narrative_graph, include_knowledge=include_knowledge)
+                return load_snapshot(source, self.pg, snapshot_at=at, capacity_check=lambda *_: None, include_linking=include_linking, include_signals=include_signals, include_events=include_events, include_centroids=include_centroids, include_telegram_marks=include_telegram_marks, include_narrative_inputs=include_narrative_inputs, include_narrative_graph=include_narrative_graph, include_knowledge=include_knowledge, include_portfolio=include_portfolio)
         finally:
             source.close()
+
+    def test_portfolio_snapshot_keeps_group_relationships_and_amounts(self):
+        with closing(self.fixture.connect()) as source:
+            source.execute('CREATE TABLE stock_groups(id INTEGER PRIMARY KEY, name TEXT, kind TEXT)')
+            source.execute('CREATE TABLE stock_group_members(group_id INTEGER, stock_code TEXT, bought_at TEXT)')
+            source.execute('CREATE TABLE portfolio_transactions(id INTEGER PRIMARY KEY, group_id INTEGER, trade_date TEXT, kind TEXT, stock_code TEXT, amount REAL, price REAL)')
+            source.execute('CREATE TABLE portfolio_quotes(stock_code TEXT PRIMARY KEY, price REAL)')
+            source.execute("INSERT INTO stock_groups VALUES (10,'합성 원장','portfolio'),(20,'다른 원장','portfolio')")
+            source.execute("INSERT INTO stock_group_members VALUES (10,'000001','2026-01-01')")
+            source.execute("INSERT INTO portfolio_transactions VALUES (30,10,'2026-01-01','deposit',NULL,1000,NULL)")
+            source.execute("INSERT INTO portfolio_quotes VALUES ('000001',10)")
+            source.commit()
+        self.load('2026-01-03T00:00:00+00:00',include_portfolio=True)
+        with self.pg() as c:
+            groups=c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='stock_groups'").fetchone()[0]
+            tx=c.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='portfolio_transactions'").fetchone()[0]
+            self.assertEqual(groups,2)
+            self.assertEqual((tx['id'],tx['group_id'],tx['amount']),(30,10,1000))
 
     def test_knowledge_snapshot_preserves_evidence_and_refuses_missing_table(self):
         with closing(self.fixture.connect()) as source:
