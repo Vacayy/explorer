@@ -213,6 +213,32 @@ class PostgreSQLChatChunkTests(unittest.TestCase):
         self.assertIn('전부 가설', result.items[0]['title'])
         self.assertIn('원인 → 결과', result.items[0]['text'])
 
+    def test_price_history_reuses_original_with_matching_market_generation(self):
+        from psycopg.types.json import Jsonb
+        from unittest.mock import Mock
+        from pipeline.postgres_chat_tools import PostgreSQLChatTools
+        with self.fixture.pg() as conn:
+            generation = str(conn.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()[0])
+            conn.execute("INSERT INTO legacy_snapshot_tables VALUES ('entities','[]'::jsonb,'fixture',1)")
+            conn.execute("INSERT INTO legacy_snapshot_rows VALUES ('entities',0,%s)",
+                         (Jsonb({'id': 3, 'name': '시험 회사', 'type': 'company', 'aliases': '123456'}),))
+            conn.execute('CREATE TABLE sector_market_metadata(singleton BOOLEAN,generation_id UUID,linked_document_generation BOOLEAN)')
+            conn.execute('INSERT INTO sector_market_metadata VALUES (TRUE,%s,TRUE)', (generation,))
+            conn.execute('CREATE TABLE sector_market_prices(stock_code TEXT,trade_date TEXT,open BIGINT,high BIGINT,low BIGINT,close BIGINT,volume BIGINT,fetched_at TEXT)')
+            for day, price in enumerate((100, 105, 110), 1):
+                conn.execute('INSERT INTO sector_market_prices VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',
+                             ('123456', f'2026-01-0{day}', price, price, price, price, 10, '2026-01-01'))
+        rag = Mock()
+        rag.chunks.generation = generation
+        rag.entity_scope.return_value = (3, ['시험 회사', '123456'], {})
+        tools = PostgreSQLChatTools(self.fixture.pg, None, chunk_rag=rag)
+        result = tools.run_tool({'name': 'get_price_history', 'args': {'stock': '시험 회사', 'days': 2}})
+        self.assertEqual(result.items[0]['href'], '/analyze/123456/summary')
+        self.assertIn('최근 2거래일', result.items[0]['title'])
+        rag.chunks.generation = 'different-generation'
+        with self.assertRaises(ChatChunkImportConflict):
+            tools.run_tool({'name': 'get_price_history', 'args': {'stock': '시험 회사'}})
+
     def test_fixture_chat_api_persists_question_and_answer_in_pg(self):
         from fastapi import FastAPI
         from fastapi.testclient import TestClient

@@ -552,13 +552,14 @@ def _list_recent(kind: str, entity: str | None = None, channel: str | None = Non
         conn.close()
 
 
-def get_price_history(stock: str, days: int = 10) -> ToolResult:
+def get_price_history(stock: str, days: int = 10, *, connection_factory=None, company_resolver=None) -> ToolResult:
     """일별 시세(종가·등락·거래량) 최근 N거래일 — '추이·이번주·지난달' 질문에. 실시간 시세(get_quote)와 짝."""
     days = max(2, min(int(days or 10), 60))
-    conn = get_connection()
+    conn = connection_factory() if connection_factory is not None else get_connection()
     asm: dict = {}
     try:
-        code, name = _company_code(conn, stock, asm)
+        code, name = (company_resolver(stock, asm) if company_resolver is not None
+                      else _company_code(conn, stock, asm))
         if not code:
             return ToolResult("get_price_history", {"stock": stock, "days": days}, [], asm.get("ambiguous") or f"'{stock}' 종목을 찾지 못함")
         rows = conn.execute("""

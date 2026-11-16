@@ -1,6 +1,6 @@
 """Experimental PG document tools for the isolated chat runtime.
 
-Document opening, search, narratives, causal graphs and earnings-call digests are experimental.
+Document opening, search, narratives, causal graphs, prices and earnings calls are experimental.
 Other tools fail explicitly; this is not a replacement for the full chat API.
 """
 from pipeline.chat_tools import ToolResult
@@ -111,6 +111,35 @@ class PostgreSQLChatTools:
                     return result
                 finally:
                     db.close()
+        if name == 'get_price_history':
+            from pipeline.chat_tools import get_price_history
+            from pipeline.postgres_chat_chunks import ChatChunkImportConflict
+            from pipeline.postgres_chat_read_projection import price_history_projection
+            if self.chunk_rag is None:
+                raise UnsupportedPostgresChatTool('entity resolver is required for price history')
+            with self.connect() as pg:
+                pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                self.chunk_rag._check(pg)
+                market = pg.execute('SELECT generation_id,linked_document_generation FROM sector_market_metadata WHERE singleton').fetchone()
+                if not market or not market[1] or str(market[0]) != self.chunk_rag.chunks.generation:
+                    raise ChatChunkImportConflict('price generation differs from documents')
+                ident, terms, assumptions = self.chunk_rag.entity_scope(args['stock'], prefer=('company',))
+                entity = (pg.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entities' "
+                                     "AND row_data->>'id'=%s ORDER BY row_ordinal LIMIT 1", (str(ident),)).fetchone()
+                          if ident else None)
+                entity = entity[0] if entity else None
+                code = entity.get('aliases') if entity and entity.get('type') == 'company' else None
+                label = entity.get('name') if entity else None
+                rows = (pg.execute('SELECT stock_code,trade_date,open,high,low,close,volume,fetched_at '
+                                   'FROM sector_market_prices WHERE stock_code=%s ORDER BY trade_date DESC LIMIT 61',
+                                   (code,)).fetchall() if code else [])
+                self.chunk_rag._check(pg)
+                with price_history_projection(rows) as factory:
+                    def resolve_company(_stock, asm):
+                        asm.update(assumptions)
+                        return code, label
+                    return get_price_history(args['stock'], args.get('days', 10),
+                                             connection_factory=factory, company_resolver=resolve_company)
         if name != 'search_docs':
             raise UnsupportedPostgresChatTool(f'{name} is not implemented in the PG fixture')
         if (args.get('entity') or args.get('channel')) and self.chunk_rag is None:
