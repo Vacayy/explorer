@@ -1,10 +1,10 @@
 """Document claims (D-233) for the single-path candidate: the legacy rules on a PG ledger.
 
 The API keeps the legacy queue rules (reuse for the same body hash, short documents skipped,
-running jobs left alone) and makes the one model call that extracts the claims, staging them.
-The compute worker (`run_staged`) then finds each claim's related documents with the unchanged
-legacy `find_related` (chunk hybrid search + reranker) over the chunk index file, with the
-projection attached, and publishes the result. A failure keeps its reason and is not retried
+running jobs left alone) and makes the one model call that extracts the claims, staging them
+and queueing a `doc_claims` retrieval job. The compute worker runs `related_documents` for it:
+the unchanged legacy `find_related` (chunk hybrid search + reranker) over the chunk index file,
+with the projection attached, and publishes the result. A failure keeps its reason and is not retried
 automatically; the screen's button queues it again.
 """
 import json
@@ -89,7 +89,11 @@ def extract(factory, doc_id, token, run_llm):
         _finish(factory, doc_id, token, 'failed',
                 error=f'논점을 정리하지 못했습니다({type(e).__name__}). Claude 인증·사용량을 확인한 뒤 다시 시도해 주세요.')
         return
-    _finish(factory, doc_id, token, 'staged', claims=claims)
+    from pipeline.postgres_retrieval_jobs import enqueue
+    with factory() as conn, conn.transaction():
+        conn.execute(f"UPDATE {TABLE} SET status='staged',claims=%s,updated_at=%s WHERE doc_id=%s AND token=%s",
+                     (Jsonb(claims), time.time(), doc_id, token))
+        enqueue(conn, 'doc_claims', str(doc_id), {'doc_id': doc_id, 'token': token, 'claims': claims})
 
 
 def state(conn, legacy, doc_id):
@@ -124,37 +128,21 @@ def state(conn, legacy, doc_id):
     return {'status': status, 'error': error, 'claims': [c for c in claims if c['related']]}
 
 
-def run_staged(factory, chunks_path, projection_path):
-    """Worker step: related documents for every staged extraction, with the legacy retrieval unchanged."""
+def related_documents(factory, request):
+    """Retrieval-job handler (compute worker): the claims' related documents, published to the ledger."""
     import database
-    from pipeline import visibility
+    from pipeline import doc_claims
     from pipeline.doc_claims import RerankUnavailable, find_related
-
-    def connection():
-        conn = sqlite3.connect(chunks_path, timeout=30)
-        conn.execute('ATTACH DATABASE ? AS projection', (f'file:{projection_path}?mode=ro',))
-        conn.row_factory = sqlite3.Row
-        return conn
-
-    from pipeline import chunks, doc_claims, rag, search
-    for module in (database, chunks, doc_claims, rag, search):  # each bound get_connection at import
-        module.get_connection = connection
-    # The owner's personal mute is not applied without per-user identity (all collected material shows).
-    visibility.get_muted = lambda conn: {'telegram': set(), 'blog': []}
-    with factory() as conn:
-        staged = conn.execute(f"SELECT doc_id,token,claims FROM {TABLE} WHERE status='staged' ORDER BY updated_at").fetchall()
-    done = []
-    for doc_id, token, claims in staged:
-        with factory() as conn:
-            conn.execute(f'UPDATE {TABLE} SET updated_at=%s WHERE doc_id=%s AND token=%s', (time.time(), doc_id, token))
-        try:
-            _finish(factory, doc_id, token, 'ok', payload={'claims': find_related(doc_id, claims)})
-            done.append((doc_id, 'ok'))
-        except RerankUnavailable as e:
-            _finish(factory, doc_id, token, 'failed',
-                    error=f'{e}. 관리자에게 검색 인덱스 작업(build_search_index) 상태를 확인해 달라고 해 주세요.')
-            done.append((doc_id, 'failed'))
-        except Exception as e:  # noqa: BLE001
-            _finish(factory, doc_id, token, 'failed', error=f'관련 자료를 찾지 못했습니다({type(e).__name__}). 다시 시도해 주세요.')
-            done.append((doc_id, 'failed'))
-    return done
+    doc_claims.get_connection = database.get_connection  # bound at import; `legacy_retrieval` set the target
+    doc_id, token = request['doc_id'], request['token']
+    try:
+        payload = {'claims': find_related(doc_id, request['claims'])}
+    except RerankUnavailable as e:
+        _finish(factory, doc_id, token, 'failed',
+                error=f'{e}. 관리자에게 검색 인덱스 작업(build_search_index) 상태를 확인해 달라고 해 주세요.')
+        raise
+    except Exception as e:
+        _finish(factory, doc_id, token, 'failed', error=f'관련 자료를 찾지 못했습니다({type(e).__name__}). 다시 시도해 주세요.')
+        raise
+    _finish(factory, doc_id, token, 'ok', payload=payload)
+    return {'claims': len(payload['claims'])}
