@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button'
 import DocPage from '@/components/doc/DocPage'
 import { MemberPrinciplesPage } from '@/components/portfolio/MemberPrinciplesPage'
 import { MemberPortfolioPage } from '@/components/portfolio/MemberPortfolioPage'
+import PortfolioPage, { type PortfolioTab } from '@/components/portfolio/PortfolioPage'
 import { PublicTrialChatPage } from '@/components/chat/PublicTrialChatPage'
 import ChatPage from '@/components/chat/ChatPage'
 import { useMemberAccess } from '@/components/auth/MemberAccess'
@@ -43,6 +44,14 @@ function OperatorStudyRoute({ kind }: { kind: 'list' | 'project' | 'study' }) {
   if (access.status !== 'operator') return <PublicUnavailable />
   if (kind === 'list') return <ProjectsPage />
   return kind === 'project' ? <ProjectPage /> : <StudyPage />
+}
+
+function PublicPortfolioRoute({ tab }: { tab: PortfolioTab }) {
+  const access = useMemberAccess()
+  if (access.status === 'operator') return <PortfolioPage tab={tab} />
+  if (tab === 'overview') return <MemberPortfolioPage />
+  if (tab === 'principles') return <MemberPrinciplesPage />
+  return <PublicUnavailable />
 }
 
 function PublicUnavailable() {
@@ -95,8 +104,10 @@ export function PublicContent() {
   if (study) return <OperatorStudyRoute kind="study" />
   if (pathname === '/feed/saved') return <MemberSavedPage />
   if (pathname === '/feed') return <FeedPage />
-  if (pathname === '/portfolio/principles') return <MemberPrinciplesPage />
-  if (pathname === '/portfolio') return <MemberPortfolioPage />
+  if (pathname === '/portfolio') return <PublicPortfolioRoute tab="overview" />
+  if (pathname === '/portfolio/holdings') return <PublicPortfolioRoute tab="holdings" />
+  if (pathname === '/portfolio/principles') return <PublicPortfolioRoute tab="principles" />
+  if (pathname === '/portfolio/events') return <PublicPortfolioRoute tab="events" />
   if (document?.params.docId) return <DocPage />
   if (sector?.params.ticker) return <PublicUsSectorPage ticker={sector.params.ticker} />
   if (pathname === '/industry') return <IndustryMapPage />

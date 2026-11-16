@@ -14,12 +14,12 @@ const api = axios.create({
   headers: { Accept: 'application/json' },
 })
 
-// Legacy study writes remain private to the operator in public mode.
+// Legacy study and portfolio writes remain private to the operator in public mode.
 // Read the current session for each mutation; never persist its CSRF token.
 api.interceptors.request.use(async config => {
   if (!PUBLIC_ACCESS || !['post', 'patch', 'put', 'delete'].includes((config.method ?? 'get').toLowerCase())) return config
   const path = new URL(api.getUri(config), window.location.origin).pathname
-  if (!/^\/api\/spine\/(?:studies|study-projects)(?:\/|$)/.test(path)) return config
+  if (!/^\/api\/(?:spine\/(?:studies|study-projects)|portfolio)(?:\/|$)/.test(path)) return config
   const { data } = await api.get<{ authenticated: boolean; user: { role: string } | null; csrf_token: string | null }>('/api/auth/session', { withCredentials: true })
   if (!data.authenticated || data.user?.role !== 'operator' || !data.csrf_token) throw new Error('운영자 로그인을 확인해 주세요.')
   config.withCredentials = true

@@ -180,7 +180,9 @@ class AccessBoundaryTests(unittest.TestCase):
             configure_access_boundary(application)
         with TestClient(application, base_url='https://beta.example') as client:
             self.assertEqual(client.get('/api/health').status_code, 200)
-            for path in ('/api/portfolio', '/api/spine/search?q=fixture', '/media/test', '/api/spine/admin/health'):
+            # Operator route is registered but authentication is not configured.
+            self.assertEqual(client.get('/api/portfolio').status_code, 503)
+            for path in ('/api/spine/search?q=fixture', '/media/test', '/api/spine/admin/health'):
                 self.assertEqual(client.get(path).status_code, 404)
             # Registered auth route is reached but unconfigured, not bypassed.
             self.assertEqual(client.get('/api/auth/session').status_code, 503)

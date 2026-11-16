@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import database
-from routers import spine_ask, spine_conversations, spine_study, spine_study_projects
+from routers import portfolio, spine_ask, spine_conversations, spine_study, spine_study_projects
 from security.access_boundary import PUBLIC_ROUTE_POLICIES, PublicAccessBoundary
 from security.identity_store import IdentityStore
 from security.login_flow import SESSION_COOKIE, session_csrf
@@ -46,8 +46,9 @@ class OperatorConversationBoundary(unittest.TestCase):
         app.include_router(spine_ask.router)
         app.include_router(spine_study.router)
         app.include_router(spine_study_projects.router)
+        app.include_router(portfolio.router)
         policies = {k: v for k, v in PUBLIC_ROUTE_POLICIES.items()
-                    if k[1].startswith(('/api/spine/conversations', '/api/spine/studies', '/api/spine/study-projects'))
+                    if k[1].startswith(('/api/spine/conversations', '/api/spine/studies', '/api/spine/study-projects', '/api/portfolio'))
                     or k[1] == '/api/spine/ask'}
         service = SimpleNamespace(identities=self.identities, config=SimpleNamespace(public_origin='https://example.test'))
         app.add_middleware(PublicAccessBoundary, routes=app.router.routes,
@@ -111,6 +112,16 @@ class OperatorConversationBoundary(unittest.TestCase):
         project_id = response.json()['id']
         self.assertEqual(self.client.get(f'{path}/{project_id}', headers=self.headers(self.operator_token)).status_code, 200)
         self.assertEqual(self.client.get(f'{path}/{project_id}', headers=self.headers(self.member_token)).status_code, 403)
+
+    def test_legacy_portfolio_requires_operator_and_csrf(self):
+        path = '/api/portfolio/transactions'
+        self.assertEqual(self.client.get(path).status_code, 401)
+        self.assertEqual(self.client.get(path, headers=self.headers(self.member_token)).status_code, 403)
+        self.assertEqual(self.client.post(path, json={}, headers=self.headers(self.operator_token, csrf=False)).status_code, 403)
+        self.assertEqual(self.client.post(path, json={}, headers=self.headers(self.operator_token)).status_code, 422)
+        with patch.object(portfolio.pf, 'connect', return_value=SimpleNamespace(close=lambda: None)), \
+             patch.object(portfolio.pf, 'transactions', return_value=[]):
+            self.assertEqual(self.client.get(path, headers=self.headers(self.operator_token)).json(), [])
 
 
 if __name__ == '__main__':

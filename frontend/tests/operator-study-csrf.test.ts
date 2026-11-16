@@ -33,3 +33,12 @@ it('blocks a non-operator before sending a legacy study write', async () => {
   await expect(api.post('/api/spine/studies/1/annotations', {})).rejects.toThrow()
   expect(seen.map(x => x.url)).toEqual(['/api/auth/session'])
 })
+
+it('protects legacy portfolio writes with the operator session', async () => {
+  await api.post('/api/portfolio/transactions', {})
+  expect(seen.map(x => x.csrf)).toEqual([undefined, 'csrf-fixture'])
+  role = 'member'
+  seen = []
+  await expect(api.delete('/api/portfolio/transactions/1')).rejects.toThrow()
+  expect(seen.map(x => x.url)).toEqual(['/api/auth/session'])
+})
