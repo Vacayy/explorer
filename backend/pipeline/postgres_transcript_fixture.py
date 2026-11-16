@@ -56,6 +56,8 @@ def follow_list(conn):
                                        "WHERE table_name='earnings_releases' AND row_data->>'doc_id' IS NOT NULL")]
     db,_,_=open_snapshot(conn,tables,document_ids=ids)
     try:
+        from pipeline.postgres_legacy_projection import derive_owner_transcript_follow
+        derive_owner_transcript_follow(db,conn)  # the owner's additions and core pins, as legacy reads see them
         return list_follow_from_connection(db)
     finally:
         db.close()

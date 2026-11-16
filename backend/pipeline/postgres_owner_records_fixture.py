@@ -209,3 +209,41 @@ def patch_tracker_condition(conn, cid, sets):
 
 def delete_tracker_condition(conn, cid):
     conn.execute('DELETE FROM owner_tracker_conditions WHERE account_id=%s AND id=%s', (owner_account(conn), cid))
+
+
+def initialize_transcript_follow(conn):
+    """Split the owner's fields off transcript_follow: core pins and manual additions.
+
+    The collector owns the table itself (rows, market cap, NDX activity, entity,
+    fiscal year end, SIC); legacy reads see the ledgers merged over it.
+    """
+    _guard(conn)
+    with conn.transaction():
+        if conn.execute("SELECT to_regclass('owner_transcript_pins')").fetchone()[0] is not None:
+            raise ValueError('Transcript follow ledgers already initialized')
+        account = owner_account(conn)
+        conn.execute('CREATE TABLE owner_transcript_pins (account_id BIGINT NOT NULL REFERENCES fixture_portfolio_accounts(id),'
+                     'ticker TEXT NOT NULL,core_pinned INTEGER NOT NULL,updated_at TEXT,PRIMARY KEY(account_id,ticker))')
+        conn.execute('CREATE TABLE owner_transcript_additions (account_id BIGINT NOT NULL REFERENCES fixture_portfolio_accounts(id),'
+                     'ticker TEXT NOT NULL,company_name TEXT NOT NULL,group_label TEXT,active INTEGER NOT NULL,'
+                     "added_at TEXT NOT NULL DEFAULT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'),"
+                     'PRIMARY KEY(account_id,ticker))')
+        rows = [row for (row,) in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='transcript_follow'")]
+        for row in rows:
+            conn.execute('INSERT INTO owner_transcript_pins VALUES (%s,%s,%s,NULL)', (account, row['ticker'], row.get('core_pinned') or 0))
+        return {'pins': len(rows)}
+
+
+def set_core_pin(conn, ticker, pinned):
+    conn.execute("INSERT INTO owner_transcript_pins VALUES (%s,%s,%s,to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')) "
+                 'ON CONFLICT (account_id,ticker) DO UPDATE SET core_pinned=excluded.core_pinned,updated_at=excluded.updated_at',
+                 (owner_account(conn), ticker, 1 if pinned else 0))
+
+
+def upsert_transcript_follow(conn, ticker, company_name, group_label, active):
+    """The legacy follow upsert, kept as the owner's request for that ticker."""
+    conn.execute('INSERT INTO owner_transcript_additions(account_id,ticker,company_name,group_label,active) VALUES (%s,%s,%s,%s,%s) '
+                 'ON CONFLICT (account_id,ticker) DO UPDATE SET active=excluded.active,'
+                 'company_name=COALESCE(excluded.company_name,owner_transcript_additions.company_name),'
+                 'group_label=COALESCE(excluded.group_label,owner_transcript_additions.group_label)',
+                 (owner_account(conn), ticker, company_name, group_label, active))

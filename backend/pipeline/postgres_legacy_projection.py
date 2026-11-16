@@ -33,11 +33,12 @@ VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'questio
              'legacy_supplement_tables', 'legacy_supplement_rows', *NATIVE,
              'fixture_portfolio_transactions', 'fixture_portfolio_members', 'fixture_portfolio_principles',
              'owner_follows', 'owner_kalshi_pins', 'owner_channel_reads',
-             'owner_saved_items', 'owner_tracker_conditions', 'owner_legacy_rows')
+             'owner_saved_items', 'owner_tracker_conditions', 'owner_legacy_rows',
+             'owner_transcript_pins', 'owner_transcript_additions')
 # Small owner-ledger tables re-derived per connection in TEMP shadows, so writes
 # show at once; the file keeps its own (possibly older) derived copy underneath.
 SHADOWED = ('portfolio_transactions', 'stock_group_members', 'stock_groups', 'watch_rules', 'watch_evaluations', 'portfolio_principles', 'follows', 'kalshi_pins', 'channel_reads',
-            'saved_items', 'tracker_conditions', *NATIVE)
+            'saved_items', 'tracker_conditions', 'transcript_follow', *NATIVE)
 CHECK_SECONDS = 10
 log = logging.getLogger(__name__)
 
@@ -360,3 +361,19 @@ def _derive_owner_records(root, pg):
                          'VALUES (?,?,?,?,?,?,?,?,?,?,?)',
                          pg.execute('SELECT id,stock_code,role,kind,level,ma,label,note,done,created_at,updated_at '
                                     'FROM owner_tracker_conditions ORDER BY id').fetchall())
+    derive_owner_transcript_follow(root, pg)
+
+
+def derive_owner_transcript_follow(root, pg):
+    """Collected call-follow rows stay; the owner's follow requests and core pins go over them."""
+    if pg.execute("SELECT to_regclass('owner_transcript_pins')").fetchone()[0] is None:
+        return
+    for ticker, name, group, active, added in pg.execute(
+            'SELECT ticker,company_name,group_label,active,added_at FROM owner_transcript_additions'):
+        if root.execute('UPDATE transcript_follow SET active=?,company_name=COALESCE(?,company_name),'
+                        'group_label=COALESCE(?,group_label) WHERE ticker=?', (active, name, group, ticker)).rowcount == 0:
+            root.execute('INSERT INTO transcript_follow (ticker,company_name,group_label,active,added_at) VALUES (?,?,?,?,?)',
+                         (ticker, name, group, active, added))
+    root.execute('UPDATE transcript_follow SET core_pinned=0')
+    root.executemany('UPDATE transcript_follow SET core_pinned=? WHERE ticker=?',
+                     pg.execute('SELECT core_pinned,ticker FROM owner_transcript_pins').fetchall())

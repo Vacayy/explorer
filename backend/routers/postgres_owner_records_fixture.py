@@ -1,4 +1,5 @@
-"""Loopback-only owner follows, prediction pins, feed read marks, bookmarks and tracker conditions on the PG ledger.
+"""Loopback-only owner follows, prediction pins, feed read marks, bookmarks, tracker conditions and
+call-follow pins/additions on the PG ledger.
 
 Same request/response shapes and errors as the legacy routes. The follow list
 and feed read marks read the ledger directly; legacy reads (prediction cards)
@@ -16,6 +17,7 @@ from routers.spine_feed import MarkAllReadRequest, MarkReadRequest
 from routers.spine_follows import FollowedEntity, FollowRequest
 from routers.spine_saved import NoteRequest, SavedItem, SaveRequest
 from routers.spine_tracker import Code
+from routers.spine_transcript import FollowReq, PinReq
 from models.tracker import TrackerCondition, TrackerConditionIn, TrackerConditionPatch
 
 
@@ -132,6 +134,28 @@ def create_router(factory, timeline):
         with connection() as conn:
             records.delete_tracker_condition(conn, cid)
         return {'deleted': cid}
+
+    @router.post('/api/spine/transcript/core/pin')
+    def pin_core(body: PinReq):
+        import database
+        ticker = body.ticker.upper()
+        legacy = database.get_connection()  # the projection: collected rows with the owner's additions
+        try:
+            followed = legacy.execute('SELECT 1 FROM transcript_follow WHERE ticker=?', (ticker,)).fetchone()
+        finally:
+            legacy.close()
+        if not followed:
+            raise HTTPException(404, '팔로우하지 않는 종목입니다')
+        with connection() as conn:
+            records.set_core_pin(conn, ticker, body.pinned)
+        return {'ticker': ticker, 'pinned': body.pinned}
+
+    @router.post('/api/spine/transcript/follow', status_code=201)
+    def upsert_follow(body: FollowReq):
+        ticker = body.ticker.upper()
+        with connection() as conn:
+            records.upsert_transcript_follow(conn, ticker, body.company_name or ticker, body.group_label, 1 if body.active else 0)
+        return {'ticker': ticker, 'active': body.active}
 
     return router
 

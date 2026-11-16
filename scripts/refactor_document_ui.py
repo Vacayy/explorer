@@ -234,7 +234,10 @@ def experimental_follow_list():
         row = connection.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
         if row is None:
             raise HTTPException(503, 'Transcript snapshot unavailable')
-        key = (str(row[0]), date.today())
+        # Collected refreshes and owner ledger writes bump the projection version.
+        version = connection.execute("SELECT to_regclass('legacy_projection_version')").fetchone()[0] and \
+            connection.execute('SELECT counter FROM legacy_projection_version WHERE singleton').fetchone()[0]
+        key = (str(row[0]), version, date.today())
         with follow_cache_lock:
             if key not in follow_cache:
                 result = follow_list(connection)
