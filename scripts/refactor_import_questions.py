@@ -6,7 +6,7 @@ import sqlite3
 import sys
 
 import psycopg
-from pipeline.postgres_questions_import_fixture import import_questions
+from pipeline.postgres_questions_import_fixture import import_questions, import_observations
 
 
 def main():
@@ -24,7 +24,12 @@ def main():
         if source.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
             raise ValueError('Snapshot integrity check failed')
         with psycopg.connect(dsn, options=f'-c search_path={schema}') as target:
-            print('Imported scoped question snapshot:', import_questions(source, target))
+            if sys.argv[2:] == ['--observations']:
+                print('Imported scoped observations:', import_observations(source, target))
+            elif not sys.argv[2:]:
+                print('Imported scoped question snapshot:', import_questions(source, target))
+            else:
+                raise ValueError('Unsupported import mode')
     finally:
         source.close()
 

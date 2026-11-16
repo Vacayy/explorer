@@ -11,7 +11,7 @@ import sys
 
 TABLES = ('questions', 'sub_questions', 'question_reports', 'proxy_registry',
           'proxy_observations', 'proxy_scans', 'proxy_boards', 'proxy_board_items',
-          'scenarios')
+          'scenarios', 'observations')
 
 
 def main():

@@ -190,6 +190,29 @@ def project_numeric_observations(connect):
             finally:db.close()
 
 
+def project_numeric_observations_native(connect, *, question_id=None):
+    """Project numeric question observations into the native PG graph ledger."""
+    with connect() as pg:
+        _guard(pg)
+        present = {r[0] for r in pg.execute("SELECT table_name FROM legacy_snapshot_tables "
+                                           "WHERE table_name IN ('transcripts','transcript_follow')")}
+        if present != {'transcripts', 'transcript_follow'}:
+            raise ValueError('Transcript sources are incomplete')
+        if pg.execute("SELECT to_regclass('observations')").fetchone()[0] is None:
+            raise ValueError('Native observation ledger is missing')
+        pg.execute("SELECT pg_advisory_xact_lock(hashtextextended('native-observation-projection',0))")
+        result = pg.execute("INSERT INTO observations(entity_id,date,metric,value,unit,source) "
+            "SELECT (f.row_data->>'entity_id')::bigint,o.observed_at,p.key,o.value_num,p.unit,'proxy:transcript' "
+            "FROM proxy_observations o JOIN proxy_registry p ON p.id=o.proxy_id "
+            "LEFT JOIN sub_questions s ON s.id=p.sub_question_id "
+            "JOIN legacy_snapshot_rows t ON t.table_name='transcripts' AND t.row_data->>'id'=o.transcript_id::text "
+            "JOIN legacy_snapshot_rows f ON f.table_name='transcript_follow' AND f.row_data->>'ticker'=t.row_data->>'ticker' "
+            "WHERE o.source_type='transcript' AND o.value_num IS NOT NULL AND f.row_data->>'entity_id' IS NOT NULL "
+            "AND o.observed_at IS NOT NULL AND (%s::bigint IS NULL OR s.question_id=%s) "
+            "ON CONFLICT(entity_id,date,metric,source) DO NOTHING", (question_id, question_id))
+        return {'projected': result.rowcount}
+
+
 def entity_observations(connect,entity_id):
     """Read the same candidate observation records used by projection."""
     with _projection(connect) as factory:
