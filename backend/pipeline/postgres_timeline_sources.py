@@ -66,6 +66,9 @@ class PostgreSQLTimelineSources:
                 ORDER BY sort_millis DESC,id COLLATE "C" DESC LIMIT %s OFFSET %s
             ''', (scope, kind, *source_generation, source, source, channel, channel, topic, topic,
                   scope, *source_generation, kind, kind, channel, channel, topic, topic, until, size+1, (page-1)*size)).fetchall()
+            if not archived:  # current entity names, as on the detail and list reads
+                from pipeline.postgres_document_read import current_entities
+                current_entities(conn, [payload for *_, payload, is_source in rows[:size] if is_source])
         items = []
         for ident, doc_id, stamp, label, payload, is_source in rows[:size]:
             if not is_source:

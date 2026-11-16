@@ -63,7 +63,11 @@ def run():
                   'kept': [((d == conflicted and 'conflicted') or (d == deleted and 'deleted') or d, s, r)
                            for d, s, r in result['kept']]})
     print('reprocess', {k: len(v) for k, v in changes.reprocess_conflicts(pg).items()})
-    print('unprocessed', [(status, count) for status, count, _ in changes.unprocessed(pg)])
+    print('unprocessed', [(table, status, count) for table, status, count, _ in changes.unprocessed(pg)])
+    order = [row[0] for row in pg.execute('SELECT entity_id FROM document_entity_order WHERE document_id=%s ORDER BY position', (relinked,))]
+    timeline = pg.execute("SELECT topic_names,document->>'summary' FROM timeline_source_projection WHERE document_id=%s", (relinked,)).fetchall()
+    print('copies', {'entity_order_has_new': new_entity in order, 'timeline_rows': len(timeline),
+                     'timeline_updated': bool(timeline) and '합성엔티티RV3' in timeline[0][0] and timeline[0][1] == '합성 재요약 RV3'})
     work.close()
     origin.close()
     os.remove(WORK)
@@ -73,6 +77,8 @@ def restore():
     state = json.load(open(STATE))
     for ident in state['docs']:
         pg.execute('DELETE FROM video_projection_overrides WHERE document_id=%s', (ident,))
+        for view in changes.COPIES:
+            pg.execute(f'DELETE FROM revised_{view} WHERE document_id=%s', (ident,))
         pg.execute("DELETE FROM video_digest_overlay_rows WHERE (table_name='raw_documents' AND row_data->>'id'=%s) "
                    "OR (table_name IN ('enrichments','entity_links') AND row_data->>'doc_id'=%s)", (str(ident), str(ident)))
     withdraw(pg, state['new_doc'])

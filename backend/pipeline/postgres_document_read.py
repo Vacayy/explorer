@@ -10,6 +10,36 @@ import sqlite3
 from models.spine import FeedDocument, FeedResponse
 
 
+def current_entities(conn, documents):
+    """Show each stored document's entity tags with the entities as they are now (renames, merges).
+
+    Stored detail/list documents keep the entity names of when they were built; the legacy feed
+    joined entities on every read. A merged-away entity shows as its survivor, once.
+    """
+    ids = {str(tag['entity_id']) for document in documents for tag in document.get('entities') or []}
+    if not ids:
+        return documents
+    survivors = {}
+    if conn.execute("SELECT to_regclass('owner_entity_merges_applied')").fetchone()[0] is not None:
+        survivors = dict(conn.execute('SELECT loser_id::text,survivor_id::text FROM owner_entity_merges_applied '
+                                      'WHERE loser_id::text=ANY(%s)', (list(ids),)).fetchall())
+    found = {row['id']: row for (row,) in conn.execute(
+        "SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entities' AND row_data->>'id'=ANY(%s)",
+        (list(ids | set(survivors.values())),))}
+    for document in documents:
+        tags, seen = [], set()
+        for tag in document.get('entities') or []:
+            ident = int(survivors.get(str(tag['entity_id']), tag['entity_id']))
+            entity = found.get(ident)
+            if (ident, tag['link_type']) in seen:
+                continue
+            seen.add((ident, tag['link_type']))
+            tags.append({**tag, 'entity_id': ident, **({'type': entity['type'], 'name': entity['name'],
+                                                         'aliases': entity.get('aliases')} if entity else {})})
+        document['entities'] = tags
+    return documents
+
+
 class PostgreSQLDocumentReader:
     def __init__(self, connection_factory):
         self.connection_factory = connection_factory
@@ -20,7 +50,7 @@ class PostgreSQLDocumentReader:
                 'SELECT detail_document FROM document_projection WHERE id = %s',
                 (doc_id,),
             ).fetchone()
-            return FeedDocument.model_validate(row[0]) if row else None
+            return FeedDocument.model_validate(current_entities(conn, [row[0]])[0]) if row else None
 
     def list(self, *, page: int = 1, size: int = 20, source: str | None = None,
              stock: str | None = None, industry: str | None = None,
@@ -72,7 +102,8 @@ class PostgreSQLDocumentReader:
                     'ORDER BY l.ordinal LIMIT %s OFFSET %s',
                     (*params, size, (page - 1) * size),
                 ).fetchall()
-        return FeedResponse(items=[FeedDocument.model_validate(row[0]) for row in rows],
+            documents = current_entities(conn, [row[0] for row in rows])
+        return FeedResponse(items=[FeedDocument.model_validate(document) for document in documents],
                             total=total, page=page, size=size,
                             as_of=datetime.now(timezone.utc).isoformat(), facets=None)
 

@@ -164,6 +164,55 @@ def _document_db(conn, state):
     return db
 
 
+# Per-document copies a revised document must replace too (keyed by document_id).
+COPIES = ('timeline_source_projection', 'timeline_source_metadata', 'document_entity_order')
+
+
+def initialize_revision_copies(conn):
+    """Revised documents (any `video_projection_overrides` row) read these copies from `revised_*` tables."""
+    _guard(conn)
+    with conn.transaction():
+        if conn.execute("SELECT to_regclass('revised_document_entity_order')").fetchone()[0] is not None:
+            raise ValueError('Revision copies already initialized')
+        for view in COPIES:
+            columns = ','.join(row[0] for row in conn.execute(
+                'SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=%s '
+                'ORDER BY ordinal_position', (view,)))
+            conn.execute(f'CREATE TABLE revised_{view} AS SELECT {columns} FROM {view} WHERE false')
+            # Documents revised before this existed keep exactly what they show now.
+            conn.execute(f'INSERT INTO revised_{view} SELECT {columns} FROM {view} '
+                         'WHERE document_id IN (SELECT document_id FROM video_projection_overrides)')
+            definition = conn.execute('SELECT pg_get_viewdef(to_regclass(%s),true)', (view,)).fetchone()[0]
+            conn.execute(f'CREATE OR REPLACE VIEW {view} AS SELECT {columns} FROM ({definition.rstrip().rstrip(";")}) v '
+                         'WHERE NOT EXISTS (SELECT 1 FROM video_projection_overrides o WHERE o.document_id=v.document_id) '
+                         f'UNION ALL SELECT {columns} FROM revised_{view} r '  # only while the revision stands
+                         'WHERE EXISTS (SELECT 1 FROM video_projection_overrides o WHERE o.document_id=r.document_id)')
+
+
+def _write_copies(conn, ident, state, detail, timeline):
+    """Rebuild a revised document's timeline row, timeline metadata and entity order from its new state."""
+    if conn.execute("SELECT to_regclass('revised_document_entity_order')").fetchone()[0] is None:
+        return
+    for view in COPIES:
+        conn.execute(f'DELETE FROM revised_{view} WHERE document_id=%s', (ident,))
+    counts = {}
+    for position, tag in enumerate(detail['entities']):  # same occurrence numbering as the snapshot loader
+        key = (tag['entity_id'], tag['link_type'], tag['confidence'])
+        conn.execute('INSERT INTO revised_document_entity_order VALUES (%s,%s,%s,%s,%s,%s)', (ident, position, *key, counts.get(key, 0)))
+        counts[key] = counts.get(key, 0) + 1
+    enrichment = max(state['enrichments'], key=lambda row: (row.get('enriched_at') or '', row['id']), default=None)
+    conn.execute('INSERT INTO revised_timeline_source_metadata VALUES (%s,%s,%s)',
+                 (ident, enrichment and enrichment['id'], Jsonb([{'entity_id': row['entity_id'], 'link_type': row['link_type'],
+                                                                 'confidence': row['confidence']} for row in state['links']])))
+    if timeline:  # the source's place in the timeline does not move; its content does
+        row_id, occurred, millis, channel, platform, label, document = timeline
+        raw = state['raw']
+        conn.execute('INSERT INTO revised_timeline_source_projection VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+                     (row_id, ident, occurred, millis, channel, platform, sorted({tag['name'] for tag in detail['entities']}), label,
+                      (raw.get('title') or raw.get('markdown') or '')[:180],
+                      Jsonb({**detail, 'published_at': document.get('published_at')})))
+
+
 def _write(conn, ident, ordinal, state, reader_db):
     from pipeline.document_read import _read_sqlite_documents
     from pipeline.postgres_collected_documents_fixture import order_scale
@@ -178,9 +227,12 @@ def _write(conn, ident, ordinal, state, reader_db):
     listed = {**detail, 'digest_status': None, 'digest_error': None, 'video_digest': None, 'transcript': None}
     listing = conn.execute('SELECT ordinal FROM document_list_projection WHERE document_id=%s ORDER BY ordinal LIMIT 1',
                            (ident,)).fetchone()
+    timeline = conn.execute('SELECT id,occurred_at,sort_millis,channel,platform,time_label,document FROM timeline_source_projection '
+                            'WHERE document_id=%s', (ident,)).fetchone()  # before the override hides the original row
     conn.execute('INSERT INTO video_projection_overrides VALUES(%s,%s,%s,%s) ON CONFLICT(document_id) DO UPDATE SET '
                  'detail_document=excluded.detail_document,list_ordinal=excluded.list_ordinal,list_document=excluded.list_document',
                  (ident, Jsonb(detail), listing[0] // order_scale(conn) if listing else -ident, Jsonb(listed)))
+    _write_copies(conn, ident, state, detail, timeline)
     conn.execute("INSERT INTO video_digest_overlay_rows VALUES('raw_documents',%s,%s) ON CONFLICT(table_name,row_ordinal) "
                  'DO UPDATE SET row_data=excluded.row_data', (ordinal, Jsonb(state['raw'])))
     conn.execute("DELETE FROM video_digest_overlay_rows WHERE table_name IN ('enrichments','entity_links') "

@@ -92,5 +92,7 @@ def search_feed(connection, index, query, *, vector=None, source=None, stock=Non
     facets = FeedFacets(sources=sources, entities=[FeedFacetEntity(name=n, link_type=t, aliases=a, count=count)
                                                    for n, t, a, count in entity_rows])
     selected = rows[(page - 1) * size:page * size]
-    return FeedResponse(items=[FeedDocument.model_validate(row[1]) for row in selected], total=len(rows),
+    from pipeline.postgres_document_read import current_entities
+    documents = current_entities(connection, [row[1] for row in selected])
+    return FeedResponse(items=[FeedDocument.model_validate(document) for document in documents], total=len(rows),
                         page=page, size=size, as_of=as_of, facets=facets)
