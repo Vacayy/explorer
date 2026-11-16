@@ -8,7 +8,7 @@ from pipeline.postgres_portfolio_fixture import FixturePortfolioMarket, MemberPo
 
 
 def create_app(factory, *, identity_service):
-    from routers import member_portfolio as routes
+    from routers import auth, member_portfolio as routes
     from security.access_boundary import PublicAccessBoundary, PUBLIC_ROUTE_POLICIES
     from security.member_portfolio import TransactionUnavailable
 
@@ -33,10 +33,12 @@ def create_app(factory, *, identity_service):
                                       last_close=last_close,unavailable=TransactionUnavailable)
 
     app=FastAPI(docs_url=None,redoc_url=None,openapi_url=None)
+    app.include_router(auth.router)
     app.include_router(routes.router)
+    app.dependency_overrides[auth.get_service]=lambda:identity_service
     app.dependency_overrides[routes.member_service]=service
     # Principle endpoints need an independent owned store; leave them closed.
-    allowed={('GET','/api/member/portfolio'),('GET','/api/member/portfolio/history'),
+    allowed={('GET','/api/auth/session'),('GET','/api/member/portfolio'),('GET','/api/member/portfolio/history'),
              ('GET','/api/member/portfolio/transactions'),('GET','/api/member/portfolio/companies'),
              ('POST','/api/member/portfolio/transactions'),('DELETE','/api/member/portfolio/transactions/{tx_id}')}
     policies={key:PUBLIC_ROUTE_POLICIES[key] for key in allowed}

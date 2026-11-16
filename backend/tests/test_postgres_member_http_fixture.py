@@ -59,6 +59,10 @@ class MemberHTTPFixtureTests(unittest.TestCase):
                 body={'trade_date':'2026-01-01','kind':'buy','stock_code':'000001','amount':100,'price':10}
                 with TestClient(app,base_url='https://beta.example') as client:
                     path='/api/member/portfolio/transactions'
+                    self.assertFalse(client.get('/api/auth/session').json()['authenticated'])
+                    session=client.get('/api/auth/session',headers=headers(tokens[0]))
+                    self.assertTrue(session.json()['authenticated'])
+                    self.assertEqual(session.headers['cache-control'],'no-store')
                     self.assertEqual(client.get(path).status_code,401)
                     self.assertEqual(client.post(path,headers={'Cookie':SESSION_COOKIE+'='+tokens[0]},json=body).status_code,403)
                     added=client.post(path,headers=headers(tokens[0]),json=body)
