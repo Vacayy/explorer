@@ -7,15 +7,22 @@ documents whose id is above the copy's starting high-water mark are published
 here, with the same feed, timeline and detail rules as the note overlay
 publisher (`postgres_note_overlay_fixture`). Rows live in `collected_*` tables
 unioned into the snapshot views; the base generation is never changed.
-Only documents newer than every listed document are accepted (they take the
-next lower list ordinal); out-of-order backfill fails closed.
+Documents of any publish time take their time slot, as in the legacy feed
+(published_at DESC): `scale_orders` spreads the base list ordinals and filter
+positions by ORDER_SCALE, and every publish re-spaces all collected rows evenly
+inside the gap between their base neighbours (after base rows of the same
+time). A gap holds ORDER_SCALE-1 documents; a fuller gap fails closed.
 """
+from bisect import bisect_left
+from collections import defaultdict
+
 from psycopg.types.json import Jsonb
 
 from pipeline.postgres_graph_fixture import GRAPH_LOCK, _guard
 
 VIEWS = ('document_projection', 'document_list_projection', 'document_filter_order', 'timeline_source_projection',
          'timeline_source_metadata', 'document_entity_order')
+ORDER_SCALE = 1 << 20
 
 
 def initialize(conn):
@@ -52,6 +59,103 @@ def initialize(conn):
                      'published_at TIMESTAMPTZ NOT NULL DEFAULT now())')
 
 
+def scale_orders(conn):
+    """Spread base list ordinals and filter positions so collected rows fit between them."""
+    _guard(conn)
+    with conn.transaction():
+        if conn.execute("SELECT to_regclass('collected_order_scale')").fetchone()[0] is not None:
+            raise ValueError('Orders already scaled')
+        if conn.execute('SELECT EXISTS(SELECT 1 FROM collected_document_list_projection) '
+                        'OR EXISTS(SELECT 1 FROM collected_document_filter_order)').fetchone()[0]:
+            raise ValueError('Withdraw collected documents before scaling')
+        for view, columns, scaled in (
+                ('document_list_projection', 'ordinal,document_id,list_document',
+                 f'b.ordinal*{ORDER_SCALE} AS ordinal,b.document_id,b.list_document'),
+                ('document_filter_order', 'filter_key,position,list_ordinal',
+                 f'b.filter_key,b.position*{ORDER_SCALE} AS position,b.list_ordinal*{ORDER_SCALE} AS list_ordinal')):
+            definition = conn.execute('SELECT pg_get_viewdef(to_regclass(%s),true)', (view,)).fetchone()[0]
+            head, _, tail = definition.rstrip().rstrip(';').rpartition('UNION ALL')
+            if f'collected_{view}' not in tail or f'collected_{view}' in head:
+                raise ValueError(f'Unexpected view shape: {view}')
+            conn.execute(f'CREATE OR REPLACE VIEW {view} AS SELECT {scaled} FROM ({head}) b '
+                         f'UNION ALL SELECT {columns} FROM collected_{view}')
+        conn.execute('CREATE TABLE collected_order_scale (scale BIGINT NOT NULL)')
+        conn.execute('INSERT INTO collected_order_scale VALUES (%s)', (ORDER_SCALE,))
+
+
+def order_scale(conn):
+    """1 until `scale_orders` ran; base ordinals in the views are multiplied by it."""
+    if conn.execute("SELECT to_regclass('collected_order_scale')").fetchone()[0] is None:
+        return 1
+    return conn.execute('SELECT scale FROM collected_order_scale').fetchone()[0]
+
+
+def _slots(base, items, scale):
+    """Order values for items (key, time, id) among base (value, time) sorted by value, time descending.
+
+    An item goes after base rows of the same or a later time; items sharing a gap
+    are spaced evenly in (time DESC, id ASC) order.
+    """
+    times = [time or '' for _, time in base]
+    if any(a < b for a, b in zip(times, times[1:])):
+        raise ValueError('Base order is not newest first')
+    ascending = times[::-1]
+    gaps = defaultdict(list)
+    for key, time, ident in items:
+        gaps[len(times) - bisect_left(ascending, time or '')].append((key, time or '', ident))
+    values = {}
+    for index, members in gaps.items():
+        members.sort(key=lambda item: item[2])
+        members.sort(key=lambda item: item[1], reverse=True)
+        upper = base[index - 1][0] if index > 0 else None
+        lower = base[index][0] if index < len(base) else None
+        count = len(members)
+        if upper is not None and lower is not None:
+            step = (lower - upper) // (count + 1)
+            if step < 1:
+                raise ValueError('No room left between two listed documents')
+            spots = [upper + step * k for k in range(1, count + 1)]
+        elif lower is not None:
+            spots = [lower - scale * (count + 1 - k) for k in range(1, count + 1)]
+        else:
+            spots = [(upper if upper is not None else 0) + scale * k for k in range(1, count + 1)]
+        values.update({key: spot for (key, _, _), spot in zip(members, spots)})
+    return values
+
+
+def _place(conn, pending):
+    """Re-space every collected list row and filter row; pending maps new document IDs to filter keys."""
+    scale = order_scale(conn)
+    if scale == 1:
+        raise ValueError('Scale the base orders first')
+    keys = defaultdict(list, pending)
+    for key, ident in conn.execute('SELECT o.filter_key,l.document_id FROM collected_document_filter_order o '
+                                   'JOIN collected_document_list_projection l ON l.ordinal=o.list_ordinal'):
+        keys[ident].append(key)
+    collected = conn.execute('SELECT c.document_id,d.published_at FROM collected_document_list_projection c '
+                             'JOIN collected_document_projection d ON d.id=c.document_id').fetchall()
+    base = conn.execute('SELECT l.ordinal,d.published_at FROM document_list_projection l JOIN document_projection d '
+                        'ON d.id=l.document_id WHERE NOT EXISTS (SELECT 1 FROM collected_document_list_projection c '
+                        'WHERE c.document_id=l.document_id) ORDER BY l.ordinal').fetchall()
+    ordinals = _slots(base, [(ident, time, ident) for ident, time in collected], scale)
+    times = dict(collected)
+    filters = []
+    for key in sorted({key for values in keys.values() for key in values}):
+        rows = conn.execute('SELECT o.position,d.published_at FROM document_filter_order o '
+                            'JOIN document_list_projection l ON l.ordinal=o.list_ordinal '
+                            'JOIN document_projection d ON d.id=l.document_id WHERE o.filter_key=%s '
+                            'AND NOT EXISTS (SELECT 1 FROM collected_document_list_projection c '
+                            'WHERE c.document_id=l.document_id) ORDER BY o.position', (key,)).fetchall()
+        members = [(ident, times[ident], ident) for ident, values in keys.items() if key in values]
+        filters += [(key, position, ordinals[ident]) for ident, position in _slots(rows, members, scale).items()]
+    conn.execute('DELETE FROM collected_document_filter_order')
+    for ident, ordinal in ordinals.items():
+        conn.execute('UPDATE collected_document_list_projection SET ordinal=%s WHERE document_id=%s', (ordinal, ident))
+        conn.execute('UPDATE collected_publications SET list_ordinal=%s WHERE document_id=%s', (ordinal, ident))
+    for row in filters:
+        conn.execute('INSERT INTO collected_document_filter_order VALUES (%s,%s,%s)', row)
+
+
 def _rows(work, table, where, params):
     columns = [row[1] for row in work.execute(f'PRAGMA table_info("{table}")')]
     return [dict(zip(columns, row)) for row in work.execute(f'SELECT * FROM "{table}" WHERE {where}', params)]
@@ -82,10 +186,6 @@ def publish(conn, work, *, document_floor, entity_floor, keyword_floor, relation
                                  (table, [str(row['id']) for row in rows])).fetchone()[0]
             if taken:
                 raise RuntimeError(f'{table} IDs were taken while collecting; nothing published')
-        newest = conn.execute('SELECT max(published_at) FROM document_projection d JOIN document_list_projection l '
-                              'ON l.document_id=d.id').fetchone()[0]
-        if any((row['published_at'] or '') < (newest or '') for row in docs):
-            raise ValueError('Only documents newer than the current feed can be added in place')
         for row in docs:
             conn.execute("INSERT INTO video_digest_overlay_rows VALUES ('raw_documents',%s,%s)", (-row['id'], Jsonb(row)))
         for row in enrichments:
@@ -99,8 +199,8 @@ def publish(conn, work, *, document_floor, entity_floor, keyword_floor, relation
         for position, row in enumerate(relations):
             conn.execute("INSERT INTO question_graph_overlay_rows VALUES('entity_relations',%s,%s)", (ordinal + position, Jsonb(row)))
             conn.execute('INSERT INTO question_graph_overlay_relations(id,source_row) VALUES(%s,%s)', (row['id'], Jsonb(row)))
-        published = []
-        for row in docs:  # oldest first, so the newest ends with the lowest ordinal
+        published, pending = [], {}
+        for row in docs:
             ident = row['id']
             channel, groups, visible, timeline = _new_source_details(conn, ident, row['source_type'], row['source_id'],
                                                                      row['url'], row['published_at'], row['fetched_at'])
@@ -111,15 +211,10 @@ def publish(conn, work, *, document_floor, entity_floor, keyword_floor, relation
             doc = reader.get_in_transaction(conn, ident)  # now in the stored entity order
             conn.execute('INSERT INTO collected_document_projection VALUES (%s,%s,%s,%s,%s,%s)',
                          (ident, row['source_type'], row['published_at'], Jsonb(doc.model_dump(mode='json')), visible, groups))
-            if visible:
-                ordinal = conn.execute('SELECT min(ordinal)-1 FROM document_list_projection').fetchone()[0]
-                conn.execute('INSERT INTO collected_document_list_projection VALUES (%s,%s,%s)',
-                             (ordinal, ident, Jsonb(doc.model_dump(mode='json'))))
-                keys = groups if row['source_type'] == 'blog' else [row['source_type'], *(['people'] if 'people' in groups else [])]
-                for key in keys:
-                    position = conn.execute('SELECT COALESCE(min(position),0)-1 FROM document_filter_order WHERE filter_key=%s',
-                                            (key,)).fetchone()[0]
-                    conn.execute('INSERT INTO collected_document_filter_order VALUES (%s,%s,%s)', (key, position, ordinal))
+            if visible:  # the slot is set by _place once every document is in
+                conn.execute('INSERT INTO collected_document_list_projection VALUES (NULL,%s,%s)',
+                             (ident, Jsonb(doc.model_dump(mode='json'))))
+                pending[ident] = groups if row['source_type'] == 'blog' else [row['source_type'], *(['people'] if 'people' in groups else [])]
             if timeline:
                 key, occurred, millis, label = timeline
                 enrichment = next((e['id'] for e in enrichments if e['doc_id'] == ident), None)
@@ -135,10 +230,12 @@ def publish(conn, work, *, document_floor, entity_floor, keyword_floor, relation
                               'links': len(doc_links)})
             first = row is docs[0]  # graph additions are recorded once, with the oldest document
             conn.execute('INSERT INTO collected_publications VALUES (%s,%s,%s,%s,%s,%s,%s)',
-                         (ident, ordinal if visible else None,
+                         (ident, None,
                           [e['id'] for e in enrichments if e['doc_id'] == ident], [l['id'] for l in doc_links],
                           [e['id'] for e in entities] if first else [], [k['id'] for k in keywords] if first else [],
                           [r['id'] for r in relations] if first else []))
+        if pending:
+            _place(conn, pending)
         return published
 
 

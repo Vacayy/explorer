@@ -291,10 +291,18 @@ def publish_video_result(connect, doc_id, *, search_lock, invalidate_search):
                     raise ValueError('New relationship identity is invalid')
                 pg.execute("INSERT INTO question_graph_overlay_rows VALUES('entity_relations',%s,%s)", (ordinal + position, Jsonb(row)))
                 pg.execute('INSERT INTO question_graph_overlay_relations(id,source_row) VALUES(%s,%s)', (row['id'], Jsonb(row)))
-            pg.execute('INSERT INTO video_projection_overrides VALUES(%s,%s,%s,%s) '
-                       'ON CONFLICT(document_id) DO UPDATE SET detail_document=excluded.detail_document, '
-                       'list_ordinal=excluded.list_ordinal,list_document=excluded.list_document',
-                       (doc_id, Jsonb(detail), list_ordinal, Jsonb(listed)))
+            collected = pg.execute("SELECT to_regclass('collected_document_projection')").fetchone()[0] is not None and \
+                pg.execute('SELECT EXISTS(SELECT 1 FROM collected_document_projection WHERE id=%s)', (doc_id,)).fetchone()[0]
+            if collected:  # its rows are not under the base override; replace them where they live
+                pg.execute('UPDATE collected_document_projection SET detail_document=%s WHERE id=%s', (Jsonb(detail), doc_id))
+                pg.execute('UPDATE collected_document_list_projection SET list_document=%s WHERE document_id=%s',
+                           (Jsonb(listed), doc_id))
+            else:  # the override matches the base view's own ordinal, before any collected-order scaling
+                from pipeline.postgres_collected_documents_fixture import order_scale
+                pg.execute('INSERT INTO video_projection_overrides VALUES(%s,%s,%s,%s) '
+                           'ON CONFLICT(document_id) DO UPDATE SET detail_document=excluded.detail_document, '
+                           'list_ordinal=excluded.list_ordinal,list_document=excluded.list_document',
+                           (doc_id, Jsonb(detail), list_ordinal // order_scale(pg) if listing else list_ordinal, Jsonb(listed)))
             for kind, ordinal, value in (('raw_documents', source[0], raw), ('youtube_digest_jobs', job[0], updated_job)):
                 pg.execute('INSERT INTO video_digest_overlay_rows VALUES(%s,%s,%s) ON CONFLICT(table_name,row_ordinal) '
                            'DO UPDATE SET row_data=excluded.row_data', (kind, ordinal, Jsonb(value)))
