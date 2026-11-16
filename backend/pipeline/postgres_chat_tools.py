@@ -14,12 +14,13 @@ class UnsupportedPostgresChatTool(NotImplementedError):
 
 
 class PostgreSQLChatTools:
-    def __init__(self, connect, index, *, query_vector=None, allow_lexical_only=False):
-        if query_vector is None and not allow_lexical_only:
+    def __init__(self, connect, index, *, query_vector=None, allow_lexical_only=False, chunk_rag=None):
+        if query_vector is None and not allow_lexical_only and chunk_rag is None:
             raise ValueError('query embedding provider or explicit lexical-only mode required')
         self.connect = connect
         self.index = index
         self.query_vector = query_vector
+        self.chunk_rag = chunk_rag
         self.reader = PostgreSQLDocumentReader(connect)
 
     def gather_attached_refs(self, refs):
@@ -47,8 +48,17 @@ class PostgreSQLChatTools:
         variants = args.get('variants') or []
         if isinstance(variants, str):
             variants = [variants]
+        variants = [v for v in variants if isinstance(v, str) and v.strip()][:3]
         queries = [query] + [q.strip() for q in variants[:3] if isinstance(q, str) and q.strip()]
         limit = max(1, min(int(args.get('k', 12)), 20))
+        if self.chunk_rag is not None:
+            from pipeline.rag import retrieve_docs
+            docs = retrieve_docs(query, k=limit, since_days=args.get('since_days'), source=args.get('source'),
+                                 variants=variants or None, runtime=self.chunk_rag)
+            items = [{'kind': 'doc', 'doc_id': d['id'], 'title': d['title'], 'text': d['excerpt'],
+                      'date': (d['published_at'] or '')[:10], 'href': f"/doc/{d['id']}",
+                      'source_type': d['source_type']} for d in docs]
+            return ToolResult(name, args, items, '실험용 PG 청크 검색; 출처명 및 빈 결과 폴백 미구현')
         found = []
         seen = set()
         items = []

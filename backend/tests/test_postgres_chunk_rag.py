@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from pipeline.rag import retrieve_docs
 class ChunkRAGTests(unittest.TestCase):
@@ -22,6 +22,18 @@ class ChunkRAGTests(unittest.TestCase):
         runtime.chunk_index_ready.return_value = False
         with self.assertRaisesRegex(RuntimeError, 'no chunk index'):
             retrieve_docs('query', runtime=runtime)
+
+    def test_chat_tool_uses_chunk_rag_and_keeps_filters_explicit(self):
+        from pipeline.postgres_chat_tools import PostgreSQLChatTools, UnsupportedPostgresChatTool
+        runtime = Mock()
+        tools = PostgreSQLChatTools(Mock(), None, chunk_rag=runtime)
+        docs = [{'id': 7, 'title': '문서', 'excerpt': '근거', 'published_at': '2026-01-01', 'source_type': 'blog'}]
+        with patch('pipeline.rag.retrieve_docs', return_value=docs) as retrieve:
+            result = tools.run_tool({'name': 'search_docs', 'args': {'query': '질문', 'source': 'blog'}})
+        self.assertEqual(result.items[0]['doc_id'], 7)
+        self.assertIs(retrieve.call_args.kwargs['runtime'], runtime)
+        with self.assertRaises(UnsupportedPostgresChatTool):
+            tools.run_tool({'name': 'search_docs', 'args': {'query': '질문', 'channel': '채널'}})
 
     def test_shared_filters_preserve_existing_mute_and_entity_rules(self):
         from pipeline.rag import _filter_with_settings
