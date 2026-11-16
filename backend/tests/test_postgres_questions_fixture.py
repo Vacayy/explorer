@@ -32,10 +32,12 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
         INSERT INTO proxy_observations VALUES(5,3,4,'2026-01-01',1,NULL,'up',0.8,'transcript','4',NULL);
         INSERT INTO raw_documents VALUES(10,'자료','transcript');
         INSERT INTO scenarios VALUES('주제','사건','답변','[]','2026-01-01',1);
-        CREATE TABLE entity_relations(id INTEGER PRIMARY KEY,narrative_id INTEGER,promoted_knowledge_id INTEGER);
+        CREATE TABLE entity_relations(id INTEGER PRIMARY KEY,narrative_id INTEGER,promoted_knowledge_id INTEGER,obs_confirmed_at TEXT,obs_confirmed_qid INTEGER);
+        CREATE TABLE narrative_edge_evidence(id INTEGER PRIMARY KEY,narrative_id INTEGER,entity_relation_id INTEGER);
         CREATE TABLE knowledge(id INTEGER PRIMARY KEY,statement TEXT,epistemic_status TEXT);
         CREATE TABLE knowledge_falsifiers(id INTEGER PRIMARY KEY,knowledge_id INTEGER,condition TEXT,triggered_at TEXT);
-        INSERT INTO entity_relations VALUES(1,7,9);
+        INSERT INTO entity_relations VALUES(1,7,9,NULL,NULL);
+        INSERT INTO narrative_edge_evidence VALUES(15,7,1);
         INSERT INTO knowledge VALUES(9,'검증된 지식','verified');
         INSERT INTO question_reports VALUES(6,1,'저장 보고서','old-hash','2026-01-01');
         UPDATE sqlite_sequence SET seq=50 WHERE name='questions';
@@ -262,3 +264,52 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
         self.assertEqual(rollup_question(self.target,1,run_llm=model),{'status':'stale'})
         tree=QuestionsFixture(self.target).detail(1)
         self.assertEqual(tree['confirm_verdict'],'unknown')
+
+    def test_graph_confirmation_updates_all_candidate_read_paths_atomically(self):
+        from types import SimpleNamespace
+        from psycopg.types.json import Jsonb
+        from pipeline.postgres_question_rollup_fixture import rollup_question
+        edge={'id':1,'narrative_id':7,'promoted_knowledge_id':9,'obs_confirmed_at':None,'obs_confirmed_qid':None}
+        evidence={'id':15,'narrative_id':7,'entity_relation_id':1}
+        with self.fixture.pg() as pg:
+            import_questions(self.q,pg)
+            for name in ('entity_relations','narrative_edge_evidence'):
+                pg.execute('INSERT INTO legacy_snapshot_tables VALUES(%s,%s,%s,1) ON CONFLICT DO NOTHING',(name,Jsonb([]),'fixture'))
+            pg.execute("INSERT INTO legacy_snapshot_rows VALUES('entity_relations',91001,%s)",(Jsonb(edge),))
+            pg.execute("INSERT INTO legacy_snapshot_rows VALUES('narrative_edge_evidence',91001,%s)",(Jsonb(evidence),))
+            pg.execute('INSERT INTO ingest_graph_state DEFAULT VALUES ON CONFLICT DO NOTHING')
+            pg.execute('INSERT INTO ingest_narrative_ledger_state DEFAULT VALUES ON CONFLICT DO NOTHING')
+            pg.execute("INSERT INTO ingest_graph_relations(id,src_id,dst_id,rel_type,source_row) OVERRIDING SYSTEM VALUE VALUES(1,1,2,'fixture',%s)",(Jsonb(edge),))
+            pg.execute('INSERT INTO ingest_narrative_evidence(id,source_row) OVERRIDING SYSTEM VALUE VALUES(15,%s)',(Jsonb(evidence),))
+        result=rollup_question(self.fixture.pg,1,run_llm=lambda *a,**k:SimpleNamespace(text='요약'))
+        self.assertEqual(result['status'],'ok');self.assertEqual(result['edges_confirmed'],1)
+        with self.fixture.pg() as pg:
+            a=pg.execute("SELECT row_data FROM question_capture_rows WHERE table_name='entity_relations' AND row_data->>'id'='1'").fetchone()[0]
+            b=pg.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entity_relations' AND row_data->>'id'='1'").fetchone()[0]
+            c=pg.execute('SELECT source_row FROM ingest_graph_relations WHERE id=1').fetchone()[0]
+            self.assertEqual(a,b);self.assertEqual(b,c)
+            self.assertEqual(a['obs_confirmed_qid'],1);self.assertIsNotNone(a['obs_confirmed_at'])
+        self.assertEqual(QuestionsFixture(self.fixture.pg).detail(1)['confirm_verdict'],'leaning_yes')
+
+    def test_graph_confirmation_refuses_diverged_graph_without_partial_write(self):
+        from types import SimpleNamespace
+        from psycopg.types.json import Jsonb
+        from pipeline.postgres_question_rollup_fixture import rollup_question
+        edge={'id':1,'narrative_id':7,'promoted_knowledge_id':9,'obs_confirmed_at':None,'obs_confirmed_qid':None}
+        evidence={'id':15,'narrative_id':7,'entity_relation_id':1}
+        with self.fixture.pg() as pg:
+            import_questions(self.q,pg)
+            for name in ('entity_relations','narrative_edge_evidence'):
+                pg.execute('INSERT INTO legacy_snapshot_tables VALUES(%s,%s,%s,1) ON CONFLICT DO NOTHING',(name,Jsonb([]),'fixture'))
+            pg.execute("INSERT INTO legacy_snapshot_rows VALUES('entity_relations',91002,%s)",(Jsonb(edge),))
+            pg.execute("INSERT INTO legacy_snapshot_rows VALUES('narrative_edge_evidence',91002,%s)",(Jsonb(evidence),))
+            pg.execute('INSERT INTO ingest_graph_state DEFAULT VALUES ON CONFLICT DO NOTHING')
+            pg.execute('INSERT INTO ingest_narrative_ledger_state DEFAULT VALUES ON CONFLICT DO NOTHING')
+            pg.execute("INSERT INTO ingest_graph_relations(id,src_id,dst_id,rel_type,source_row) OVERRIDING SYSTEM VALUE VALUES(1,1,2,'fixture',%s)",(Jsonb({**edge,'promoted_knowledge_id':99}),))
+            pg.execute('INSERT INTO ingest_narrative_evidence(id,source_row) OVERRIDING SYSTEM VALUE VALUES(15,%s)',(Jsonb(evidence),))
+        result=rollup_question(self.fixture.pg,1,run_llm=lambda *a,**k:SimpleNamespace(text='요약'))
+        self.assertEqual(result,{'status':'stale'})
+        self.assertEqual(QuestionsFixture(self.fixture.pg).detail(1)['confirm_verdict'],'unknown')
+        with self.fixture.pg() as pg:
+            row=pg.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entity_relations' AND row_data->>'id'='1'").fetchone()[0]
+            self.assertIsNone(row['obs_confirmed_at'])

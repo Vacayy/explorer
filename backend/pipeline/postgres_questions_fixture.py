@@ -12,12 +12,13 @@ from psycopg.types.json import Jsonb
 from pipeline import questions, question_report
 from pipeline.postgres_graph_fixture import _guard
 
-TABLES=('questions','sub_questions','proxy_registry','proxy_observations','question_reports','proxy_scans','scenarios','transcripts','raw_documents','entity_relations','knowledge','knowledge_falsifiers','observations','transcript_follow')
+TABLES=('questions','sub_questions','proxy_registry','proxy_observations','question_reports','proxy_scans','scenarios','transcripts','raw_documents','entity_relations','knowledge','knowledge_falsifiers','observations','transcript_follow','narrative_edge_evidence')
 FILTERS={
     'scenarios': 'WHERE question_id IS NOT NULL',
     'transcripts': 'WHERE id IN (SELECT transcript_id FROM proxy_observations WHERE transcript_id IS NOT NULL)',
     'raw_documents': 'WHERE id IN (SELECT source_doc_id FROM questions WHERE source_doc_id IS NOT NULL)',
-    'entity_relations': 'WHERE narrative_id IN (SELECT narrative_id FROM questions WHERE narrative_id IS NOT NULL)',
+    'entity_relations': 'WHERE id IN (SELECT entity_relation_id FROM narrative_edge_evidence WHERE narrative_id IN (SELECT narrative_id FROM questions WHERE narrative_id IS NOT NULL)) OR narrative_id IN (SELECT narrative_id FROM questions WHERE narrative_id IS NOT NULL)',
+    'narrative_edge_evidence': 'WHERE narrative_id IN (SELECT narrative_id FROM questions WHERE narrative_id IS NOT NULL)',
     'knowledge': 'WHERE id IN (SELECT promoted_knowledge_id FROM entity_relations WHERE narrative_id IN (SELECT narrative_id FROM questions WHERE narrative_id IS NOT NULL) AND promoted_knowledge_id IS NOT NULL)',
     'knowledge_falsifiers': 'WHERE knowledge_id IN (SELECT promoted_knowledge_id FROM entity_relations WHERE narrative_id IN (SELECT narrative_id FROM questions WHERE narrative_id IS NOT NULL) AND promoted_knowledge_id IS NOT NULL)',
 }
