@@ -38,7 +38,7 @@ _KIND_ORDER = {"company": 0, "sector": 1, "theme": 2, "person": 3, "macro": 4, "
 _ALIAS_SHAPE = re.compile(r"^[가-힣A-Za-z0-9&]{2,8}$")
 
 
-def _fuzzy_company(conn, q: str, prefix_rows=None) -> tuple[dict | None, str | None]:
+def _fuzzy_company(conn, q: str, prefix_rows=None, score_company=None) -> tuple[dict | None, str | None]:
     """등록명에 없는 구어체·브랜드명·약칭을 회사로 결정적으로 추정 (LLM 0). 스레드 33 '삼양라면' 계기.
 
     후보: ① 공유 접두어(≥2자) 회사들('삼양라면' → 삼양*) ② 글자 순서 포함 약칭('하닉' → SK하이닉스, '삼전' → 삼성전자).
@@ -74,6 +74,8 @@ def _fuzzy_company(conn, q: str, prefix_rows=None) -> tuple[dict | None, str | N
         return None, None
 
     def score(eid: int) -> int:
+        if score_company is not None:
+            return score_company(eid, residual)
         if len(residual) >= 2:
             try:
                 return conn.execute("SELECT count(*) FROM entity_links l JOIN doc_fts f ON f.rowid=l.doc_id "
@@ -102,7 +104,7 @@ def _fuzzy_company(conn, q: str, prefix_rows=None) -> tuple[dict | None, str | N
     return None, f"'{q}'에 해당하는 종목이 분명하지 않음 — 후보: {', '.join(names)}. 어느 것인지 확인 필요"
 
 
-def resolve_entity_ex(conn, name: str, prefer: tuple[str, ...] = (), asm: dict | None = None):
+def resolve_entity_ex(conn, name: str, prefer: tuple[str, ...] = (), asm: dict | None = None, *, score_company=None):
     """이름 → entities 행. 정식명 → 종목코드/별칭 → 활성 키워드 → 전방일치(단일) → 회사 퍼지 추정. 회사 우선.
 
     asm(dict)을 주면 가정·모호 정보를 담아 돌려준다: asm["assumed"]=[{query, entity_id, name, code, note}], asm["ambiguous"]=note.
@@ -131,7 +133,7 @@ def resolve_entity_ex(conn, name: str, prefer: tuple[str, ...] = (), asm: dict |
         # 테마·섹터 조회 — 전방일치 여러 건이면 예전처럼 가장 짧은 이름, 퍼지 추정은 하지 않는다
         return prefix_rows[0] if prefix_rows else None
     company_prefix = [r for r in prefix_rows if r["type"] == "company"]
-    row, note = _fuzzy_company(conn, q, prefix_rows=company_prefix or None)
+    row, note = _fuzzy_company(conn, q, prefix_rows=company_prefix or None, score_company=score_company)
     if row:
         if asm is not None:
             asm.setdefault("assumed", []).append({"query": q, "entity_id": row["id"], "name": row["name"],

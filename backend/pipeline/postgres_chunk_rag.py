@@ -58,6 +58,60 @@ class PostgreSQLChunkRAG:
         finally:
             memory.close()
 
+    def entity_scope(self, name):
+        """Apply the original entity resolver to PG snapshot metadata and documents."""
+        from pipeline.chat_tools import entity_terms, resolve_entity_ex
+        memory = sqlite3.connect(':memory:')
+        memory.row_factory = sqlite3.Row
+        try:
+            memory.executescript('''
+                CREATE TABLE entities (id INTEGER, type TEXT, name TEXT, aliases TEXT);
+                CREATE TABLE entity_keywords (entity_id INTEGER, keyword TEXT, status TEXT);
+            ''')
+            with self.chunks.connect() as pg:
+                pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                self._check(pg)
+                required = ['entities', 'entity_keywords', 'entity_links', 'raw_documents']
+                present = {r[0] for r in pg.execute(
+                    'SELECT table_name FROM legacy_snapshot_tables WHERE table_name=ANY(%s)', (required,))}
+                if present != set(required):
+                    raise ChatChunkImportConflict('entity source tables are missing')
+                for table, fields in (('entities', ('id', 'type', 'name', 'aliases')),
+                                      ('entity_keywords', ('entity_id', 'keyword', 'status'))):
+                    select = ','.join('row_data->>%s' for _ in fields)
+                    with pg.cursor(name='entity_' + table) as cursor:
+                        cursor.execute(f'SELECT {select} FROM legacy_snapshot_rows WHERE table_name=%s ORDER BY row_ordinal',
+                                       (*fields, table))
+                        while rows := cursor.fetchmany(1000):
+                            memory.executemany(f"INSERT INTO {table} VALUES ({','.join('?' for _ in fields)})", rows)
+
+                def score_company(eid, residual):
+                    rows = pg.execute("SELECT d.row_data->>'id',d.row_data->>'title',d.row_data->>'markdown',"
+                                      "d.row_data->>'published_at' FROM legacy_snapshot_rows l "
+                                      "JOIN legacy_snapshot_rows d ON d.table_name='raw_documents' "
+                                      "AND d.row_data->>'id'=l.row_data->>'doc_id' "
+                                      "WHERE l.table_name='entity_links' AND l.row_data->>'entity_id'=%s", (str(eid),)).fetchall()
+                    if len(residual) < 2:
+                        return sum(bool(r[3]) and r[3][:10] >= memory.execute(
+                            "SELECT date('now','-180 days')").fetchone()[0] for r in rows)
+                    # Each row is a link, so duplicate links count just as the original join does.
+                    fts = sqlite3.connect(':memory:')
+                    try:
+                        fts.execute('CREATE VIRTUAL TABLE doc_fts USING fts5(title,markdown)')
+                        fts.executemany('INSERT INTO doc_fts(title,markdown) VALUES (?,?)', [(r[1], r[2]) for r in rows])
+                        return fts.execute('SELECT count(*) FROM doc_fts WHERE doc_fts MATCH ?',
+                                           (f'"{residual}"',)).fetchone()[0]
+                    finally:
+                        fts.close()
+
+                assumptions = {}
+                entity = resolve_entity_ex(memory, name, asm=assumptions, score_company=score_company)
+                terms = entity_terms(memory, entity) if entity else None
+                self._check(pg)
+                return (int(entity['id']) if entity else None), terms, assumptions
+        finally:
+            memory.close()
+
     def fetch_docs(self, ids):
         if not ids:
             return []

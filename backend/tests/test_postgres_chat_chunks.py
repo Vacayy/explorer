@@ -129,3 +129,30 @@ class PostgreSQLChatChunkTests(unittest.TestCase):
         self.assertEqual(names, ['기술 소식'])
         self.assertIn('1건', coverage)
         self.assertIsNone(adapter.channel_scope('없는 채널'))
+
+    def test_entity_scope_resolves_name_alias_keyword_and_fuzzy_evidence(self):
+        from psycopg.types.json import Jsonb
+        with self.fixture.pg() as conn:
+            generation = str(conn.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()[0])
+            for table in ('entities', 'entity_keywords', 'entity_links'):
+                conn.execute("INSERT INTO legacy_snapshot_tables VALUES (%s,'[]'::jsonb,'fixture',0)", (table,))
+            conn.execute("INSERT INTO legacy_snapshot_rows VALUES ('entities',0,%s)",
+                         (Jsonb({'id': 7, 'type': 'company', 'name': '테스트기업', 'aliases': 'ABC'}),))
+            conn.execute("INSERT INTO legacy_snapshot_rows VALUES ('entity_keywords',0,%s)",
+                         (Jsonb({'entity_id': 7, 'keyword': '테스트별칭', 'status': 'active'}),))
+            for i in range(3):
+                conn.execute("INSERT INTO legacy_snapshot_rows VALUES ('entity_links',%s,%s)",
+                             (i, Jsonb({'doc_id': self.doc_id, 'entity_id': 7})))
+        class Chunks:
+            connect = self.fixture.pg
+        chunks = Chunks()
+        chunks.generation = generation
+        adapter = PostgreSQLChunkRAG(chunks, lambda *_: None)
+        for name in ('테스트기업', 'ABC', '테스트별칭'):
+            entity_id, terms, assumptions = adapter.entity_scope(name)
+            self.assertEqual(entity_id, 7)
+            self.assertIn('테스트별칭', terms)
+            self.assertEqual(assumptions, {})
+        entity_id, _, assumptions = adapter.entity_scope('테스트반도체')
+        self.assertEqual(entity_id, 7)
+        self.assertEqual(assumptions['assumed'][0]['entity_id'], 7)
