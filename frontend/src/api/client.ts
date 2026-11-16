@@ -5,7 +5,8 @@ import { reportApiError } from './telemetry.ts'
 import { PUBLIC_ACCESS } from '@/lib/accessMode'
 
 /** 백엔드 주소 — 워크트리처럼 다른 포트로 띄울 때 VITE_API_BASE로 바꾼다. */
-export const API_BASE: string = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
+const configuredBase: string = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
+export const API_BASE: string = configuredBase.replace(/\/$/, '')
 export const REQUEST_TIMEOUT = 30_000
 
 const api = axios.create({

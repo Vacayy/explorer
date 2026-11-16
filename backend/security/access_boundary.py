@@ -11,7 +11,8 @@ from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Match
+from starlette.routing import Match, Mount
+from starlette.staticfiles import StaticFiles
 
 from security.login_flow import LoginFlow, SESSION_COOKIE, session_csrf, public_read_only
 
@@ -207,8 +208,9 @@ def is_api_route(route):
 
 
 class PublicAccessBoundary:
-    def __init__(self, app, routes, policies=None, service_factory=LoginFlow.from_environment):
+    def __init__(self, app, routes, policies=None, service_factory=LoginFlow.from_environment, allow_media=False):
         self.app, self.routes, self.service_factory = app, routes, service_factory
+        self.allow_media = allow_media
         self.policies = dict(PUBLIC_ROUTE_POLICIES if policies is None else policies)
         registered = {}
         self.endpoints = {}
@@ -243,6 +245,14 @@ class PublicAccessBoundary:
                     key = (scope['method'], route.path)
                     if route.endpoint is self.endpoints.get(key):
                         policy = self.policies.get(key)
+                elif (self.allow_media and isinstance(route, Mount) and route.path == '/media'
+                      and isinstance(route.app, StaticFiles)
+                      and scope['method'] in {'GET', 'HEAD'}):
+                    # The existing collected-media snapshot is explicitly
+                    # approved for public reading; StaticFiles prevents
+                    # traversal and does not follow symlinks by default.
+                    key = (scope['method'], '/media')
+                    policy = 'public'
                 break
         if policy is None:
             await reject(404, 'Route unavailable')
@@ -313,4 +323,4 @@ def configure_access_boundary(app, *, mode=None):
     if mode not in {'private', 'public'}:
         raise ValueError('Invalid EXPLORER_ACCESS_MODE')
     if mode == 'public':
-        app.add_middleware(PublicAccessBoundary, routes=app.router.routes)
+        app.add_middleware(PublicAccessBoundary, routes=app.router.routes, allow_media=True)

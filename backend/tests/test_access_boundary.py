@@ -62,6 +62,19 @@ class AccessBoundaryTests(unittest.TestCase):
         self.client = TestClient(self.app, base_url='https://beta.example')
         self.addCleanup(self.client.close)
 
+    def test_explicit_public_media_allows_read_only_without_symlinks(self):
+        media = self.root / 'public-media'
+        media.mkdir()
+        (media / 'image.txt').write_text('public fixture')
+        (media / 'link.txt').symlink_to(self.root / 'private.txt')
+        app = FastAPI()
+        app.mount('/media', StaticFiles(directory=media), name='media')
+        app.add_middleware(PublicAccessBoundary, routes=app.router.routes, policies={}, allow_media=True)
+        with TestClient(app, base_url='https://beta.example') as client:
+            self.assertEqual(client.get('/media/image.txt').text, 'public fixture')
+            self.assertEqual(client.get('/media/link.txt').status_code, 404)
+            self.assertEqual(client.post('/media/image.txt').status_code, 404)
+
     def cookie(self, token=None):
         return {'Cookie': SESSION_COOKIE + '=' + (token or self.token)}
 
