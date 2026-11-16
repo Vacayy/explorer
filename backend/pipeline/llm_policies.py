@@ -108,6 +108,9 @@ TASKS = MappingProxyType({
     'report.write': TaskSpec('sonnet', timeout=420),
     'scenario.generate': TaskSpec('opus', timeout=300, model_env='SCENARIO_MODEL'),
     'sector.overview': TaskSpec('sonnet', timeout=180, schema=True),
+    # Principle sentence -> numeric rules preview (the single-path candidate's engine-neutral path for
+    # portfolio_principles.parse; the legacy route calls the Claude CLI directly).
+    'portfolio.principle_parse': TaskSpec('haiku', timeout=60, schema=True),
     'signal.interpret_price': TaskSpec('haiku', timeout=180),
     'signal.interpret_surge': TaskSpec('haiku', timeout=180),
     'study.intent_plan': TaskSpec('haiku', timeout=45, effort='low'),

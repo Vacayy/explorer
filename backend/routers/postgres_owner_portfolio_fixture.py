@@ -12,7 +12,7 @@ import json
 from fastapi import APIRouter, HTTPException
 from fastapi.routing import APIRoute
 
-from models.portfolio import (HistoryPoint, Principle, PrincipleCreate, PrincipleText, PortfolioSummary,
+from models.portfolio import (HistoryPoint, Principle, PrincipleCreate, PrincipleParse, PrincipleParseRequest, PrincipleText, PortfolioSummary,
                               TransactionCreate, TransactionItem)
 from pipeline import portfolio_principles as pp
 from pipeline import postgres_portfolio_fixture as ledger
@@ -90,6 +90,23 @@ def create_router(factory):
         return [{'id': ident, 'text': text, 'created_at': created,
                  'rules': [{**rule, 'summary': pp.describe(rule)} for rule in json.loads(rules)],
                  'notes': json.loads(notes) if notes else []} for ident, text, created, rules, notes in rows]
+
+    @router.post('/principles/parse', response_model=PrincipleParse)
+    def parse_principle(body: PrincipleParseRequest):
+        # The legacy preview: one model call, nothing stored, the ledger is not sent to the model. The legacy
+        # call goes to the Claude CLI only; here the same system prompt, context and schema go through llm.run
+        # (registered task, Codex fallback when Claude is unavailable).
+        def call(system, context, schema):
+            import re
+            from pipeline import llm
+            text = llm.run(json.dumps(context, ensure_ascii=False), task='portfolio.principle_parse', system=system,
+                           json_schema=schema, record_call=lambda *args: None).text
+            match = re.search(r'\{.*\}', text, re.S)
+            return json.loads(match.group(0) if match else text)
+        try:
+            return pp.parse(body.text, call=call)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(503, f'원칙을 해석하지 못했습니다: {type(e).__name__}')
 
     @router.post('/principles', status_code=201)
     def create_principle(body: PrincipleCreate):
