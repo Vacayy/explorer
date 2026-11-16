@@ -24,7 +24,8 @@ NATIVE = ('study_projects', 'questions')
 # Everything the projection reads that can change after the base load.
 VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'question_graph_overlay_rows',
              'legacy_supplement_tables', 'legacy_supplement_rows', *NATIVE,
-             'fixture_portfolio_transactions', 'fixture_portfolio_members', 'fixture_portfolio_principles')
+             'fixture_portfolio_transactions', 'fixture_portfolio_members', 'fixture_portfolio_principles',
+             'owner_follows', 'owner_kalshi_pins')
 CHECK_SECONDS = 10
 log = logging.getLogger(__name__)
 
@@ -67,7 +68,6 @@ class LegacyProjection:
         self.lock = threading.Lock()
         self.current = None  # (path, version)
         self.building = False
-        self.checked = 0.0
         self.failures = 0
 
     def _version(self, pg):
@@ -106,6 +106,7 @@ class LegacyProjection:
                     rows = pg.execute(f'SELECT {quoted} FROM {name}').fetchall()
                     root.executemany(f'INSERT INTO "{name}" ({quoted}) VALUES ({",".join("?" for _ in columns)})', rows)
                 _derive_owner_portfolio(root, pg)
+                _derive_owner_records(root, pg)
                 for (sql,) in pg.execute('SELECT sql FROM legacy_snapshot_indexes'):
                     root.execute(sql)
             root.commit()
@@ -147,25 +148,32 @@ class LegacyProjection:
         temporary.symlink_to(path.name)
         os.replace(temporary, self.stable_path)
 
-    def path(self):
+    def _check(self):
         with self.lock:
             current = self.current
-        if current is None:
-            with self.lock:
-                if self.current is None:
-                    self.current = self._build()
-                    self._link(self.current[0])
-                return self.current[0]
-        now = time.monotonic()
-        if now - self.checked >= CHECK_SECONDS:
-            self.checked = now
-            with self.factory() as pg:
-                stale = self._version(pg) != current[1]
-            with self.lock:
-                if stale and not self.building:
-                    self.building = True
-                    threading.Thread(target=self._refresh, daemon=True).start()
-        return current[0]
+        with self.factory() as pg:
+            stale = self._version(pg) != current[1]
+        with self.lock:
+            if stale and not self.building:
+                self.building = True
+                threading.Thread(target=self._refresh, daemon=True).start()
+
+    def _poll(self):
+        # Writes show within one check plus one rebuild, whether or not anyone reads.
+        while True:
+            time.sleep(CHECK_SECONDS)
+            try:
+                self._check()
+            except Exception as exc:
+                log.warning('Legacy projection version check failed (%s)', type(exc).__name__)
+
+    def path(self):
+        with self.lock:
+            if self.current is None:
+                self.current = self._build()
+                self._link(self.current[0])
+                threading.Thread(target=self._poll, daemon=True, name='legacy-projection-poll').start()
+            return self.current[0]
 
     def connect(self):
         conn = sqlite3.connect(f'file:{self.path()}?mode=ro', uri=True, check_same_thread=False)
@@ -202,3 +210,15 @@ def _derive_owner_portfolio(root, pg):
         root.executemany('INSERT INTO portfolio_principles (id,text,rules_json,created_at,notes_json) VALUES (?,?,?,?,?)',
                          pg.execute('SELECT id,text,rules_json,created_at,notes_json FROM fixture_portfolio_principles '
                                     'WHERE account_id=%s ORDER BY id', (account,)).fetchall())
+
+
+def _derive_owner_records(root, pg):
+    """Show the mapped owner's follows and prediction pins through the legacy tables."""
+    if pg.execute("SELECT to_regclass('owner_follows')").fetchone()[0] is None:
+        return
+    root.execute('DELETE FROM follows')
+    root.executemany('INSERT INTO follows (id,entity_id,created_at) VALUES (?,?,?)',
+                     pg.execute('SELECT id,entity_id,created_at FROM owner_follows ORDER BY id').fetchall())
+    root.execute('DELETE FROM kalshi_pins')
+    root.executemany('INSERT INTO kalshi_pins (event_ticker,series_ticker,pinned_at) VALUES (?,?,?)',
+                     pg.execute('SELECT event_ticker,series_ticker,pinned_at FROM owner_kalshi_pins').fetchall())
