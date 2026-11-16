@@ -2,11 +2,18 @@
 
 Only saved-data GET routes are exposed; each was run against the projection on
 an internet-less network with no external connection, model call or write
-attempt. Routes that may collect, call external services or write (macro
+attempt (DNS included). Routes that may collect, call external services or write (macro
 snapshot, prediction detail/pin, forced briefings or movers, expired index
-refresh) stay unavailable in this private preview.
+refresh) stay unavailable in this private preview. Because a probe cannot see
+every branch (yfinance uses native curl), these routes also run under a network
+guard: any outbound connection during them fails and is logged, so a stale cache
+falls back to saved data instead of fetching.
 """
+import logging
+import re
+import socket
 import sys
+from contextvars import ContextVar
 
 from fastapi import APIRouter, HTTPException
 from fastapi.routing import APIRoute
@@ -28,13 +35,87 @@ READ_ROUTES = {'/api/spine/home', '/api/spine/home/ai-activity', '/api/spine/hom
                '/api/spine/narrative/{narrative_id}/diff', '/api/spine/narrative/{narrative_id}/grounding',
                '/api/spine/narrative/{narrative_id}/related', '/api/spine/narrative/mer', '/api/spine/narrative/scenario',
                '/api/spine/narrative/versions', '/api/spine/world/checkpoint',
-               '/api/spine/narratives/{narrative_id}/market-today', '/api/spine/follows'}
-LEGACY_ROUTERS = ('spine_home', 'spine_search', 'spine_regimes', 'spine_indices', 'spine_credit', 'spine_market_overview',
-                  'spine_risk', 'spine_world', 'spine_retail', 'spine_trend', 'spine_pricing', 'spine_tracker',
-                  'spine_trade', 'spine_transcript', 'spine_groups', 'spine_approvals', 'portfolio', 'spine_narrative', 'spine_market_today', 'spine_follows')
+               '/api/spine/narratives/{narrative_id}/market-today', '/api/spine/follows',
+               # Remaining existing screens (people, Taiwan, thesis, admin, company, US, ...): every
+               # legacy GET not served by a PG reader that passed the internet-less probe, including DNS.
+               '/api/analysis/strategies', '/api/blog/sources',
+               '/api/business/{stock_code}/segments', '/api/companies/{stock_code}', '/api/companies/search',
+               '/api/consensus/{stock_code}', '/api/consensus/{stock_code}/history', '/api/industries/',
+               '/api/ir-notes/{stock_code}', '/api/signals', '/api/spine/actions', '/api/spine/actions/rights',
+               '/api/spine/admin/health', '/api/spine/admin/jobs', '/api/spine/admin/runs',
+               '/api/spine/admin/runtime', '/api/spine/causal/activity', '/api/spine/causal/edge/{edge_id}/source',
+               '/api/spine/causal/node/{entity_id}/narratives', '/api/spine/causal/worldview/core',
+               '/api/spine/causal/worldview/index', '/api/spine/causal/worldview/neighborhood/{entity_id}',
+               '/api/spine/chart-structure/{code}', '/api/spine/company-profile/{code}', '/api/spine/credit/history',
+               '/api/spine/feed/company-evidence', '/api/spine/feed/company-prices', '/api/spine/groups/{group_id}',
+               '/api/spine/groups/{group_id}/digests', '/api/spine/groups/{group_id}/evaluations',
+               '/api/spine/groups/{group_id}/reasons', '/api/spine/groups/{group_id}/signals',
+               '/api/spine/groups/default-watch', '/api/spine/knowledge/items',
+               '/api/spine/knowledge/items/{knowledge_id}/evidence', '/api/spine/knowledge/overview',
+               '/api/spine/knowledge/worldview', '/api/spine/narrative-candidates', '/api/spine/narrative/mega',
+               '/api/spine/person', '/api/spine/person/followed', '/api/spine/person/home',
+               '/api/spine/person/resolve', '/api/spine/proxy-boards/adapters',
+               '/api/spine/proxy-boards/adapters/{kind}/catalog', '/api/spine/report', '/api/spine/report/history',
+               '/api/spine/report/list', '/api/spine/report/version', '/api/spine/research/candidates',
+               '/api/spine/retail/history', '/api/spine/retail/snapshots', '/api/spine/saved',
+               '/api/spine/sector-map', '/api/spine/sector-map/chain', '/api/spine/sector-map/members',
+               '/api/spine/signals/backtest', '/api/spine/sources/dossier', '/api/spine/sources/health',
+               '/api/spine/sources/youtube', '/api/spine/stock/{stock_code}/lens',
+               '/api/spine/technical-scan/{code}', '/api/spine/thesis/{audit_id}', '/api/spine/thesis/audits',
+               '/api/spine/tracker/{code}', '/api/spine/trade/{hs_code}', '/api/spine/trade/{hs_code}/metrics',
+               '/api/spine/trade/by-stock/{stock_code}', '/api/spine/transcript/chain/{transcript_id}',
+               '/api/spine/transcript/chain/upcoming/{ticker}', '/api/spine/transcript/collect/status',
+               '/api/spine/transcript/detail/{transcript_id}/reaction', '/api/spine/transcript/season/sector/{key}',
+               '/api/spine/trend-leaders/{code}/chart', '/api/spine/tw/chain-report/preview',
+               '/api/spine/tw/chain-reports', '/api/spine/tw/expectations', '/api/spine/tw/flow',
+               '/api/spine/tw/revenue', '/api/spine/tw/value-chain', '/api/spine/us', '/api/spine/us/{ticker}',
+               '/api/spine/us/{ticker}/income-flow', '/api/spine/us/{ticker}/income-flow/quarters',
+               '/api/spine/us/{ticker}/mentions', '/api/spine/us/{ticker}/prices/status',
+               '/api/spine/us/{ticker}/worldmodel', '/api/spine/us/briefing/list', '/api/spine/us/briefing/sources',
+               '/api/spine/world/big-picture', '/api/spine/world/contested', '/api/spine/world/my-stocks',
+               '/api/stock-prices/{stock_code}/snapshot', '/api/telegram/channels'}
+# Excluded after the probe: /api/spine/quotes and /api/spine/us/movers fetch external quotes;
+# /api/analysis/runs needs a writable run store.
 
 
-def install(app, projection):
+_offline = ContextVar('legacy_read_offline', default=False)
+log = logging.getLogger(__name__)
+
+
+def _refuse(kind, target):
+    log.warning('Blocked %s from a legacy read: %s', kind, str(target)[:80])
+    raise OSError('Network is unavailable to legacy reads in this preview')
+
+
+def _install_network_guard(database_host):
+    connect, resolve = socket.socket.connect, socket.getaddrinfo
+    # The candidate's own PostgreSQL stays reachable; psycopg resolves it in Python.
+    allowed = {database_host} | {info[4][0] for info in resolve(database_host, None)}
+
+    def guarded_connect(self, address):
+        if _offline.get() and isinstance(address, tuple) and address[0] not in allowed:
+            _refuse('connect', address)
+        return connect(self, address)
+
+    def guarded_resolve(host, *args, **kwargs):
+        if _offline.get() and host not in allowed:
+            _refuse('resolve', host)
+        return resolve(host, *args, **kwargs)
+    socket.socket.connect, socket.getaddrinfo = guarded_connect, guarded_resolve
+    try:
+        from curl_cffi.requests import Session
+    except ImportError:
+        return
+    request = Session.request
+
+    def guarded_request(self, method, url, *args, **kwargs):
+        if _offline.get():
+            _refuse('curl request', url)
+        return request(self, method, url, *args, **kwargs)
+    Session.request = guarded_request
+
+
+def install(app, projection, *, database_host):
     import database
     original = database.get_connection
     # Modules bound the original by `from database import get_connection`.
@@ -52,8 +133,13 @@ def install(app, projection):
     # The owner-gated experimental portfolio adapter is replaced by the legacy reads.
     app.router.routes[:] = [route for route in app.router.routes
                             if not (isinstance(route, APIRoute) and route.methods == {'GET'} and route.path in READ_ROUTES)]
-    for name in LEGACY_ROUTERS:
-        for route in importlib.import_module(f'routers.{name}').router.routes:
+    import pkgutil
+    import routers
+    first_legacy = len(app.router.routes)
+    names = [m.name for m in pkgutil.iter_modules(routers.__path__) if not m.name.startswith('postgres_')]
+    for name in names:
+        router = getattr(importlib.import_module(f'routers.{name}'), 'router', None)
+        for route in getattr(router, 'routes', ()):
             if isinstance(route, APIRoute) and route.methods == {'GET'} and route.path in READ_ROUTES:
                 app.router.routes.append(route)
 
@@ -89,4 +175,20 @@ def install(app, projection):
             raise HTTPException(405, 'Collection is unavailable in the read-only preview')
         return build_briefing(force=False, trade_date=trade_date)
 
-    app.include_router(router)
+    # Fixed wrapper paths (e.g. /us/briefing) must win over legacy patterns like /us/{ticker}.
+    wrappers = [route for route in router.routes]
+    app.router.routes[first_legacy:first_legacy] = wrappers
+
+    _install_network_guard(database_host)
+    patterns = [re.compile('^' + re.sub(r'\\{[^}]+\\}', '[^/]+', re.escape(path)) + '$')
+                for path in READ_ROUTES | {route.path for route in router.routes}]
+
+    @app.middleware('http')
+    async def legacy_reads_offline(request, call_next):
+        if not any(pattern.match(request.url.path) for pattern in patterns):
+            return await call_next(request)
+        token = _offline.set(True)  # copied into the threadpool that runs sync endpoints
+        try:
+            return await call_next(request)
+        finally:
+            _offline.reset(token)

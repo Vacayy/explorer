@@ -6,6 +6,7 @@ The imported document app validates the disposable fixture DSN and schema.
 import os
 import threading
 
+import psycopg
 import uvicorn
 
 os.environ['REFACTOR_LEXICAL_ONLY'] = '0'
@@ -100,7 +101,8 @@ app.include_router(video_router(factory, search_lock=document_ui.search_lock, in
 app.include_router(study_router(StudyFixture(factory), turns=turns, actions=actions))
 app.include_router(project_router(StudyProjectsFixture(factory), turns=turns))
 legacy_projection = LegacyProjection(factory, '/projection')
-install_legacy_reads(app, legacy_projection)
+install_legacy_reads(app, legacy_projection,
+                     database_host=psycopg.conninfo.conninfo_to_dict(os.environ['REFACTOR_POSTGRES_DSN'])['host'])
 install_owner_portfolio(app, factory)  # after the legacy reads it replaces
 threading.Thread(target=legacy_projection.path, daemon=True).start()  # warm before the first home visit
 
