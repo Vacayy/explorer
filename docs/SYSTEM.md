@@ -784,3 +784,5 @@ tail -f logs/ingest.log               # 수집 관찰
 fixture snapshot 교체는 호출자가 공간 점검 함수를 명시하지 않으면 거부한다. `scripts/refactor_guarded_snapshot.py`는 호스트 SSD와 Docker VM의 서로 다른 filesystem probe를 받아 두 여유를 각각 검사하고, SQLite snapshot과 PostgreSQL DB 중 큰 크기의 두 배에 20GiB 여유를 더해 사전 기준으로 삼는다. 교체 전과 잠금 후에 검사하며 측정 실패·부족 시 기존 세대를 보존한다. 초기 적재에 대한 저수준 `load_snapshot` 직접 호출은 이 가드를 강제하지 않으며 wrapper가 선행 검사한다. 추정은 동작 중 WAL·파일 증가를 보장하지 않고, 이 도구는 일회성 fixture 외의 연결을 거부한다. 운영 적용 및 공간 부족 중 실제 쓰기 실패·복구는 별도 검증이 필요하다.
 
 격리 PostgreSQL 스냅샷은 명시적 `include_knowledge` 선택 시 기존 `knowledge`와 `knowledge_evidence`를 동일 SQLite 읽기 트랜잭션에서 함께 보존한다. 누락된 테이블은 교체를 거부한다. 이 사본만으로 지식 검색, 임베딩, 내러티브 생성이나 동시 입력 변경의 일관성이 연결되는 것은 아니다.
+
+격리 내러티브 프롬프트 실험은 명시적으로 주입한 임베더와 기존 지식 선택 함수를 사용한다. 누락된 지식 스냅샷은 실패하며 외부 모델은 호출하지 않는다. 프롬프트 준비와 결과 저장 간 동시 변경 감지 및 실제 생성 경로 연결은 미구현이다.

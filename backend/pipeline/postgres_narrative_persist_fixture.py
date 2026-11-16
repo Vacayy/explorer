@@ -5,12 +5,38 @@ This is not a durable writer or an external model invocation.
 """
 from psycopg.types.json import Jsonb
 
-from pipeline.narrative import _hash, _latest_narrative, _persist_narrative, _resolve, gather
+from pipeline.narrative import _build_prompt, _hash, _latest_narrative, _node_vocab, _persist_narrative, _resolve, gather
+from pipeline.knowledge_recall import recall_for_query
 from pipeline.postgres_urgent_selection_fixture import open_snapshot
 
 TABLES=('entities','entity_links','raw_documents','enrichments','narratives',
         'entity_relations','narrative_edge_evidence','entity_merges')
 CHANGED=('entities','entity_relations','narratives','narrative_edge_evidence')
+
+
+def prepare_fixture_narrative(conn, topic, *, embedder):
+    """Build the legacy prompt from a captured fixture; never call a model."""
+    if not callable(embedder):
+        raise ValueError('An explicit fixture embedder is required')
+    if conn.execute('SHOW transaction_isolation').fetchone()[0] != 'repeatable read':
+        raise ValueError('Repeatable-read transaction required')
+    db,_,_=open_snapshot(conn,TABLES + ('knowledge','knowledge_evidence'))
+    try:
+        entity=_resolve(db,topic)
+        if entity is None:
+            return {'status':'not_found'}
+        docs=gather(db,entity['id'])
+        if len(docs)<3:
+            return {'status':'empty'}
+        previous=_latest_narrative(db,topic)
+        digest=_hash(docs)
+        if previous and previous['doc_ids_hash']==digest:
+            return {'status':'cached'}
+        knowledge=recall_for_query(db,topic,embedder=embedder)
+        return {'status':'ready','prompt':_build_prompt(topic,docs,knowledge,_node_vocab(db),previous),
+                'doc_ids':[doc['id'] for doc in docs], 'knowledge_ids':[item['id'] for item in knowledge]}
+    finally:
+        db.close()
 
 
 def persist_fixture_narrative(conn, topic, data):

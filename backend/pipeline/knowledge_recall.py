@@ -80,12 +80,12 @@ def recall_for_entity(conn, entity_id: int, limit: int = 5) -> list[dict]:
     return [k for _, k in scored[:limit]]
 
 
-def recall_for_query(conn, query: str, limit: int = 4, min_sim: float = MIN_QUERY_SIM) -> list[dict]:
+def recall_for_query(conn, query: str, limit: int = 4, min_sim: float = MIN_QUERY_SIM, *, embedder=None) -> list[dict]:
     """RAG용 — 질문과 의미 유사한 지식, relevance×activation×epistemic 순. min_sim으로 문턱 조절(도구 폴백용)."""
     items = _load_active(conn)
     if not items:
         return []
-    embs = _embed_statements([query] + [i["statement"] for i in items])
+    embs = (embedder or _embed_statements)([query] + [i["statement"] for i in items])
     q = embs[0]
     scored = []
     for item, e in zip(items, embs[1:]):

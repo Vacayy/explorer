@@ -824,10 +824,14 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             c.execute('CREATE TABLE entity_merges(old_name TEXT,type TEXT,survivor_id INTEGER)')
             c.execute('CREATE TABLE narrative_edge_evidence(id INTEGER PRIMARY KEY,entity_relation_id INTEGER,narrative_id INTEGER,doc_id INTEGER,quote TEXT,UNIQUE(entity_relation_id,narrative_id))')
             c.execute('CREATE TABLE market_today(id INTEGER PRIMARY KEY,trade_date TEXT,slot TEXT,links_at TEXT)')
+            c.execute('CREATE TABLE knowledge(id INTEGER PRIMARY KEY,statement TEXT,epistemic_status TEXT,pace_layer TEXT,review_status TEXT,valid_to TEXT)')
+            c.execute('CREATE TABLE knowledge_evidence(id INTEGER PRIMARY KEY,knowledge_id INTEGER,stance TEXT,independent INTEGER,observed_at TEXT)')
+            c.execute("INSERT INTO knowledge VALUES (1,'합성 지식 전제','observed','flow','active',NULL),(2,'비활성 전제','observed','flow','proposed',NULL)")
+            c.execute("INSERT INTO knowledge_evidence VALUES (1,1,'support',1,'2026-11-15')")
             c.executescript(SCHEMA)
             c.execute('CREATE TABLE signals(id INTEGER PRIMARY KEY,signal_type TEXT,entity_id INTEGER,date TEXT,payload_json TEXT,interpretation TEXT,interpretation_model TEXT,UNIQUE(signal_type,entity_id,date))')
             c.execute("INSERT INTO narratives(id,topic,version,title,body,doc_count,created_at) VALUES (1,'합성 신주제',1,'저장된 이야기','기존 본문',3,'2026-01-01')")
-        self.load('2026-01-03T00:00:00+00:00',include_linking=True,include_signals=True,include_narrative_inputs=True,include_narrative_graph=True)
+        self.load('2026-01-03T00:00:00+00:00',include_linking=True,include_signals=True,include_narrative_inputs=True,include_narrative_graph=True,include_knowledge=True)
         with self.pg() as c:
             c.execute((Path(__file__).resolve().parents[1]/'refactor_sql/ingest_fixture.sql').read_text())
             import_archived_documents(c)
@@ -843,10 +847,15 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
         claims=[]
         def process(c):
             from pipeline.postgres_urgent_selection_fixture import select_urgent
-            from pipeline.postgres_narrative_persist_fixture import persist_fixture_narrative
+            from pipeline.postgres_narrative_persist_fixture import persist_fixture_narrative, prepare_fixture_narrative
             compute_mention_signals(c,as_of=datetime.now(timezone.utc),include_themes=True)
             selection=select_urgent(c)
             self.assertEqual(selection['results'],{'합성 신주제':'selected'})
+            prepared=prepare_fixture_narrative(c,'합성 신주제',embedder=lambda texts:[[1.0,0.0] for _ in texts])
+            self.assertEqual(prepared['status'],'ready')
+            self.assertEqual(prepared['knowledge_ids'],[1])
+            self.assertIn('합성 지식 전제',prepared['prompt'])
+            self.assertNotIn('비활성 전제',prepared['prompt'])
             with self.pg() as source:
                 self.assertFalse(validate_narrative_claim(source,'합성 신주제',claim))
                 claims.append(claim_narrative(source,'합성 신주제'))
