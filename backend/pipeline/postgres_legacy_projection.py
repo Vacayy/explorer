@@ -267,7 +267,7 @@ class LegacyProjection:
                 self.legacy_cache = cached
         return cached
 
-    def _shadow(self, conn, *, writable=False):
+    def _shadow(self, conn, *, writable=False, extra=()):
         """TEMP names shadow main ones; the unchanged derivations then write only the shadows."""
         with self.factory() as pg:
             pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
@@ -280,11 +280,13 @@ class LegacyProjection:
                 ddl.update({name: writable_ddl(sql) for name, sql in pg.execute(
                     'SELECT table_name,schema_sql FROM legacy_snapshot_tables WHERE table_name=ANY(%s)', (list(OVERRIDES),))})
                 computed = COMPUTED  # writable copies of computation outputs for this request only
+                ddl.update({name: writable_ddl(sql) for name, sql in pg.execute(
+                    'SELECT table_name,schema_sql FROM legacy_snapshot_tables WHERE table_name=ANY(%s)', (list(extra),))})
             # The file already holds this ledger version: skip re-deriving its large evaluation table.
             current = self.current
             fresh = not writable and legacy is not None and current is not None and current[2] == legacy[0]
             skip = {'watch_evaluations'} if fresh else set()
-            for table in (*SHADOWED, *computed):
+            for table in dict.fromkeys((*SHADOWED, *computed, *extra)):
                 if table in skip:
                     continue
                 if table in ddl:
@@ -327,12 +329,15 @@ class LegacyProjection:
         conn.execute('PRAGMA query_only=ON')
         return conn
 
-    def write_connection(self):
-        """A projection connection whose owner tables are writable TEMP copies, with the ledger version."""
+    def write_connection(self, extra=()):
+        """A projection connection whose owner tables are writable TEMP copies, with the ledger version.
+
+        `extra` names more tables to copy writable for this request (a computation that writes the graph).
+        """
         conn = sqlite3.connect(f'file:{self.path()}?mode=ro', uri=True, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         try:
-            version = self._shadow(conn, writable=True)
+            version = self._shadow(conn, writable=True, extra=extra)
             if version is None:
                 raise LookupError('Owner legacy ledger unavailable')
         except BaseException:

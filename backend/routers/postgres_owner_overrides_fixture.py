@@ -3,8 +3,9 @@
 Loopback-only preview adapter, like the group adapter: the legacy handler runs on one projection
 connection whose decision tables are writable TEMP copies; only if it ends 2xx are the rows it
 changed stored (`pipeline.postgres_owner_overrides`). A handler that writes any other table hits the
-read-only projection and fails the request (fail closed). Agent-proposal approvals that would call a
-model or merge entities are refused before the handler runs.
+read-only projection and fails the request (fail closed). Narrative generation also gets writable
+graph copies, and its graph diff is published with the result (`pipeline.postgres_graph_compute`).
+Agent-proposal approvals that would call a model or merge entities are refused before the handler runs.
 """
 import re
 
@@ -21,7 +22,10 @@ ADAPTED = (('POST', '/api/spine/admin/flag'), ('PUT', '/api/spine/regimes/checks
            ('DELETE', '/api/spine/keywords/{keyword_id}'),
            # Screen computations requested on page open (one model call when the cached result is stale).
            ('POST', '/api/spine/stock/{stock_code}/lens/compute'), ('POST', '/api/spine/sources/dossier/summary'),
-           ('POST', '/api/spine/beneficiary/upside'), ('POST', '/api/spine/narrative/mer/compute'))
+           ('POST', '/api/spine/beneficiary/upside'), ('POST', '/api/spine/narrative/mer/compute'),
+           ('POST', '/api/spine/narrative/compute'))
+# Computations that also write the graph: graph tables are copied writable and their diff is published.
+GRAPH_WRITERS = {'/api/spine/narrative/compute'}
 # Approvals whose legacy action only touches the decision tables (alias registration, acknowledgement).
 APPROVABLE = {'entity_alias', 'devils_advocate', 'falsifier_watch'}
 APPROVE = re.compile(r'^/api/spine/agent-proposals/(\d+)/approve$')
@@ -57,9 +61,12 @@ def install(app, projection, factory):
             found = await run_in_threadpool(kind)
             if found and found not in APPROVABLE:
                 return JSONResponse({'detail': '이 제안의 승인 작업은 후보에서 아직 실행하지 않습니다'}, status_code=409)
-        conn, _ = await run_in_threadpool(projection.write_connection)
+        from pipeline import postgres_graph_compute as graph
+        writes_graph = request.url.path in GRAPH_WRITERS
+        conn, _ = await run_in_threadpool(projection.write_connection, graph.GRAPH if writes_graph else ())
         try:
             before = overrides.rows(conn)
+            graph_before = await run_in_threadpool(graph.snapshot, conn) if writes_graph else None
             token = write_connection_var.set(_Borrowed(conn))
             try:
                 response = await call_next(request)
@@ -71,6 +78,8 @@ def install(app, projection, factory):
             def store():
                 with factory() as pg, pg.transaction():
                     overrides.apply(pg, before, overrides.rows(conn))
+                    if writes_graph:
+                        graph.publish(pg, graph_before, graph.snapshot(conn), run_id=f'compute:{request.url.path}')
             await run_in_threadpool(store)
             return response
         finally:

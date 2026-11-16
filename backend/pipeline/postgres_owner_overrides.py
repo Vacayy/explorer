@@ -4,8 +4,8 @@ Admin flags, regime checklist entries, research-candidate and agent-proposal dis
 rejections change a few rows of tables the collector also writes; screen computations (investor
 lens, source profile, upside model, MER narrative) write one result row each. The unchanged legacy handler runs
 on writable TEMP copies of these tables (`routers.postgres_owner_overrides_fixture`); the rows it
-changed are kept here and laid over the collected rows in every read path and in the collector export.
-A removed row is kept as a NULL override.
+changed are kept here and laid over the collected rows in every read path (`legacy_snapshot_rows`
+itself, after `install_view`) and in the collector export. A removed row is kept as a NULL override.
 """
 import re
 
@@ -29,6 +29,27 @@ def initialize(conn):
             raise ValueError('Row overrides already initialized')
         conn.execute('CREATE TABLE owner_row_overrides (table_name TEXT NOT NULL,key TEXT NOT NULL,row_data JSONB,'
                      'updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),PRIMARY KEY(table_name,key))')
+
+
+def install_view(conn):
+    """Show the kept rows through `legacy_snapshot_rows` itself, so PG-native readers see them too.
+
+    An override replaces the row with the same key at the same ordinal; a new key gets its own
+    ordinal after the table's rows; a NULL override hides the row.
+    """
+    _guard(conn)
+    with conn.transaction():
+        if conn.execute("SELECT to_regclass('owner_override_keys')").fetchone()[0] is not None:
+            raise ValueError('Override view already installed')
+        conn.execute('ALTER TABLE owner_row_overrides ADD COLUMN row_ordinal BIGINT')
+        conn.execute('CREATE TABLE owner_override_keys (table_name TEXT PRIMARY KEY,key_column TEXT NOT NULL)')
+        conn.cursor().executemany('INSERT INTO owner_override_keys VALUES (%s,%s)', list(OVERRIDES.items()))
+        definition = conn.execute("SELECT pg_get_viewdef(to_regclass('legacy_snapshot_rows'),true)").fetchone()[0]
+        conn.execute(f'''CREATE OR REPLACE VIEW legacy_snapshot_rows AS
+            SELECT v.table_name,v.row_ordinal,v.row_data FROM ({definition.rstrip().rstrip(";")}) v
+            WHERE NOT EXISTS (SELECT 1 FROM owner_row_overrides o JOIN owner_override_keys k USING (table_name)
+                              WHERE o.table_name=v.table_name AND o.key=v.row_data->>k.key_column)
+            UNION ALL SELECT table_name,row_ordinal,row_data FROM owner_row_overrides WHERE row_data IS NOT NULL''')
 
 
 def writable_ddl(ddl):
@@ -56,9 +77,15 @@ def apply(conn, before, after):
         for key in set(old) | set(new):
             if old.get(key) != new.get(key):
                 row = new.get(key)
-                conn.execute('INSERT INTO owner_row_overrides(table_name,key,row_data) VALUES (%s,%s,%s) '
+                # Keep the visible row's place; a new row goes after the table's rows.
+                ordinal = conn.execute(f"SELECT row_ordinal FROM legacy_snapshot_rows WHERE table_name=%s "
+                                       f"AND row_data->>'{OVERRIDES[table]}'=%s", (table, key)).fetchone()
+                if ordinal is None:
+                    ordinal = conn.execute('SELECT COALESCE(max(row_ordinal),0)+1 FROM legacy_snapshot_rows WHERE table_name=%s',
+                                           (table,)).fetchone()
+                conn.execute('INSERT INTO owner_row_overrides(table_name,key,row_data,row_ordinal) VALUES (%s,%s,%s,%s) '
                              'ON CONFLICT (table_name,key) DO UPDATE SET row_data=excluded.row_data,updated_at=now()',
-                             (table, key, Jsonb(row) if row is not None else None))
+                             (table, key, Jsonb(row) if row is not None else None, ordinal[0]))
                 changed += 1
     return changed
 
