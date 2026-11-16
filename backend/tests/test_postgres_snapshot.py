@@ -11,6 +11,7 @@ import tempfile
 import subprocess
 import sys
 import struct
+import select
 from datetime import date,datetime,timezone
 from contextlib import closing
 from collections import namedtuple
@@ -803,6 +804,66 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
                 row=c.execute("SELECT j.status,a.state FROM ingest_enrichment_jobs j JOIN ingest_documents d ON d.id=j.document_id "
                               "JOIN ingest_enrichment_attempts a ON a.document_id=d.id WHERE d.source_id='crash.md'").fetchone()
                 self.assertEqual(row,('unknown','unknown'))
+
+    def test_killed_projection_build_keeps_previous_and_recovers(self):
+        self.load('2026-01-03T00:00:00+00:00')
+        with self.pg() as c:
+            c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
+            import_archived_documents(c)
+            first=store_document(c,source_type='note',source_id='before',title='기존 합성 문서',markdown='기존 시험 내용')
+        def target(schema): return psycopg.connect(self.dsn,options=f'-c search_path={schema}')
+        previous=FixturePublisher(self.pg,self.schema,target)
+        previous.publish()
+        with self.pg() as c:
+            newer=store_document(c,source_type='note',source_id='after',title='새로운 합성 문서',markdown='회복검증단어 시험 내용')
+        self.assertIsNone(previous.get(newer['id']))
+        child_id=uuid.uuid4().hex
+        child_schema='refactor_fixture_'+child_id
+        child_code='''
+import os,sys,time,uuid,psycopg
+from unittest.mock import patch
+from pipeline.postgres_projection_publisher_fixture import FixturePublisher
+dsn=os.environ['REFACTOR_POSTGRES_DSN']; source=os.environ['TEST_SOURCE_SCHEMA']
+def factory(): return psycopg.connect(dsn,options='-c search_path='+source)
+def target(name): return psycopg.connect(dsn,options='-c search_path='+name)
+def pause_index(*args):
+    print('INDEX_BUILD_READY',flush=True)
+    time.sleep(120)
+with patch('pipeline.postgres_projection_publisher_fixture.uuid.uuid4',return_value=uuid.UUID(hex=os.environ['TEST_CHILD_ID'])):
+    FixturePublisher(factory,source,target,index_factory=pause_index).publish()
+'''
+        env={**os.environ,'TEST_SOURCE_SCHEMA':self.schema,'TEST_CHILD_ID':child_id}
+        child=subprocess.Popen([sys.executable,'-u','-c',child_code],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        try:
+            ready,_,_=select.select([child.stdout],[],[],30)
+            self.assertTrue(ready,'child did not reach index build')
+            self.assertEqual(child.stdout.readline().strip(),'INDEX_BUILD_READY')
+            child.kill()
+            child.wait(timeout=10)
+            self.assertIsNotNone(previous.get(first['id']))
+            self.assertIsNone(previous.get(newer['id']))
+            with target(child_schema) as c:
+                self.assertEqual(c.execute('SELECT count(*) FROM snapshot_metadata').fetchone()[0],0)
+            recovered=FixturePublisher(self.pg,self.schema,target)
+            try:
+                recovered.publish()
+                self.assertIsNotNone(recovered.get(first['id']))
+                self.assertIsNotNone(recovered.get(newer['id']))
+                self.assertIn(newer['id'],[row.id for row in recovered.search('회복검증단어').items])
+                with target(recovered.active[0]) as c:
+                    generation=c.execute('SELECT generation_id FROM snapshot_metadata').fetchone()[0]
+                self.assertEqual(str(generation),recovered.active[1].generation)
+            finally:
+                recovered.close()
+        finally:
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=10)
+            child.stdout.close()
+            child.stderr.close()
+            with psycopg.connect(self.dsn) as c:
+                c.execute(psycopg.sql.SQL('DROP SCHEMA IF EXISTS {} CASCADE').format(psycopg.sql.Identifier(child_schema)))
+            previous.close()
 
     def test_periodic_fixture_runs_changed_note_twice(self):
         with self.fixture.connect() as c:
