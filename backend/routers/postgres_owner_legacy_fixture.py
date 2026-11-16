@@ -1,12 +1,12 @@
 """Unchanged legacy group writes over writable TEMP copies, kept in the owner ledger.
 
 Loopback-only preview adapter, minimal scope: create/rename/delete a group and
-add/update/remove its members. Each request borrows one projection connection
+add/update/remove its members, replace its rules and toggle member tracking. Each request borrows one projection connection
 whose owner tables are TEMP copies of the PG ledger; the legacy handler runs
 unchanged on it and, only if it ends 2xx, the PK diff is stored in one PG
 transaction that first checks no other write landed. Writes to any other table
 hit the read-only projection and fail the request (fail closed). Evaluation,
-rules, tracking and reasons stay unavailable here.
+tracker preparation and reasons (model call) stay unavailable here.
 """
 import re
 
@@ -19,7 +19,9 @@ from pipeline.postgres_legacy_projection import write_connection_var
 ADAPTED = (('POST', '/api/spine/groups'), ('PATCH', '/api/spine/groups/{group_id}'),
            ('DELETE', '/api/spine/groups/{group_id}'), ('POST', '/api/spine/groups/{group_id}/members'),
            ('PATCH', '/api/spine/groups/{group_id}/members/{stock_code}'),
-           ('DELETE', '/api/spine/groups/{group_id}/members/{stock_code}'))
+           ('DELETE', '/api/spine/groups/{group_id}/members/{stock_code}'),
+           ('PUT', '/api/spine/groups/{group_id}/rules'),
+           ('PUT', '/api/spine/groups/{group_id}/members/{stock_code}/tracked'))
 LOCK = 'owner-legacy-write'
 
 

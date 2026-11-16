@@ -265,7 +265,11 @@ class LegacyProjection:
         except BaseException:
             conn.close()
             raise
-        conn.execute('PRAGMA foreign_keys=ON')  # as legacy get_connection
+        conn.commit()  # PRAGMA foreign_keys is ignored inside the transaction the shadow inserts opened
+        conn.execute('PRAGMA foreign_keys=ON')  # as legacy get_connection, so group deletes cascade
+        if conn.execute('PRAGMA foreign_keys').fetchone()[0] != 1:
+            conn.close()
+            raise RuntimeError('Foreign keys could not be enabled')
         return conn, version
 
 
