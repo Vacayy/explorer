@@ -942,8 +942,8 @@ Peer 번들은 SQLite가 아니라 별도 수집 파일에서 오므로 보충 �
 | ingest | P1·P2, 이미지·채널 표 P3 | 그래프 3표 기존 행 갱신, 삭제 문서(unsupported 기록), 수집 문서 재개정, 타임라인·엔티티 순서 사본 |
 | backfill(enrich_batch) | P2 | 그래프 3표 |
 | extract_doc_causal | P2 | 관계·엔티티 갱신, narrative_edge_evidence |
-| compute_narratives(급증·주간) | P3(narratives 채택 예정) | 관계·엔티티 갱신, narrative_candidates 결정 원장 |
-| callmomentum·callfresh | P1·P2, P3(transcripts·call_*·earnings_* 채택 예정), transcript_follow P4 | 그래프 3표 |
+| compute_narratives(급증·주간) | P3(narratives 채택됨) | 관계·엔티티 갱신, narrative_candidates 결정 원장 |
+| callmomentum·callfresh | P1·P2, P3(transcripts·call_*·earnings_* 채택됨), transcript_follow P4 | 그래프 3표 |
 | compute_signals·promote·contradictions | P3, knowledge 결정 P4 | 승인 시 반증 조건 생성 |
 | scan_actions·compute_digests·markettoday·bigpicture·usbriefing·extseries·expfeed·krcompany·pfclose | P3 | markettoday의 narrative_candidates(P4 예정) |
 | C 묶음 12개·sectoroverview·indexintraday | P3 | 없음 |
@@ -953,6 +953,8 @@ Peer 번들은 SQLite가 아니라 별도 수집 파일에서 오므로 보충 �
 | pfintraday·observealerts | 상태 표 P3 | 텔레그램 발송(전환 후 단일 writer) |
 | chain·catchup | 실행기(쓰는 표 없음) | 일정 실행 |
 | probe_llm·briefing(+catchup)·vault_sync·backup·contracts·observeweekly | 수집 아님 | 없음 |
+
+수집 전용 base 표 20개(call_extracts·call_momentum·catalysts·companies·earnings_events·earnings_expectations·earnings_releases·entity_digests·entity_merges·knowledge_evidence·market_today·market_today_links·narratives·portfolio_alerts_sent·portfolio_quotes·signals·telegram_group_marks·trade_stats·transcript_calendar·transcripts, 57,057행)는 `scripts/refactor_adopt_collected_tables.py`로 보충 계층에 넘겼다(표마다 보이는 행 해시 동일). 아직 base인 것: 문서·그래프 표(개정 경로), 개인 원장 표, narrative_candidates(결정 원장 예정), 즉석 계산 라우트가 쓰는 source_digests·scenarios·reports·doc_claims(모델 기능 복원 때 결정), 출처 설정 표(blog_sources·telegram_channels·youtube_channels·scrap_links). 채택 뒤 narratives 목록의 행별 하위 질의가 5.4초로 느려져 같은 결과의 창 함수로 바꿨다(0.02초). 홈 6초·출처 상태 6초는 기존 combined 후보(9.8초·5.9초)와 같은 수준으로 채택과 무관하다.
 
 새 수집 문서 제자리 게시(경과 경로): `postgres_collected_documents_fixture`. 기존 수집기는 현재 투영 파일의 쓰기 사본에서 실행해(게시된 영상·overlay 엔티티·개인 원장을 봄) 그 사본의 시작 최고 id보다 큰 문서·엔티티·관계만 고르고, 노트 overlay 게시와 같은 규칙(`_new_source_details`, 상세 reader)으로 `collected_*` 표(상세·목록·필터·타임라인·메타·엔티티 순서)와 기존 overlay 표에 한 트랜잭션으로 넣는다. 해당 VIEW에는 UNION으로 붙고 `snapshot_metadata`의 문서·목록 수에 더해진다(base 불변). GRAPH_LOCK 아래 ID가 이미 쓰였으면 전체 취소. 발행 시각과 관계없이 제 위치에 들어간다: `scale_orders`가 base 목록 순번·필터 위치를 VIEW에서 2^20배로 벌리고(실제 순서 해시 불변 확인), 게시마다 `_place`가 모든 수집 문서를 base 이웃 사이 빈칸에 고르게 다시 배치한다(18000과 같은 published_at DESC, 같은 시각이면 base 뒤·수집 문서끼리는 id 순). 한 빈칸은 2^20-1건까지 받으며 넘치면 게시 전체를 취소한다. 정리본이 게시된 수집 영상은 `collected_*` 행을 직접 갱신하고, base 영상 override는 배율을 뺀 base 순번을 저장한다. 대표 확인: RSS 1소스에서 새 글 1건(요약 Codex 1회) → 상세·피드 목록 1위·타임라인 1위·채널·키워드 검색·/feed 화면, 기존 영상 보존 확인 후 시험 문서는 ID로 정리했다(MacBook이 같은 ID를 쓸 수 있으므로 후보 수집 문서는 최종 동기화 전 정리·재매핑 필요). 합성 텔레그램(기존 미디어 경로 첨부)·유튜브(정리 대기·자막) 문서로 외부 요청 없이 게시 경로를 확인하고 `withdraw`(게시 원장 `collected_publications` 기준)로 정리했다. 미완: 새 첨부 파일 수집이 있는 소스, 텔레그램·유튜브 실제 수집(공인 IP 공유: 유튜브 자막 요청 과다로 차단을 일으킨 적 있음 — 외부 시험은 소스 1개·요청 1~2회), 일정 실행.
 

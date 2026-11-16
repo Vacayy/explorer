@@ -18,11 +18,15 @@ def list_narratives(conn):
       ORDER BY s.row_ordinal
     """).fetchall()
     metrics={name:json.loads(payload) for name,payload in metric_rows}
+    # Latest version per topic over every narratives row, in one pass (a per-row subquery
+    # is slow once narratives live in the supplement layer).
     rows=conn.execute("""
-      SELECT n.row_data FROM legacy_snapshot_rows n WHERE n.table_name='narratives'
-        AND n.row_data->>'title' IS NOT NULL AND COALESCE(n.row_data->>'kind','topic')='topic'
-        AND (n.row_data->>'version')::bigint=(SELECT max((n2.row_data->>'version')::bigint)
-          FROM legacy_snapshot_rows n2 WHERE n2.table_name='narratives' AND n2.row_data->>'topic'=n.row_data->>'topic')
+      SELECT row_data FROM (
+        SELECT n.row_data,n.row_ordinal,
+               max((n.row_data->>'version')::bigint) OVER (PARTITION BY n.row_data->>'topic') AS latest
+        FROM legacy_snapshot_rows n WHERE n.table_name='narratives') n
+      WHERE n.row_data->>'title' IS NOT NULL AND COALESCE(n.row_data->>'kind','topic')='topic'
+        AND (n.row_data->>'version')::bigint=n.latest
       ORDER BY n.row_ordinal
     """).fetchall()
     items=[]
