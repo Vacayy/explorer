@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from contextlib import contextmanager
 import psycopg
 from models.portfolio import TransactionCreate
-from pipeline.portfolio import EPS, LedgerError, history_from_source, replay, summary_from_source
+from pipeline.portfolio import EPS, LedgerError, _with_live, history_from_source, replay, summary_from_source
 from pipeline.postgres_graph_fixture import _guard
 
 
@@ -36,13 +36,13 @@ def initialize(conn):
         created_at TEXT NOT NULL DEFAULT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'))''')
 
 
-def _account(conn, principal, *, create=False):
+def _account(conn, principal, *, create=False, lock=True):
     _guard(conn)
     if not isinstance(principal,str) or not principal.strip():
         raise ValueError('Verified principal required')
     if create:
         conn.execute('INSERT INTO fixture_portfolio_accounts(principal) VALUES (%s) ON CONFLICT DO NOTHING',(principal,))
-    row=conn.execute('SELECT id FROM fixture_portfolio_accounts WHERE principal=%s FOR UPDATE',(principal,)).fetchone()
+    row=conn.execute('SELECT id FROM fixture_portfolio_accounts WHERE principal=%s' + (' FOR UPDATE' if lock else ''),(principal,)).fetchone()
     return row[0] if row else None
 
 
@@ -95,7 +95,7 @@ def map_archived_portfolio(conn, principal, legacy_group_id):
 
 
 def list_transactions(conn, principal, *, names):
-    rows=_transactions(conn,_account(conn,principal))
+    rows=_transactions(conn,_account(conn,principal,lock=False))
     return [{'id':t['id'],'trade_date':t['trade_date'],'kind':t['kind'],'stock_code':t['stock_code'],
              'name':names.get(t['stock_code'],t['stock_code']) if t['stock_code'] else None,'price':t['price']}
             for t in reversed(rows)]
@@ -107,7 +107,7 @@ class FixturePortfolioReadSource:
         if not callable(prices):
             raise ValueError('Explicit market price provider required')
         self.conn=conn
-        self.account=_account(conn,principal)
+        self.account=_account(conn,principal,lock=False)
         self._names=names
         self._prices=prices
 
@@ -123,11 +123,12 @@ class FixturePortfolioReadSource:
 
 class FixturePortfolioMarket:
     """Stored shared prices from the existing sector snapshot, no network."""
-    def __init__(self, conn):
+    def __init__(self, conn, *, captured_quotes=False):
         _guard(conn)
         if not conn.execute('SELECT 1 FROM sector_market_metadata LIMIT 1').fetchone():
             raise ValueError('Sector market snapshot required')
         self.conn=conn
+        self.captured_quotes=captured_quotes
 
     def names(self):
         return dict(self.conn.execute('SELECT stock_code,corp_name FROM sector_market_companies WHERE corp_name IS NOT NULL'))
@@ -142,13 +143,27 @@ class FixturePortfolioMarket:
         if not codes:
             return {},{}
         since=(date.fromisoformat(txs[0]['trade_date'])-timedelta(days=14)).isoformat()
-        series={}
+        series={code: [] for code in codes}
         for code,day,close in self.conn.execute('SELECT stock_code,trade_date,close FROM sector_market_prices '
                 'WHERE stock_code=ANY(%s) AND trade_date >= %s AND close IS NOT NULL ORDER BY stock_code,trade_date',
                 (list(codes),since)):
             series.setdefault(code,[]).append((day,float(close)))
-        # Intraday quotes have a separate capture and freshness contract.
-        return series,{}
+        # Quotes belong to the same captured SQLite transaction as the ledger.
+        # Keep the original rule: only quotes newer than the stored close win.
+        live={}
+        held=set(ledger.positions)
+        if held and self.captured_quotes:
+            if not self.conn.execute("SELECT 1 FROM legacy_snapshot_tables WHERE table_name='portfolio_quotes'").fetchone():
+                raise ValueError('Portfolio quote snapshot required')
+            for (quote,) in self.conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='portfolio_quotes' "
+                                              "AND row_data->>'stock_code'=ANY(%s)",(list(held),)):
+                code=quote['stock_code']
+                day=(quote.get('traded_at') or '')[:10]
+                closes=series.get(code,[])
+                if quote.get('price') and day and (not closes or day>closes[-1][0]):
+                    live[code]={'date':day,'price':float(quote['price']),
+                                'change_pct':quote.get('change_pct'),'at':quote.get('traded_at')}
+        return _with_live(series,live),live
 
 
 def read_portfolio(conn, principal, *, names, prices):

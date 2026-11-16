@@ -36,6 +36,8 @@ from pipeline.sector_view import industry_map_from_source, sector_detail_from_so
 from models.industry import UsIndustryMapResponse, UsSectorDetailResponse
 from models.market_today import MarketToday
 from pipeline.postgres_market_today_fixture import market_today
+from models.portfolio import PortfolioSummary, HistoryPoint, TransactionItem
+from pipeline.postgres_portfolio_fixture import FixturePortfolioMarket, read_portfolio
 
 
 dsn = os.environ['REFACTOR_POSTGRES_DSN']
@@ -54,6 +56,36 @@ app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 search_lock = threading.RLock()
 search_index = None
 related_index = None
+
+
+def local_owner_portfolio():
+    # This experimental adapter is private to the loopback-only preview. It
+    # does not authenticate users and must never be registered as a public API.
+    if os.getenv('REFACTOR_LOCAL_OWNER_PREVIEW') != '1':
+        raise HTTPException(404, 'Local owner preview unavailable')
+    with factory() as connection:
+        connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        if not connection.execute('''SELECT 1 FROM fixture_portfolio_legacy_mapping m
+                JOIN fixture_portfolio_accounts a ON a.id=m.account_id WHERE a.principal=%s''',
+                ('local-preview-owner',)).fetchone():
+            raise HTTPException(503, 'Local owner portfolio snapshot unavailable')
+        market = FixturePortfolioMarket(connection, captured_quotes=True)
+        return read_portfolio(connection, 'local-preview-owner', names=market.names(), prices=market.prices)
+
+
+@app.get('/api/portfolio', response_model=PortfolioSummary)
+def experimental_portfolio():
+    return local_owner_portfolio()['summary']
+
+
+@app.get('/api/portfolio/history', response_model=list[HistoryPoint])
+def experimental_portfolio_history():
+    return local_owner_portfolio()['history']
+
+
+@app.get('/api/portfolio/transactions', response_model=list[TransactionItem])
+def experimental_portfolio_transactions():
+    return local_owner_portfolio()['transactions']
 
 
 @app.get('/api/spine/market-today', response_model=MarketToday)

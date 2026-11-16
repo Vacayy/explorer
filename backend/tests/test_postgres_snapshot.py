@@ -142,6 +142,28 @@ class SnapshotReplacementTests(unittest.TestCase):
             portfolio.add_transaction(c,'member-a',{'trade_date':'2026-01-04','kind':'sell','stock_code':'000001','sell_all':True,'price':12},companies={'000001'},last_close=lambda *_:None)
             self.assertEqual(c.execute('SELECT count(*) FROM fixture_portfolio_members').fetchone()[0],0)
 
+    def test_portfolio_captured_quote_readonly_uses_newer_quote(self):
+        from pipeline import postgres_portfolio_fixture as portfolio
+        with self.pg() as c:
+            portfolio.initialize(c)
+            c.execute('CREATE TABLE sector_market_metadata(singleton BOOLEAN)')
+            c.execute('CREATE TABLE sector_market_companies(stock_code TEXT,corp_name TEXT)')
+            c.execute('CREATE TABLE sector_market_prices(stock_code TEXT,trade_date TEXT,close BIGINT)')
+            c.execute('INSERT INTO sector_market_metadata VALUES (TRUE)')
+            c.execute("INSERT INTO sector_market_companies VALUES ('000001','합성 회사')")
+            c.execute("INSERT INTO sector_market_prices VALUES ('000001','2026-01-02',10),('000001','2026-01-03',12)")
+            c.execute("INSERT INTO legacy_snapshot_tables VALUES ('portfolio_quotes','[]'::jsonb,'',1)")
+            c.execute("INSERT INTO legacy_snapshot_rows VALUES ('portfolio_quotes',0,%s::jsonb)",
+                      (json.dumps({'stock_code':'000001','price':15,'traded_at':'2026-01-04 10:00:00','change_pct':25}),))
+            portfolio.add_transaction(c,'member-a',{'trade_date':'2026-01-02','kind':'buy','stock_code':'000001','amount':100,'price':10},companies={'000001'},last_close=lambda *_:None)
+        with self.pg() as c:
+            c.execute('SET TRANSACTION READ ONLY')
+            market=portfolio.FixturePortfolioMarket(c,captured_quotes=True)
+            result=portfolio.read_portfolio(c,'member-a',names=market.names(),prices=market.prices)
+            self.assertEqual(result['summary']['holdings'][0]['return_pct'],50.0)
+            self.assertEqual(result['summary']['quoted_at'],'2026-01-04 10:00:00')
+            self.assertEqual(result['history'][-1]['cum_return_pct'],50.0)
+
     def test_portfolio_snapshot_keeps_group_relationships_and_amounts(self):
         with closing(self.fixture.connect()) as source:
             source.execute('CREATE TABLE stock_groups(id INTEGER PRIMARY KEY, name TEXT, kind TEXT)')
