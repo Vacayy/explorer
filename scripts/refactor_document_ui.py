@@ -3,12 +3,16 @@ import os
 import re
 import threading
 from copy import deepcopy
+from contextvars import ContextVar
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 from uuid import UUID
 
 import psycopg
+from psycopg import sql
 from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 import uvicorn
 
 from models.spine import FeedDocument, FeedResponse, SignalsResponse
@@ -39,6 +43,7 @@ from models.market_today import MarketToday
 from pipeline.postgres_market_today_fixture import market_today
 from models.portfolio import PortfolioSummary, HistoryPoint, TransactionItem
 from pipeline.postgres_portfolio_fixture import FixturePortfolioMarket, read_portfolio
+from pipeline.postgres_durable_feed_route import select_feed_schema, FeedGenerationUnavailable
 
 
 dsn = os.environ['REFACTOR_POSTGRES_DSN']
@@ -49,16 +54,73 @@ if (os.getenv('REFACTOR_TEST_DISPOSABLE') != '1' or
         not re.fullmatch(r'refactor_fixture_[0-9a-f]{32}', schema)):
     raise RuntimeError('Only a disposable isolated PostgreSQL fixture is accepted')
 
-factory = lambda: psycopg.connect(dsn, options=f'-c search_path={schema}')
+request_schema = ContextVar('fixture_request_schema', default=schema)
+factory = lambda: psycopg.connect(dsn, options=f'-c search_path={request_schema.get()}')
 reader = PostgreSQLRawDocumentReader(factory)
 list_reader = PostgreSQLDocumentReader(factory)
 timeline_reader = PostgreSQLTimelineSources(factory)
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+pointer_schema = os.getenv('REFACTOR_FEED_POINTER_SCHEMA')
+if pointer_schema and (not re.fullmatch(r'refactor_fixture_[0-9a-f]{32}', pointer_schema) or pointer_schema == schema):
+    raise RuntimeError('Separate disposable feed pointer schema required')
+
+
+@app.middleware('http')
+async def fixture_feed_generation(request, call_next):
+    path=request.url.path
+    is_feed=(re.fullmatch(r'/api/spine/feed(?:/timeline|/channels)?',path) or
+             re.fullmatch(r'/api/spine/doc/[0-9]+(?:/claims)?',path))
+    if not pointer_schema or not is_feed:
+        return await call_next(request)
+    requested=request.query_params.get('generation')
+    try:
+        selected,generation=await run_in_threadpool(
+            select_feed_schema,
+            lambda: psycopg.connect(dsn,options=f'-c search_path={pointer_schema}'),
+            lambda name: psycopg.connect(dsn,options=f'-c search_path={name}'),
+            pointer_schema,requested,schema)
+    except FeedGenerationUnavailable:
+        return JSONResponse({'detail':'피드 자료가 만료됐거나 준비되지 않았습니다.'},status_code=410 if requested else 503)
+    except ValueError:
+        return JSONResponse({'detail':'피드 세대를 확인할 수 없습니다.'},status_code=422 if requested else 503)
+    except psycopg.Error:
+        return JSONResponse({'detail':'피드 자료를 읽을 수 없습니다.'},status_code=503)
+    token=request_schema.set(selected)
+    try:
+        response=await call_next(request)
+        response.headers['X-Preview-Feed-Generation']=str(generation)
+        return response
+    finally:
+        request_schema.reset(token)
+
+
 search_lock = threading.RLock()
 search_index = None
 related_index = None
 follow_cache_lock = threading.Lock()
 follow_cache = {}
+
+
+@app.get('/__preview/related-base-check/{doc_id}')
+def related_base_check(doc_id: int, generation: str | None = None):
+    """Allow the older viewer only for the same captured document content."""
+    if not pointer_schema:
+        return Response(status_code=204)
+    try:
+        selected,_=select_feed_schema(
+            lambda: psycopg.connect(dsn,options=f'-c search_path={pointer_schema}'),
+            lambda name: psycopg.connect(dsn,options=f'-c search_path={name}'),
+            pointer_schema,UUID(generation) if generation else None,schema)
+        with psycopg.connect(dsn,options=f'-c search_path={schema}') as conn:
+            conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            query=sql.SQL("SELECT row_data->>'source_type',row_data->>'source_id',row_data->>'title',row_data->>'url',"
+                          "row_data->>'published_at',row_data->>'markdown',row_data->>'raw_content' "
+                          "FROM {}.legacy_snapshot_rows WHERE table_name='raw_documents' AND row_data->>'id'=%s")
+            old=conn.execute(query.format(sql.Identifier(schema)),(str(doc_id),)).fetchone()
+            current=conn.execute(query.format(sql.Identifier(selected)),(str(doc_id),)).fetchone()
+        return Response(status_code=204 if old is not None and old==current else 403)
+    except (ValueError,psycopg.Error):
+        return Response(status_code=403)
 
 
 def local_owner_portfolio():

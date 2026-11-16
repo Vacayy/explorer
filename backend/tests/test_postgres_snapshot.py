@@ -13,7 +13,7 @@ import sys
 import struct
 import select
 from datetime import date,datetime,timezone
-from contextlib import closing
+from contextlib import closing, contextmanager
 from collections import namedtuple
 from pathlib import Path
 from unittest.mock import patch
@@ -807,6 +807,7 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
 
     def test_durable_publisher_restores_active_generation_after_failure(self):
         from pipeline.postgres_durable_publisher_fixture import DurableFixturePublisher
+        from pipeline.postgres_durable_feed_route import select_feed_schema, FeedGenerationUnavailable
         self.load('2026-01-03T00:00:00+00:00')
         with self.pg() as c:
             c.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/ingest_fixture.sql').read_text())
@@ -821,6 +822,7 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             initial=publisher.publish()
             self.assertIsNotNone(publisher.get(original['id']))
             old_schema=publisher.active[0]
+            self.assertEqual(select_feed_schema(self.pg,target,self.schema),(old_schema,initial))
             with self.pg() as c:
                 new=store_document(c,source_type='note',source_id='second',title='둘째 합성 문서',markdown='지속검색단어 본문')
             with patch('pipeline.postgres_durable_publisher_fixture.copy_with_note_changes',
@@ -828,6 +830,24 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
                 with self.assertRaisesRegex(RuntimeError,'synthetic publish failure'):
                     publisher.publish()
             self.assertIsNone(publisher.get(new['id']))
+            lease_pid=[]
+            original_lease=publisher._lease
+            @contextmanager
+            def capture_lease():
+                with original_lease() as conn:
+                    lease_pid.append(conn.info.backend_pid)
+                    yield conn
+            def lose_lease(*args):
+                with self.pg() as c:
+                    self.assertTrue(c.execute('SELECT pg_terminate_backend(%s)',(lease_pid[-1],)).fetchone()[0])
+                return SearchSnapshot(*args)
+            with patch.object(publisher,'_lease',capture_lease), \
+                 patch('pipeline.postgres_durable_publisher_fixture.SearchSnapshot',side_effect=lose_lease):
+                with self.assertRaises(psycopg.Error):
+                    publisher.publish()
+            with self.pg() as c:
+                self.assertEqual(c.execute('SELECT active_schema,generation FROM fixture_publication_state').fetchone(),
+                                 (old_schema,initial))
             killed_code='''
 import os,time,psycopg
 from unittest.mock import patch
@@ -863,6 +883,28 @@ with patch('pipeline.postgres_durable_publisher_fixture.SearchSnapshot',side_eff
             self.assertIsNone(restored.get(new['id']))
             generation=restored.publish()
             self.assertNotEqual(initial,generation)
+            self.assertEqual(select_feed_schema(self.pg,target,self.schema),(restored.active[0],generation))
+            self.assertEqual(select_feed_schema(self.pg,target,self.schema,initial),(old_schema,initial))
+            with self.assertRaises(FeedGenerationUnavailable):
+                select_feed_schema(self.pg,target,self.schema,uuid.uuid4())
+            from fastapi.testclient import TestClient
+            spec=importlib.util.spec_from_file_location('durable_feed_ui_test',
+                  Path(__file__).resolve().parents[2]/'scripts/refactor_document_ui.py')
+            module=importlib.util.module_from_spec(spec)
+            with patch.dict(os.environ,{'REFACTOR_FIXTURE_SCHEMA':old_schema,
+                                        'REFACTOR_FEED_POINTER_SCHEMA':self.schema,
+                                        'REFACTOR_LEXICAL_ONLY':'1'}):
+                spec.loader.exec_module(module)
+                with TestClient(module.app) as client:
+                    current=client.get(f'/api/spine/doc/{new["id"]}')
+                    previous=client.get(f'/api/spine/doc/{new["id"]}',params={'generation':str(initial)})
+                    search=client.get('/api/spine/feed',params={'q':'지속검색단어'})
+                    self.assertEqual((current.status_code,previous.status_code,search.status_code),(200,404,200))
+                    self.assertEqual(current.headers['x-preview-feed-generation'],str(generation))
+                    self.assertEqual(previous.headers['x-preview-feed-generation'],str(initial))
+                    self.assertIn(new['id'],[item['id'] for item in search.json()['items']])
+                    self.assertEqual(client.get(f'/__preview/related-base-check/{original["id"]}').status_code,204)
+                    self.assertEqual(client.get(f'/__preview/related-base-check/{new["id"]}').status_code,403)
             self.assertIsNotNone(restored.get(original['id']))
             self.assertIsNotNone(restored.get(new['id']))
             self.assertIn(new['id'],[item.id for item in restored.search('지속검색단어').items])
@@ -885,10 +927,33 @@ print('RESTORED')
             child=subprocess.run([sys.executable,'-c',child_code],capture_output=True,text=True,timeout=30,
                                  env={**os.environ,'TEST_SOURCE_SCHEMA':self.schema,'TEST_DOC_ID':str(new['id'])})
             self.assertEqual((child.returncode,child.stdout.strip()),(0,'RESTORED'))
+            late=[]
+            def write_after_capture(*args):
+                with self.pg() as c:
+                    late.append(store_document(c,source_type='note',source_id='late',
+                                               title='늦은 합성 문서',markdown='지연반영단어 본문')['id'])
+                return SearchSnapshot(*args)
+            with patch('pipeline.postgres_durable_publisher_fixture.SearchSnapshot',side_effect=write_after_capture):
+                restored.publish()
+            self.assertIsNone(restored.get(late[0]))
+            with self.pg() as c:
+                dirty=c.execute('SELECT projection_version>projected_version FROM ingest_documents WHERE id=%s',(late[0],)).fetchone()[0]
+            self.assertTrue(dirty)
+            restored.publish()
+            self.assertIsNotNone(restored.get(late[0]))
+            self.assertIn(late[0],[item.id for item in restored.search('지연반영단어').items])
+            previous_index=restored.active[1]
+            with patch.object(previous_index,'close',side_effect=RuntimeError('synthetic cleanup failure')):
+                final_generation=restored.publish()
+            self.assertEqual(restored.cleanup_errors,['RuntimeError'])
+            with self.pg() as c:
+                self.assertEqual(c.execute('SELECT generation FROM fixture_publication_state').fetchone()[0],final_generation)
+            self.assertIsNotNone(restored.get(late[0]))
+            previous_index.close()
             with self.pg() as c:
                 states=dict(c.execute('SELECT schema_name,state FROM fixture_publication_stages').fetchall())
             self.assertEqual(states[old_schema],'retained')
-            self.assertEqual(list(states.values()).count('building'),2)
+            self.assertEqual(list(states.values()).count('building'),3)
         finally:
             publisher.close()
             if restored is not None: restored.close()
