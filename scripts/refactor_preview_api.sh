@@ -1,5 +1,8 @@
 #!/bin/sh
 # (Re)create the single-path preview API container with its fixed settings.
+# Claude login lives only in the candidate volume explorer-refactor-claude-auth (CLAUDE_CONFIG_DIR); the user logs
+# in once with `docker exec -it explorer-refactor-single-path claude` then /login. Removing the volume logs out.
+# CLAUDE_BIN stays /bin/false (Claude calls blocked) until a real web research test is approved.
 # The previous limit was 1468006400 bytes (1.37GB); REFACTOR_API_MEMORY reverts or changes it.
 #   REFACTOR_API_MEMORY=2684354560 scripts/refactor_preview_api.sh
 set -eu
@@ -18,6 +21,7 @@ docker run -d --name "$C" --user 10001:10001 --network explorer-refactor-preview
   --cpus 2 -p 127.0.0.1:18012:8000 --label explorer.purpose=refactor-single-path --env-file "$ENV_FILE" \
   -v explorer-public-codex-auth:/provider-auth -v explorer-data-rehearsal_models:/models:ro \
   -v explorer-refactor-single-projection:/projection \
+  -v explorer-refactor-claude-auth:/home/explorer/.claude \
   -v "$ROOT/backend:/app/backend:ro" -v "$ROOT/scripts:/app/scripts:ro" \
   -v "$HOME/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py:/control/codex-credential-gate.py:ro" \
   -v "$DATA/review/refactor-single/codex-gate:/control/codex-gate:ro" \
