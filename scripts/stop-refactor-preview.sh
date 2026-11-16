@@ -8,7 +8,7 @@ if [ "$owner" != explorer-refactor-preview ]; then
 fi
 # The combined preview shares this network and database. Never destroy its
 # dependencies while it is still present, even if its containers are stopped.
-for dependent in explorer-refactor-combined-gateway explorer-refactor-market-candidate explorer-refactor-momentum-candidate explorer-refactor-saved-home; do
+for dependent in explorer-refactor-combined-gateway explorer-refactor-market-candidate explorer-refactor-momentum-candidate explorer-refactor-saved-home explorer-refactor-saved-season; do
   if docker container inspect "$dependent" >/dev/null 2>&1; then
     printf '%s\n' "Combined preview resource $dependent still exists; no resources removed." >&2
     exit 1

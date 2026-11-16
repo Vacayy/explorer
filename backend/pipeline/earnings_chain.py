@@ -319,7 +319,7 @@ def holding_chain_tickers(conn) -> set[str]:
         return set()
 
 
-def compute_core(conn, season: str) -> dict[str, list[str]]:
+def compute_core(conn, season: str, *, persist: bool = True) -> dict[str, list[str]]:
     fs = follows(conn)
     caps = sorted((f["market_cap"] or 0, t) for t, f in fs.items())[::-1][:CORE_TOP_CAP]
     top = {t for _, t in caps}
@@ -340,19 +340,20 @@ def compute_core(conn, season: str) -> dict[str, list[str]]:
         if f["core_pinned"]:
             reasons.append("pinned")
         rows[tk] = (reasons, d, s)
-    conn.execute("DELETE FROM earnings_core WHERE season=?", (season,))
-    for tk, (reasons, d, s) in rows.items():
-        conn.execute("INSERT INTO earnings_core (season, ticker, reasons, mention_docs, mention_sources) VALUES (?,?,?,?,?)",
-                     (season, tk, json.dumps(reasons), d, s))
-    conn.commit()
+    if persist:
+        conn.execute("DELETE FROM earnings_core WHERE season=?", (season,))
+        for tk, (reasons, d, s) in rows.items():
+            conn.execute("INSERT INTO earnings_core (season, ticker, reasons, mention_docs, mention_sources) VALUES (?,?,?,?,?)",
+                         (season, tk, json.dumps(reasons), d, s))
+        conn.commit()
     return {tk: r for tk, (r, _, _) in rows.items() if r}
 
 
-def core_map(conn, season: str | None = None, recompute_days: int = 7) -> dict[str, list[str]]:
+def core_map(conn, season: str | None = None, recompute_days: int = 7, *, persist: bool = True) -> dict[str, list[str]]:
     season = season or season_of(date.today().isoformat())["key"]
     last = conn.execute("SELECT max(computed_at) FROM earnings_core WHERE season=?", (season,)).fetchone()[0]
     if not last or conn.execute("SELECT julianday('now')-julianday(?) > ?", (last, recompute_days)).fetchone()[0]:
-        return compute_core(conn, season)
+        return compute_core(conn, season) if persist else compute_core(conn, season, persist=False)
     out = {r["ticker"]: json.loads(r["reasons"]) for r in conn.execute("SELECT ticker, reasons FROM earnings_core WHERE season=?", (season,))}
     pinned = {r[0] for r in conn.execute("SELECT ticker FROM transcript_follow WHERE active=1 AND core_pinned=1")}
     for tk in pinned:     # 고정은 즉시 반영
@@ -721,14 +722,14 @@ def season_calendar(evs: list[dict], fs: dict, core: dict) -> list[dict]:
     return [days[k] for k in sorted(days)]
 
 
-def season_overview(season: str | None = None) -> dict:
+def season_overview(season: str | None = None, *, persist_core: bool = True) -> dict:
     conn = get_connection()
     today = date.today().isoformat()
     cur = season_of(today)
     season = season or cur["key"]
     s = season_by_key(season)
     fs = follows(conn)
-    core = core_map(conn, season)
+    core = core_map(conn, season, persist=persist_core)
     evs = _event_rows(conn, season)
     reported, upcoming = [], []
     for e in evs:
@@ -812,12 +813,12 @@ def season_overview(season: str | None = None) -> dict:
             "reported": reported}
 
 
-def sector_detail(key: str, season: str | None = None) -> dict:
+def sector_detail(key: str, season: str | None = None, *, persist_core: bool = True) -> dict:
     conn = get_connection()
     season = season or season_of(date.today().isoformat())["key"]
     fs = follows(conn)
     members = {t: f for t, f in fs.items() if f["sector"] == key}
-    core = core_map(conn, season)
+    core = core_map(conn, season, persist=persist_core)
     etf = sector_etf(key)
     seasons = [r[0] for r in conn.execute(
         f"SELECT DISTINCT season FROM earnings_events WHERE ticker IN ({','.join('?' * len(members))}) AND confirmed=1 ORDER BY season DESC LIMIT 4",
