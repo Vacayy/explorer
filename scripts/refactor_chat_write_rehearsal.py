@@ -13,7 +13,7 @@ from fastapi.encoders import jsonable_encoder
 import uvicorn
 
 from database import get_connection
-from routers import spine_ask, spine_chat_targets, spine_conversations, spine_doc
+from routers import spine_ask, spine_chat_targets, spine_conversations, spine_doc, spine_study_projects
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -93,7 +93,7 @@ def owner_conversation(conversation_id: int):
 
 
 for router in (spine_ask.router, spine_chat_targets.router,
-               spine_conversations.router, spine_doc.router):
+               spine_conversations.router, spine_doc.router, spine_study_projects.router):
     app.include_router(router)
 
 if __name__ == '__main__':
