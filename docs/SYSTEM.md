@@ -804,3 +804,5 @@ fixture snapshot 교체는 호출자가 공간 점검 함수를 명시하지 않
 격리 회원 포트폴리오 app factory는 기존 member router·access boundary와 명시적으로 주입한 identity service를 사용하며 지원하지 않는 원칙 API는 닫는다. 이 factory는 서버를 자동 실행하거나 운영 설정을 바꾸지 않는다.
 
 격리 회원 원장의 거래 추가·삭제는 같은 트랜잭션에서 보유 종목과 편입일을 동기화한다. 이 보유 목록은 격리 fixture 전용이며 기존 묶음 API와는 아직 연결되지 않았다.
+
+격리 회원 앱에는 합성 계정과 합성 시세만 쓰는 localhost HTTPS 브라우저 시험 스크립트가 있다. 운영 인증·실제 원장은 사용하지 않으며 Google OAuth와 다른 포트폴리오 기능 검증을 대체하지 않는다.
