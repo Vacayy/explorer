@@ -919,3 +919,5 @@ YouTube 정리 저장을 위해 단일 PG 후보의 `legacy_snapshot_rows`에 �
 미완(PG 네이티브 전환 때 제거): 단일 경로의 언급 모멘텀·내러티브 상세 reader는 overlay UNION VIEW 위 jsonb 조건의 행 수 추정 오류로 중첩 루프 계획(60초 이상)을 타므로, 해당 읽기 트랜잭션 안에서만 `SET LOCAL enable_nestloop=off`와 `statement_timeout=15s`를 둔다(약 1.4초). 내러티브는 base 직접 조회와 같고, 모멘텀은 영상 overlay로 바뀐 문서 1건의 종목 링크만큼만 다르다. 투영 의존: 홈·매크로·국면·검색·홈 탭·포트폴리오 읽기·내러티브 보조 패널.
 
 Peer 번들은 SQLite가 아니라 별도 수집 파일에서 오므로 보충 적재 대상이 아니다. `postgres_sector_market.attach_peer_runtime`이 base에 번들이 없을 때만 검증된 `PeerRuntime`을 후보 schema의 `sector_market_peer_runtime_overlay`에 넣고 VIEW에 UNION한다. 현재 후보에는 이전 durable 후보의 2026-11-12 게시 번들(104종목·62그룹)을 복사했으며 Peer 응답 3개가 이전 경로와 같다.
+
+외부 노출 전 필수(미완): 단일 경로 미리보기는 인증 없는 루프백 전용이다. 투영으로 연결한 포트폴리오·원칙·거래·팔로우 읽기는 개인 기록이므로, PG 원장 쓰기 단위에서 기존 인증 사용자↔원장 소유자 매핑으로 다시 게이트를 걸어 미인증·타인에게 기존과 같은 404/403을 돌려야 한다.
