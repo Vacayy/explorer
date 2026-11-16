@@ -156,3 +156,26 @@ class PostgreSQLChatChunkTests(unittest.TestCase):
         entity_id, _, assumptions = adapter.entity_scope('테스트반도체')
         self.assertEqual(entity_id, 7)
         self.assertEqual(assumptions['assumed'][0]['entity_id'], 7)
+
+    def test_fixture_chat_api_persists_question_and_answer_in_pg(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from types import SimpleNamespace
+        from unittest.mock import Mock, patch
+        from pipeline.postgres_conversations import PostgreSQLConversations
+        from routers.postgres_chat_fixture import create_router
+        with self.fixture.pg() as conn:
+            conn.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/conversation_store.sql').read_text())
+        store = PostgreSQLConversations(self.fixture.pg)
+        app = FastAPI()
+        app.include_router(create_router(store, Mock()))
+        turn = SimpleNamespace(answer='시험 답변', citations=[], gaps=[], model='fixture',
+                               route={'intent': 'research', 'entities': []}, calls=[], route_log=lambda: {})
+        with TestClient(app) as client, patch('pipeline.chat.run_turn', return_value=turn):
+            response = client.post('/api/spine/ask', json={'question': '시험 질문'})
+            self.assertEqual(response.status_code, 200)
+            cid = response.json()['conversation_id']
+            detail = client.get(f'/api/spine/conversations/{cid}')
+            self.assertEqual(detail.status_code, 200)
+            self.assertEqual([m['content'] for m in detail.json()['messages']], ['시험 질문', '시험 답변'])
+            self.assertEqual(client.post('/api/spine/ask', json={'question': '질문', 'document_ids': [1]}).status_code, 422)
