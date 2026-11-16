@@ -965,6 +965,24 @@ finally:
 '''
         child=subprocess.run([sys.executable,'-c',code],env={**os.environ,'FIXTURE_SCHEMA':self.schema},timeout=15,capture_output=True)
         self.assertEqual(child.returncode,0,child.stderr.decode()[-1000:])
+        from pipeline.postgres_narrative_runner_fixture import run_fixture_narrative
+        stage=FixturePublisher(self.pg,self.schema,target)
+        try:
+            stage.publish()
+            stage_schema=stage.active[0]
+            generated=[]
+            def fake_generate(prompt):
+                generated.append(prompt)
+                return {'title':'세 번째 합성 이야기','narrative':'합성 결과'}
+            result=run_fixture_narrative(self.pg,lambda:target(stage_schema),stage_schema,'합성 신주제',
+                embedder=lambda texts:[[1.0,0.0] for _ in texts],generate=fake_generate,force=True)
+            self.assertEqual(result,{'status':'completed'})
+            self.assertEqual(len(generated),1)
+            self.assertIn('합성 지식 전제',generated[0])
+            with self.pg() as c:
+                self.assertEqual(c.execute("SELECT count(*) FROM ingest_narrative_versions WHERE topic='합성 신주제'").fetchone()[0],3)
+        finally:
+            stage.close()
 
     def test_existing_enrichment_uses_isolated_graph_vocabulary(self):
         from pipeline import enrich as enrichment

@@ -14,7 +14,7 @@ TABLES=('entities','entity_links','raw_documents','enrichments','narratives',
 CHANGED=('entities','entity_relations','narratives','narrative_edge_evidence')
 
 
-def prepare_fixture_narrative(conn, topic, *, embedder):
+def prepare_fixture_narrative(conn, topic, *, embedder, force=False):
     """Build the legacy prompt from a captured fixture; never call a model."""
     if not callable(embedder):
         raise ValueError('An explicit fixture embedder is required')
@@ -30,7 +30,7 @@ def prepare_fixture_narrative(conn, topic, *, embedder):
             return {'status':'empty'}
         previous=_latest_narrative(db,topic)
         digest=_hash(docs)
-        if previous and previous['doc_ids_hash']==digest:
+        if previous and previous['doc_ids_hash']==digest and not force:
             return {'status':'cached'}
         knowledge=recall_for_query(db,topic,embedder=embedder)
         return {'status':'ready','prompt':_build_prompt(topic,docs,knowledge,_node_vocab(db),previous),
@@ -39,7 +39,7 @@ def prepare_fixture_narrative(conn, topic, *, embedder):
         db.close()
 
 
-def persist_fixture_narrative(conn, topic, data):
+def persist_fixture_narrative(conn, topic, data, *, force=False):
     if conn.execute("SELECT to_regclass('ingest_documents')").fetchone()[0] is not None:
         raise ValueError('A separate staging snapshot is required')
     if conn.execute('SHOW transaction_isolation').fetchone()[0] != 'repeatable read':
@@ -56,7 +56,7 @@ def persist_fixture_narrative(conn, topic, data):
             return {'status':'empty'}
         digest=_hash(docs)
         previous=_latest_narrative(db,topic)
-        if previous and previous['doc_ids_hash']==digest:
+        if previous and previous['doc_ids_hash']==digest and not force:
             return {'status':'cached'}
         ident,version,edges=_persist_narrative(db,topic,data,docs,digest)
         db.commit()
