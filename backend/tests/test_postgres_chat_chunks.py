@@ -165,6 +165,9 @@ class PostgreSQLChatChunkTests(unittest.TestCase):
         from pipeline.postgres_conversations import PostgreSQLConversations
         from routers.postgres_chat_fixture import create_router
         with self.fixture.pg() as conn:
+            second = store_document(conn, source_type='note', source_id='second', title='두번째 자료',
+                                    markdown='두번째 본문', published_at='2026-01-01')
+            rebuild(conn)
             conn.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/conversation_store.sql').read_text())
         store = PostgreSQLConversations(self.fixture.pg)
         app = FastAPI()
@@ -185,3 +188,13 @@ class PostgreSQLChatChunkTests(unittest.TestCase):
             self.assertEqual(detail.status_code, 200)
             self.assertEqual(detail.json()['attached_documents'][0]['id'], self.doc_id)
             self.assertTrue(detail.json()['attached_refs'][0]['available'])
+            cid2 = attached.json()['conversation_id']
+            followup = client.post('/api/spine/ask', json={'question': '두 자료', 'conversation_id': cid2,
+                                                            'document_ids': [self.doc_id, second['id']]})
+            self.assertEqual(followup.status_code, 200)
+            detail = client.get(f'/api/spine/conversations/{cid2}').json()
+            self.assertEqual({d['id'] for d in detail['attached_documents']}, {self.doc_id, second['id']})
+            cleared = client.post('/api/spine/ask', json={'question': '첨부 해제', 'conversation_id': cid2,
+                                                           'attachments': []})
+            self.assertEqual(cleared.status_code, 200)
+            self.assertEqual(client.get(f'/api/spine/conversations/{cid2}').json()['attached_documents'], [])

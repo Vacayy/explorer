@@ -17,22 +17,22 @@ def create_router(store, tools, *, owner_chat_id=None):
         question = body.question.strip()
         if not question:
             raise HTTPException(400, '질문이 비어 있습니다')
-        refs = body.attachments or []
-        if any(ref.kind != 'doc' for ref in refs):
+        refs = [ref.model_dump() for ref in body.attachments or []]
+        if any(ref['kind'] != 'doc' for ref in refs):
             raise HTTPException(422, '격리 시험에서는 자료 외 대상 첨부를 지원하지 않습니다')
+        refs += [{'kind': 'doc', 'ref': str(i), 'label': ''} for i in body.document_ids or []]
+        if body.attachments is None and body.document_ids is None:
+            refs = None
         try:
-            doc_ids = set(body.document_ids or []) | {int(ref.ref) for ref in refs}
-        except ValueError as exc:
-            raise HTTPException(422, '자료 번호가 올바르지 않습니다') from exc
-        if len(doc_ids) > 1 or (doc_ids and body.conversation_id is not None):
-            raise HTTPException(422, '격리 시험에서는 새 대화에 자료 한 건만 첨부할 수 있습니다')
-        try:
-            cid, _ = store.create_question(question, conversation_id=body.conversation_id,
-                                           document_id=next(iter(doc_ids), None), owner_chat_id=owner_chat_id)
+            cid, _ = store.create_question_with_refs(question, conversation_id=body.conversation_id,
+                                                    refs=refs, owner_chat_id=owner_chat_id,
+                                                    max_new=5 if body.attachments is not None else 12)
         except ConversationNotFound as exc:
             raise HTTPException(404, '대화를 찾을 수 없습니다') from exc
         except DocumentNotFound as exc:
             raise HTTPException(422, '첨부할 수집 자료를 찾을 수 없습니다') from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
         background.add_task(generate_answer, store, tools, cid, question, owner_chat_id=owner_chat_id,
                             quote=body.quote.model_dump() if body.quote else None,
                             page_context=body.page_context.model_dump() if body.page_context else None)
@@ -52,7 +52,7 @@ def create_router(store, tools, *, owner_chat_id=None):
         except ConversationNotFound as exc:
             raise HTTPException(404, '대화를 찾을 수 없습니다') from exc
         state = json.loads(conversation['state_json'] or '{}')
-        if state.get('attached_refs'):
+        if any(r.get('kind') != 'doc' for r in state.get('attached_refs') or []):
             raise HTTPException(422, '격리 시험에서는 기존 복합 첨부 대화를 지원하지 않습니다')
         attached_docs, attached_refs = [], []
         for doc_id in (state.get('attached_doc_ids') or [])[:12]:

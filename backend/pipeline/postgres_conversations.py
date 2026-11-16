@@ -149,6 +149,58 @@ class PostgreSQLConversations:
                         (conversation_id, text, json.dumps(attachments, ensure_ascii=False) if attachments else None))
             return conversation_id, cur.fetchone()['id']
 
+    def create_question_with_refs(self, text, *, refs=None, conversation_id=None, owner_chat_id=None,
+                                  max_new=5):
+        """Atomically save a question and its full selected document list."""
+        from pipeline.chat_targets import merge_refs
+        text = text.strip()
+        if not text:
+            raise ValueError('question is empty')
+        with self.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+            state = {}
+            if conversation_id is not None:
+                row = self._owned(cur, conversation_id, owner_chat_id, lock=True)
+                state = json.loads(row['state_json'] or '{}')
+            previous = [r for r in state.get('attached_refs', []) if isinstance(r, dict)]
+            previous += [{'kind': 'doc', 'ref': str(i), 'label': ''} for i in state.get('attached_doc_ids', [])
+                         if not any(r.get('kind') == 'doc' and str(r.get('ref')) == str(i) for r in previous)]
+            if refs is not None:
+                if any(r.get('kind') != 'doc' for r in previous + refs):
+                    raise ValueError('non-document targets are not supported in the fixture')
+                selected, added = merge_refs(previous, refs, max_new=max_new)
+                for ref in added:
+                    try:
+                        ident = int(ref['ref'])
+                    except ValueError as exc:
+                        raise DocumentNotFound(ref['ref']) from exc
+                    cur.execute('SELECT detail_document FROM document_projection WHERE id=%s', (ident,))
+                    document = cur.fetchone()
+                    if not document:
+                        raise DocumentNotFound(ident)
+                    if conversation_id is not None:
+                        cur.execute('SELECT EXISTS(SELECT 1 FROM conversation_import_origin WHERE conversation_id=%s) '
+                                    'AND EXISTS(SELECT 1 FROM conversation_import_unresolved_docs WHERE document_id=%s) AS unresolved',
+                                    (conversation_id, ident))
+                        if cur.fetchone()['unresolved']:
+                            raise DocumentNotFound(ident)
+                    ref['label'] = ref['label'] or document['detail_document'].get('title') or str(ident)
+                state['attached_refs'] = selected
+                state['attached_doc_ids'] = [int(r['ref']) for r in selected]
+                attachments = selected or None
+            else:
+                attachments = None
+            encoded = json.dumps(state, ensure_ascii=False)
+            if conversation_id is None:
+                cur.execute("INSERT INTO conversations (title,channel,state_json) VALUES (%s,'web',%s) RETURNING id",
+                            (text[:60], encoded))
+                conversation_id = cur.fetchone()['id']
+            else:
+                cur.execute("UPDATE conversations SET state_json=%s,updated_at=to_char(timezone('utc', now()), 'YYYY-MM-DD HH24:MI:SS') WHERE id=%s",
+                            (encoded, conversation_id))
+            cur.execute("INSERT INTO chat_messages (conversation_id,role,content,attachments_json) VALUES (%s,'user',%s,%s) RETURNING id",
+                        (conversation_id, text, json.dumps(attachments, ensure_ascii=False) if attachments else None))
+            return conversation_id, cur.fetchone()['id']
+
     def append_assistant(self, conversation_id, content, *, owner_chat_id=None, model=None, citations=None, gaps=None, route=None):
         with self.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
             self._owned(cur, conversation_id, owner_chat_id, lock=True)
