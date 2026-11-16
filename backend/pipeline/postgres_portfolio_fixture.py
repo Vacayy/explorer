@@ -21,12 +21,14 @@ def initialize(conn):
         price DOUBLE PRECISION, note TEXT NOT NULL DEFAULT '')''')
 
 
-def _account(conn, principal):
+def _account(conn, principal, *, create=False):
     _guard(conn)
     if not isinstance(principal,str) or not principal.strip():
         raise ValueError('Verified principal required')
-    conn.execute('INSERT INTO fixture_portfolio_accounts(principal) VALUES (%s) ON CONFLICT DO NOTHING',(principal,))
-    return conn.execute('SELECT id FROM fixture_portfolio_accounts WHERE principal=%s FOR UPDATE',(principal,)).fetchone()[0]
+    if create:
+        conn.execute('INSERT INTO fixture_portfolio_accounts(principal) VALUES (%s) ON CONFLICT DO NOTHING',(principal,))
+    row=conn.execute('SELECT id FROM fixture_portfolio_accounts WHERE principal=%s FOR UPDATE',(principal,)).fetchone()
+    return row[0] if row else None
 
 
 def _transactions(conn, account):
@@ -71,7 +73,7 @@ def read_portfolio(conn, principal, *, names, prices):
 def add_transaction(conn, principal, raw, *, companies, last_close):
     """Validate and write one account under its row lock; caller owns transaction."""
     tx=TransactionCreate.model_validate(raw).model_dump()
-    account=_account(conn,principal)
+    account=_account(conn,principal,create=True)
     if tx['kind'] in ('buy','sell'):
         if not tx.get('stock_code'):
             raise LedgerError('종목을 선택하세요.')
@@ -107,6 +109,8 @@ def add_transaction(conn, principal, raw, *, companies, last_close):
 
 def delete_transaction(conn, principal, ident):
     account=_account(conn,principal)
+    if account is None:
+        return False
     rows=_transactions(conn,account)
     if not any(row['id']==ident for row in rows):
         return False

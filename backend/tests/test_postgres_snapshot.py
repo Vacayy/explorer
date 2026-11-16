@@ -114,6 +114,7 @@ class SnapshotReplacementTests(unittest.TestCase):
         with self.pg() as c:
             self.assertEqual(portfolio.list_transactions(c,'member-b',names={}),[])
             self.assertFalse(portfolio.delete_transaction(c,'member-b',a))
+            self.assertEqual(c.execute('SELECT count(*) FROM fixture_portfolio_accounts').fetchone()[0],1)
         with self.pg() as c:
             rows=portfolio.list_transactions(c,'member-a',names={'000001':'합성 회사'})
             self.assertEqual([r['kind'] for r in rows],['buy','deposit'])
