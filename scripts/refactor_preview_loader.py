@@ -53,7 +53,8 @@ def main():
                              include_centroids=include_centroids,include_sector=include_sector,
                              include_us=include_sector,peer_runtime=peer,
                              include_transcript_follow=os.getenv('REFACTOR_INCLUDE_TRANSCRIPT_FOLLOW') == '1',
-                             include_narrative_inputs=os.getenv('REFACTOR_INCLUDE_NARRATIVE_INPUTS') == '1')
+                             include_narrative_inputs=os.getenv('REFACTOR_INCLUDE_NARRATIVE_INPUTS') == '1',
+                             include_transcript_momentum=os.getenv('REFACTOR_INCLUDE_TRANSCRIPT_MOMENTUM') == '1')
         if include_sector:
             with factory() as conn:
                 conn.execute('CREATE TABLE preview_peer_provenance (captured_at TIMESTAMPTZ NOT NULL,sha256 TEXT NOT NULL)')

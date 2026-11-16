@@ -27,7 +27,8 @@ from routers.spine_signals import SignalsSummary, MomentumResponse
 from pipeline.postgres_narrative_fixture import list_narratives, cached_narrative
 from routers.spine_narrative import NarrativeList, Narrative
 from pipeline.postgres_transcript_fixture import quarters, transcript_detail, recent_calls, follow_list
-from routers.spine_transcript import QuarterRow, Detail, RecentCall, FollowRow
+from routers.spine_transcript import QuarterRow, Detail, RecentCall, FollowRow, MomentumResponse
+from pipeline.postgres_momentum_fixture import momentum
 from routers.spine_doc import DocClaims, RelatedDoc
 from pipeline.postgres_related_documents import CentroidIndex, related_documents
 from pipeline.postgres_us_sectors import us_map as postgres_us_map, us_sector_detail as postgres_us_sector_detail
@@ -104,6 +105,13 @@ def experimental_narrative_detail(topic: str):
     with factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         return cached_narrative(connection,topic)
+
+
+@app.get('/api/spine/transcript/momentum', response_model=MomentumResponse)
+def experimental_transcript_momentum():
+    with factory() as connection:
+        connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        return momentum(connection)
 
 
 @app.get('/api/spine/transcript/recent', response_model=list[RecentCall])
