@@ -840,3 +840,5 @@ fixture snapshot 교체는 호출자가 공간 점검 함수를 명시하지 않
 18006 컨콜 구독 목록은 불변 fixture generation과 날짜가 같은 반복 조회에서 결과를 메모리에 재사용한다. 원본과 전체 응답을 비교한 실데이터에서 첫 요청 411ms·반복 6ms였고, generation이나 날짜가 바뀌면 재계산한다. 신호·컨콜 모멘텀 응답 모델 이름 충돌로 생긴 신호 GET 500도 수정해 기존 응답과 일치했다(동적으로 생성되는 as_of 제외). 미리보기 API container 재시작 때 gateway upstream이 바뀌어 잠시 502가 발생할 수 있으며 gateway reload로 복구했다. 이 캐시는 운영 갱신과 재부팅 복구를 의미하지 않는다.
 
 격리 `run_periodic_sources`는 재시작 시 메모리의 활성 조회 generation이 사라지는 점을 고려해, 첫 수집 결과가 변경 없음이어도 원장에서 조회 사본 생성을 요청한다. 같은 프로세스에서 생성이 실패하면 다음 주기에 재시도한다. 합성 Blog·Telegram·YouTube 수집/강화 후 새 publisher 인스턴스의 첫 생성 실패→변경 없는 다음 주기 재시도→기존 자료와 신규 요약·검색 조회를 확인했다. 이는 실제 OS 프로세스 강제 종료, 기존 정상 조회의 무중단 유지, 재시작 후 stale schema 정리, 외부 수집·운영 스케줄을 검증한 것이 아니다.
+
+`scripts/refactor_preserved_blog_trial.py`는 기존 리허설 snapshot을 별도 disposable PG schema로 복사하고 보존된 블로그 입력을 기존 BlogConnector에 주입하는 오프라인 시험이다. 실제 28,734건 원장 import 후 기존 입력 재처리 중복 방지, 합성 신규 문서 1건 저장·fake 요약, 기존+신규 상세와 lexical 검색을 확인했다. RSS·원문 네트워크와 실제 모델은 사용하지 않고 임시 schema를 정리했다. 첫 준비 시 copy와 graph 초기화의 isolation 조건 충돌로 실패했고 트랜잭션을 분리해 재실행했다. 실제 외부 수집, 새 generation의 기존 브라우저 UI 연결, OS 강제 종료 복구, 임베딩/hybrid 검색, 운영 스케줄·MacBook 동기화는 검증하지 않았다.
