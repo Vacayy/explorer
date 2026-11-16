@@ -18,10 +18,14 @@ READ_ROUTES = {'/api/spine/home', '/api/spine/home/ai-activity', '/api/spine/hom
                '/api/spine/indices/breadth', '/api/spine/credit', '/api/spine/market/{market}/overview', '/api/spine/risk',
                '/api/spine/world/changes', '/api/spine/retail', '/api/spine/trend-leaders', '/api/spine/pricing',
                '/api/spine/tracker/status', '/api/spine/trade/grid', '/api/spine/trade/follow', '/api/spine/trade/highlights',
-               '/api/spine/transcript/season', '/api/spine/transcript/season/kr', '/api/spine/groups', '/api/spine/approvals'}
+               '/api/spine/transcript/season', '/api/spine/transcript/season/kr', '/api/spine/groups', '/api/spine/approvals',
+               # Portfolio reads (writes need a PG ledger and stay unavailable)
+               '/api/portfolio', '/api/portfolio/history', '/api/portfolio/exposure', '/api/portfolio/events',
+               '/api/portfolio/flow', '/api/portfolio/thesis', '/api/portfolio/transactions', '/api/portfolio/principles',
+               '/api/portfolio/principles/state', '/api/portfolio/alerts'}
 LEGACY_ROUTERS = ('spine_home', 'spine_search', 'spine_regimes', 'spine_indices', 'spine_credit', 'spine_market_overview',
                   'spine_risk', 'spine_world', 'spine_retail', 'spine_trend', 'spine_pricing', 'spine_tracker',
-                  'spine_trade', 'spine_transcript', 'spine_groups', 'spine_approvals')
+                  'spine_trade', 'spine_transcript', 'spine_groups', 'spine_approvals', 'portfolio')
 
 
 def install(app, projection):
@@ -39,6 +43,9 @@ def install(app, projection):
             module.DB_PATH = projection.stable_path
 
     import importlib
+    # The owner-gated experimental portfolio adapter is replaced by the legacy reads.
+    app.router.routes[:] = [route for route in app.router.routes
+                            if not (isinstance(route, APIRoute) and route.methods == {'GET'} and route.path in READ_ROUTES)]
     for name in LEGACY_ROUTERS:
         for route in importlib.import_module(f'routers.{name}').router.routes:
             if isinstance(route, APIRoute) and route.methods == {'GET'} and route.path in READ_ROUTES:

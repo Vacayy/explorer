@@ -20,7 +20,7 @@ from pathlib import Path
 from pipeline.postgres_graph_fixture import _guard
 
 # PG-native ledgers that replaced a legacy table; legacy reads must see their rows.
-NATIVE = ('study_projects',)
+NATIVE = ('study_projects', 'questions')
 # Everything the projection reads that can change after the base load.
 VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'question_graph_overlay_rows',
              'legacy_supplement_tables', 'legacy_supplement_rows', *NATIVE)
@@ -40,9 +40,18 @@ def initialize_projection_version(target):
         target.execute('INSERT INTO legacy_projection_version VALUES (true,0)')
         target.execute(f'CREATE FUNCTION legacy_projection_bump() RETURNS trigger LANGUAGE plpgsql AS '
                        f'$$BEGIN UPDATE {schema}.legacy_projection_version SET counter=counter+1; RETURN NULL; END$$')
+    ensure_projection_triggers(target)
+
+
+def ensure_projection_triggers(target):
+    """Add the counter trigger to versioned tables that do not have it yet."""
+    _guard(target)
+    with target.transaction():
         for table in VERSIONED:
-            target.execute(f'CREATE TRIGGER legacy_projection_bump AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON {table} '
-                           'FOR EACH STATEMENT EXECUTE FUNCTION legacy_projection_bump()')
+            if not target.execute("SELECT 1 FROM pg_trigger WHERE tgname='legacy_projection_bump' AND tgrelid=to_regclass(%s)",
+                                  (table,)).fetchone():
+                target.execute(f'CREATE TRIGGER legacy_projection_bump AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON {table} '
+                               'FOR EACH STATEMENT EXECUTE FUNCTION legacy_projection_bump()')
 
 
 class LegacyProjection:
@@ -84,11 +93,13 @@ class LegacyProjection:
                     with pg.cursor(name=f'p{uuid.uuid4().hex}') as cursor:
                         cursor.execute('SELECT row_data FROM legacy_snapshot_rows WHERE table_name=%s ORDER BY row_ordinal', (name,))
                         root.executemany(insert, (tuple(row[0].get(column) for column in columns) for row in cursor))
-                from pipeline.study_projects import SCHEMA
-                root.executescript(SCHEMA)
                 for name in NATIVE:
-                    columns = [row[1] for row in root.execute(f'PRAGMA table_info("{name}")')]
+                    # Same column names as the legacy table; SQLite keeps each value's own type.
+                    columns = [row[0] for row in pg.execute('SELECT column_name FROM information_schema.columns WHERE '
+                                                            'table_schema=current_schema() AND table_name=%s '
+                                                            'ORDER BY ordinal_position', (name,))]
                     quoted = ','.join('"' + column + '"' for column in columns)
+                    root.execute(f'CREATE TABLE "{name}" ({quoted}, PRIMARY KEY("id"))')
                     rows = pg.execute(f'SELECT {quoted} FROM {name}').fetchall()
                     root.executemany(f'INSERT INTO "{name}" ({quoted}) VALUES ({",".join("?" for _ in columns)})', rows)
                 for (sql,) in pg.execute('SELECT sql FROM legacy_snapshot_indexes'):
