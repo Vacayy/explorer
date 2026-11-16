@@ -253,6 +253,7 @@ class PostgreSQLChatChunkTests(unittest.TestCase):
         from unittest.mock import Mock, patch
         from pipeline.postgres_conversations import PostgreSQLConversations
         from routers.postgres_chat_fixture import create_router
+        from psycopg.types.json import Jsonb
         with self.fixture.pg() as conn:
             second = store_document(conn, source_type='note', source_id='second', title='두번째 자료',
                                     markdown='두번째 본문', published_at='2026-01-01')
@@ -264,6 +265,9 @@ class PostgreSQLChatChunkTests(unittest.TestCase):
             conn.execute("INSERT INTO sector_market_companies VALUES('005930','시험전자')")
             conn.execute('CREATE TABLE sector_market_prices(stock_code text,trade_date text,close bigint,market_cap bigint)')
             conn.execute("INSERT INTO sector_market_prices VALUES('005930','2026-01-01',100,1000)")
+            conn.execute("INSERT INTO legacy_snapshot_tables VALUES ('entities','[]'::jsonb,'fixture',0) ON CONFLICT DO NOTHING")
+            conn.execute("INSERT INTO legacy_snapshot_rows VALUES ('entities',999999,%s)",
+                         (Jsonb({'id': 42, 'type': 'person', 'name': '시험인물', 'status': 'active'}),))
         store = PostgreSQLConversations(self.fixture.pg)
         app = FastAPI()
         app.include_router(create_router(store, Mock()))
@@ -273,7 +277,15 @@ class PostgreSQLChatChunkTests(unittest.TestCase):
             targets = client.get('/api/spine/chat/targets', params={'q': '두번째', 'kind': 'doc'})
             self.assertEqual(targets.status_code, 200)
             self.assertEqual(targets.json()['groups'][0]['items'][0]['ref'], str(second['id']))
-            self.assertEqual(client.get('/api/spine/chat/targets?kind=person').status_code, 422)
+            person = client.get('/api/spine/chat/targets', params={'q': '시험인물', 'kind': 'person'})
+            self.assertEqual(person.json()['groups'][0]['items'][0]['ref'], '42')
+            selected_person = client.post('/api/spine/ask', json={'question': '인물 질문',
+                'attachments': [{'kind': 'person', 'ref': '42', 'label': '임의 이름'}]})
+            self.assertEqual(selected_person.status_code, 200)
+            detail = client.get(f"/api/spine/conversations/{selected_person.json()['conversation_id']}").json()
+            self.assertEqual(detail['attached_refs'][0]['label'], '시험인물')
+            self.assertEqual(client.post('/api/spine/ask', json={'question': '인물 질문',
+                'attachments': [{'kind': 'person', 'ref': '999999', 'label': '없음'}]}).status_code, 422)
             stock = client.get('/api/spine/chat/targets', params={'q': '시험전자', 'kind': 'stock'})
             self.assertEqual(stock.json()['groups'][0]['items'][0]['ref'], '005930')
             selected = client.post('/api/spine/ask', json={'question': '종목 질문',
@@ -286,6 +298,11 @@ class PostgreSQLChatChunkTests(unittest.TestCase):
             evidence, missing = actual.gather_attached_refs([{'kind': 'stock', 'ref': '005930'}])
             self.assertFalse(missing)
             self.assertIn('실시간 시세가 아닙니다', evidence[0]['text'])
+            with patch('pipeline.postgres_chat_tools.search_feed', return_value=SimpleNamespace(items=[])) as search:
+                evidence, missing = actual.gather_attached_refs([{'kind': 'person', 'ref': '42'}])
+                self.assertEqual(evidence, [])
+                self.assertEqual(missing, ['인물 시험인물'])
+                self.assertEqual(search.call_args.kwargs['entity_id'], 42)
             response = client.post('/api/spine/ask', json={'question': '시험 질문'})
             self.assertEqual(response.status_code, 200)
             cid = response.json()['conversation_id']

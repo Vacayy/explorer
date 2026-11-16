@@ -164,6 +164,24 @@ class PostgreSQLConversations:
         row = conn.execute('SELECT corp_name FROM sector_market_companies WHERE stock_code=%s', (code,)).fetchone()
         return (row[0] or code) if row else None
 
+    def search_person_targets(self, query, *, limit):
+        if not query:
+            return []
+        with self.connect() as conn:
+            rows = conn.execute("SELECT row_data->>'id',row_data->>'name' FROM legacy_snapshot_rows "
+                "WHERE table_name='entities' AND row_data->>'type'='person' "
+                "AND row_data->>'status'='active' AND strpos(lower(row_data->>'name'),lower(%s))>0 "
+                "ORDER BY (lower(row_data->>'name')=lower(%s)) DESC,row_data->>'name' LIMIT %s",
+                (query, query, limit)).fetchall()
+        return [{'kind': 'person', 'ref': ident, 'label': name, 'sub': '인물'} for ident, name in rows]
+
+    @staticmethod
+    def person_label(conn, ident):
+        row = conn.execute("SELECT row_data->>'name' FROM legacy_snapshot_rows WHERE table_name='entities' "
+            "AND row_data->>'id'=%s AND row_data->>'type'='person' AND row_data->>'status'='active' LIMIT 1",
+            (str(ident),)).fetchone()
+        return row[0] if row else None
+
     @staticmethod
     def _owned(cursor, conversation_id, owner_chat_id, *, lock=False):
         suffix = ' FOR UPDATE' if lock else ''
@@ -220,10 +238,16 @@ class PostgreSQLConversations:
             previous += [{'kind': 'doc', 'ref': str(i), 'label': ''} for i in state.get('attached_doc_ids', [])
                          if not any(r.get('kind') == 'doc' and str(r.get('ref')) == str(i) for r in previous)]
             if refs is not None:
-                if any(r.get('kind') not in ('doc', 'stock') for r in previous + refs):
+                if any(r.get('kind') not in ('doc', 'stock', 'person') for r in previous + refs):
                     raise ValueError('target type is not supported in the fixture')
                 selected, added = merge_refs(previous, refs, max_new=max_new)
                 for ref in added:
+                    if ref['kind'] == 'person':
+                        label = self.person_label(conn, ref['ref'])
+                        if not label:
+                            raise TargetNotFound(ref['ref'])
+                        ref['label'] = label
+                        continue
                     if ref['kind'] == 'stock':
                         label = self.stock_label(conn, ref['ref'])
                         if not label:

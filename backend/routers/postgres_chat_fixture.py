@@ -16,11 +16,14 @@ def create_router(store, tools, *, owner_chat_id=None):
 
     @router.get('/api/spine/chat/targets', response_model=ChatTargetSearch)
     def targets(q: str = Query('', max_length=80), kind: TargetKind | None = None):
-        if kind not in (None, 'doc', 'stock'):
-            raise HTTPException(422, '격리 시험에서는 자료와 국내 종목 대상만 지원합니다')
+        if kind not in (None, 'doc', 'stock', 'person'):
+            raise HTTPException(422, '격리 시험에서는 자료, 국내 종목, 인물만 지원합니다')
         query = q.strip()
         limit = 20 if kind else 4
         groups = []
+        if kind in (None, 'person'):
+            items = store.search_person_targets(query, limit=limit)
+            if items: groups.append({'kind': 'person', 'items': items})
         if kind in (None, 'stock'):
             items = store.search_stock_targets(query, limit=limit)
             if items: groups.append({'kind': 'stock', 'items': items})
@@ -35,8 +38,8 @@ def create_router(store, tools, *, owner_chat_id=None):
         if not question:
             raise HTTPException(400, '질문이 비어 있습니다')
         refs = [ref.model_dump() for ref in body.attachments or []]
-        if any(ref['kind'] not in ('doc', 'stock') for ref in refs):
-            raise HTTPException(422, '격리 시험에서는 자료와 국내 종목 대상만 지원합니다')
+        if any(ref['kind'] not in ('doc', 'stock', 'person') for ref in refs):
+            raise HTTPException(422, '격리 시험에서는 자료, 국내 종목, 인물만 지원합니다')
         refs += [{'kind': 'doc', 'ref': str(i), 'label': ''} for i in body.document_ids or []]
         if body.attachments is None and body.document_ids is None:
             refs = None
@@ -49,7 +52,7 @@ def create_router(store, tools, *, owner_chat_id=None):
         except DocumentNotFound as exc:
             raise HTTPException(422, '첨부할 수집 자료를 찾을 수 없습니다') from exc
         except TargetNotFound as exc:
-            raise HTTPException(422, '첨부할 종목을 찾을 수 없습니다') from exc
+            raise HTTPException(422, '첨부할 대상을 찾을 수 없습니다') from exc
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         background.add_task(generate_answer, store, tools, cid, question, owner_chat_id=owner_chat_id,
@@ -71,7 +74,7 @@ def create_router(store, tools, *, owner_chat_id=None):
         except ConversationNotFound as exc:
             raise HTTPException(404, '대화를 찾을 수 없습니다') from exc
         state = json.loads(conversation['state_json'] or '{}')
-        if any(r.get('kind') not in ('doc', 'stock') for r in state.get('attached_refs') or []):
+        if any(r.get('kind') not in ('doc', 'stock', 'person') for r in state.get('attached_refs') or []):
             raise HTTPException(422, '격리 시험에서는 기존 복합 첨부 대화를 지원하지 않습니다')
         attached_docs, attached_refs = [], []
         for doc_id in (state.get('attached_doc_ids') or [])[:12]:
@@ -83,6 +86,12 @@ def create_router(store, tools, *, owner_chat_id=None):
             attached_refs.append({'kind': 'doc', 'ref': str(doc_id), 'label': title,
                                   'available': status['available']})
         for ref in state.get('attached_refs') or []:
+            if ref.get('kind') == 'person':
+                with store.connect() as conn:
+                    label = store.person_label(conn, ref['ref'])
+                attached_refs.append({'kind': 'person', 'ref': str(ref['ref']),
+                                      'label': label or ref.get('label') or str(ref['ref']),
+                                      'available': bool(label)})
             if ref.get('kind') == 'stock':
                 with store.connect() as conn:
                     label = store.stock_label(conn, ref['ref'])

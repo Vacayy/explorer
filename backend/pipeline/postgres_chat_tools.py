@@ -30,9 +30,10 @@ class PostgreSQLChatTools:
         from pipeline.postgres_conversations import PostgreSQLConversations
         items, empty = [], []
         with self.connect() as conn:
-            PostgreSQLConversations._check_market_generation(conn)
             for ref in refs:
                 if ref.get('kind') == 'doc':
+                    continue
+                if ref.get('kind') == 'person':
                     continue
                 if ref.get('kind') != 'stock':
                     raise UnsupportedPostgresChatTool('target type is not implemented')
@@ -46,6 +47,24 @@ class PostgreSQLChatTools:
                 items.append({'kind': 'quote', 'title': f'{label}({code}) 저장 시세',
                     'text': f'{row[0]} 기준 저장 종가 {row[1]:,}원. 실시간 시세가 아닙니다. 재무·공시 자료는 이 항목에 포함되지 않습니다.',
                     'date': row[0], 'doc_id': None, 'href': f'/analyze/{code}/summary', 'tool': 'attached_targets'})
+        for ref in refs:
+            if ref.get('kind') != 'person':
+                continue
+            with self.connect() as conn:
+                conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                ident = str(ref['ref'])
+                label = PostgreSQLConversations.person_label(conn, ident)
+                if not label or not ident.isdigit():
+                    empty.append('인물 ' + (label or ident))
+                    continue
+                vector = self.query_vector(label) if self.query_vector else None
+                result = search_feed(conn, self.index, label, vector=vector, size=3, entity_id=int(ident))
+                if not result.items:
+                    empty.append('인물 ' + label)
+                for doc in result.items:
+                    item = self._item(doc)
+                    item['tool'] = 'attached_targets'
+                    items.append(item)
         return items[:12], empty
 
     @staticmethod
