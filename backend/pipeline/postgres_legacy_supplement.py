@@ -17,7 +17,7 @@ from pipeline.postgres_snapshot import _insert_batches
 # later units, and telemetry that the read paths do not need.
 EXCLUDED = frozenset({'doc_chunks', 'financial_statements', 'llm_calls', 'usage_events',
                       'api_requests_hourly', 'client_errors', 'image_backfill_docs',
-                      'knowledge_doc_scans', 'cache_meta'})
+                      'knowledge_doc_scans'})
 
 
 def initialize_supplement(target):
@@ -39,8 +39,11 @@ def initialize_supplement(target):
                            f'UNION ALL SELECT {columns} FROM {supplement}')
 
 
-def load_supplement(target, backup_dir):
-    """Copy missing collected tables from the base snapshot's own backup in one transaction."""
+def load_supplement(target, backup_dir, *, only=None):
+    """Copy missing collected tables from the base snapshot's own backup in one transaction.
+
+    `only` adds the named tables to an already loaded supplement.
+    """
     _guard(target)
     backup = Path(backup_dir)
     manifest = json.loads((backup / 'manifest.json').read_text())
@@ -52,7 +55,7 @@ def load_supplement(target, backup_dir):
     try:
         with target.transaction():
             target.execute('LOCK TABLE legacy_supplement_tables IN EXCLUSIVE MODE')
-            if target.execute('SELECT 1 FROM legacy_supplement_tables LIMIT 1').fetchone():
+            if only is None and target.execute('SELECT 1 FROM legacy_supplement_tables LIMIT 1').fetchone():
                 raise ValueError('Legacy supplement already loaded')
             documents = target.execute('SELECT document_count FROM snapshot_metadata WHERE singleton').fetchone()[0]
             if source.execute('SELECT count(*) FROM raw_documents').fetchone()[0] != documents:
@@ -66,8 +69,12 @@ def load_supplement(target, backup_dir):
                                                        "WHERE table_schema=current_schema() AND table_type='BASE TABLE'")}
             schemas = source.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()
             virtual = [name for name, ddl in schemas if 'VIRTUAL TABLE' in (ddl or '').upper()]
+            if only is not None and (set(only) - {name for name, _ in schemas} or set(only) & set(present)):
+                raise ValueError('Requested tables are missing from the backup or already present')
             loaded = {}
             for name, ddl in schemas:
+                if only is not None and name not in only:
+                    continue
                 if (name in present or name in native or name in EXCLUDED or name in virtual
                         or any(name.startswith(v + '_') for v in virtual) or not ddl):
                     continue
