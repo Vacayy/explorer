@@ -3,7 +3,8 @@
 Uses the legacy recipe (`search.build_index`: title + first 2000 markdown chars,
 same local model) and keeps the base generation untouched: fresh vectors live
 in `document_embedding_overrides`, which replace the base row for the same
-document in the `document_embeddings` view, so the vector count is unchanged.
+document in the `document_embeddings` view. Newly published documents get a
+vector the same way; `document_embedding_metadata` then counts them too.
 """
 from pipeline.postgres_graph_fixture import _guard
 
@@ -22,6 +23,23 @@ def initialize(conn):
             UNION ALL SELECT document_id,embedding,content_hash FROM document_embedding_overrides''')
 
 
+def count_new_vectors(conn):
+    """Make the vector-count metadata include override vectors of documents the base never had."""
+    _guard(conn)
+    with conn.transaction():
+        definition = conn.execute("SELECT pg_get_viewdef(to_regclass('document_embedding_metadata'),true)").fetchone()[0]
+        if 'document_embedding_overrides' in definition:
+            raise ValueError('Vector count already includes overrides')
+        base = conn.execute("SELECT pg_get_viewdef(to_regclass('document_embeddings'),true)").fetchone()[0]
+        if 'document_embedding_overrides' not in base:
+            raise ValueError('Initialize embedding overrides first')
+        conn.execute(f'''CREATE OR REPLACE VIEW document_embedding_metadata AS
+            SELECT m.singleton,m.generation_id,m.expected_model,m.dimensions,
+                   (SELECT count(*) FROM document_embeddings)::bigint AS vector_count,
+                   m.stale_count,m.source_hash_missing_count
+            FROM ({definition.rstrip().rstrip(";")}) m''')
+
+
 def stale_documents(conn):
     """Listed vectors whose stored hash no longer matches the visible document."""
     return conn.execute("""
@@ -29,7 +47,14 @@ def stale_documents(conn):
                r.row_data->>'content_hash'
         FROM document_embeddings e JOIN legacy_snapshot_rows r
           ON r.table_name='raw_documents' AND r.row_data->>'id'=e.document_id::text
-        WHERE e.content_hash IS DISTINCT FROM r.row_data->>'content_hash' ORDER BY 1""").fetchall()
+        WHERE e.content_hash IS DISTINCT FROM r.row_data->>'content_hash'
+        UNION
+        SELECT (r.row_data->>'id')::bigint, r.row_data->>'title', substr(COALESCE(r.row_data->>'markdown',''),1,2000),
+               r.row_data->>'content_hash'
+        FROM legacy_snapshot_rows r
+        WHERE r.table_name='raw_documents'
+          AND NOT EXISTS (SELECT 1 FROM document_embeddings e WHERE e.document_id=(r.row_data->>'id')::bigint)
+        ORDER BY 1""").fetchall()
 
 
 def refresh(conn, model, serialize):

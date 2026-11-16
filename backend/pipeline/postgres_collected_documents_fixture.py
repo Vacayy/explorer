@@ -167,4 +167,6 @@ def withdraw(conn, document_id):
             conn.execute(f'DELETE FROM collected_{table} WHERE id=%s', (document_id,))
         for table in ('timeline_source_projection', 'timeline_source_metadata', 'document_entity_order'):
             conn.execute(f'DELETE FROM collected_{table} WHERE document_id=%s', (document_id,))
+        if conn.execute("SELECT to_regclass('document_embedding_overrides')").fetchone()[0] is not None:
+            conn.execute('DELETE FROM document_embedding_overrides WHERE document_id=%s', (document_id,))
         conn.execute('DELETE FROM collected_publications WHERE document_id=%s', (document_id,))
