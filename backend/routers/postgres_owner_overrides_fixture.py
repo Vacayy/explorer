@@ -23,7 +23,9 @@ ADAPTED = (('POST', '/api/spine/admin/flag'), ('PUT', '/api/spine/regimes/checks
            # Screen computations requested on page open (one model call when the cached result is stale).
            ('POST', '/api/spine/stock/{stock_code}/lens/compute'), ('POST', '/api/spine/sources/dossier/summary'),
            ('POST', '/api/spine/beneficiary/upside'), ('POST', '/api/spine/narrative/mer/compute'),
-           ('POST', '/api/spine/narrative/compute'))
+           ('POST', '/api/spine/narrative/compute'),
+           # Button computations over the candidate's own material (no external requests).
+           ('POST', '/api/spine/person/{name}/profile'))
 # Computations that also write the graph: graph tables are copied writable and their diff is published.
 GRAPH_WRITERS = {'/api/spine/narrative/compute'}
 # Approvals whose legacy action only touches the decision tables (alias registration, acknowledgement).
@@ -33,12 +35,12 @@ APPROVE = re.compile(r'^/api/spine/agent-proposals/(\d+)/approve$')
 
 def install(app, projection, factory):
     from routers import (spine_admin, spine_approvals, spine_causal, spine_keywords, spine_lens, spine_narrative,
-                         spine_regimes, spine_research, spine_sources)
+                         spine_person, spine_regimes, spine_research, spine_sources)
     from routers.postgres_owner_legacy_fixture import _Borrowed
     wanted = set(ADAPTED)
     for router in (spine_admin.router, spine_regimes.router, spine_research.router, spine_approvals.agent_router,
                    spine_keywords.router, spine_lens.router, spine_sources.router, spine_causal.beneficiary_router,
-                   spine_narrative.router):
+                   spine_narrative.router, spine_person.router):
         for route in router.routes:
             if isinstance(route, APIRoute) and any((method, route.path) in wanted for method in route.methods):
                 app.router.routes.append(route)
