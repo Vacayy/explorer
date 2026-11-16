@@ -1,4 +1,4 @@
-"""Loopback-only owner follows, prediction pins and feed read marks on the PG ledger.
+"""Loopback-only owner follows, prediction pins, feed read marks and bookmarks on the PG ledger.
 
 Same request/response shapes and errors as the legacy routes. The follow list
 and feed read marks read the ledger directly; legacy reads (prediction cards)
@@ -14,6 +14,7 @@ from pipeline.timeline import utc
 from pipeline import postgres_owner_records_fixture as records
 from routers.spine_feed import MarkAllReadRequest, MarkReadRequest
 from routers.spine_follows import FollowedEntity, FollowRequest
+from routers.spine_saved import NoteRequest, SavedItem, SaveRequest
 
 
 def create_router(factory, timeline):
@@ -79,6 +80,26 @@ def create_router(factory, timeline):
             for c in targets:
                 records.mark_read(conn, c.id, stamp)
         return {'platform': body.platform, 'read_until': stamp, 'channels': len(targets), 'marked': sum(c.unread for c in targets)}
+
+    @router.post('/api/spine/saved', response_model=SavedItem, status_code=201)
+    def add_saved(body: SaveRequest):
+        if body.kind not in ('company', 'doc', 'narrative', 'report', 'chat'):
+            raise HTTPException(400, '알 수 없는 kind')
+        with connection() as conn:
+            return records.save(conn, body)
+
+    @router.patch('/api/spine/saved/{item_id}', response_model=SavedItem)
+    def update_note(item_id: int, body: NoteRequest):
+        with connection() as conn:
+            row = records.update_saved_note(conn, item_id, body.note)
+        if row is None:
+            raise HTTPException(404, '저장 항목을 찾을 수 없습니다')
+        return row
+
+    @router.delete('/api/spine/saved/{item_id}', status_code=204)
+    def remove_saved(item_id: int):
+        with connection() as conn:
+            records.remove_saved(conn, item_id)
 
     return router
 

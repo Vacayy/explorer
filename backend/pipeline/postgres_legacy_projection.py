@@ -25,10 +25,12 @@ NATIVE = ('study_projects', 'questions')
 VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'question_graph_overlay_rows',
              'legacy_supplement_tables', 'legacy_supplement_rows', *NATIVE,
              'fixture_portfolio_transactions', 'fixture_portfolio_members', 'fixture_portfolio_principles',
-             'owner_follows', 'owner_kalshi_pins', 'owner_channel_reads')
+             'owner_follows', 'owner_kalshi_pins', 'owner_channel_reads',
+             'owner_saved_items')
 # Small owner-ledger tables re-derived per connection in TEMP shadows, so writes
 # show at once; the file keeps its own (possibly older) derived copy underneath.
-SHADOWED = ('portfolio_transactions', 'stock_group_members', 'portfolio_principles', 'follows', 'kalshi_pins', 'channel_reads')
+SHADOWED = ('portfolio_transactions', 'stock_group_members', 'portfolio_principles', 'follows', 'kalshi_pins', 'channel_reads',
+            'saved_items')
 CHECK_SECONDS = 10
 log = logging.getLogger(__name__)
 
@@ -240,3 +242,7 @@ def _derive_owner_records(root, pg):
         root.execute('DELETE FROM channel_reads')
         root.executemany('INSERT INTO channel_reads (channel,read_until,updated_at) VALUES (?,?,?)',
                          pg.execute('SELECT channel,read_until,updated_at FROM owner_channel_reads').fetchall())
+    if pg.execute("SELECT to_regclass('owner_saved_items')").fetchone()[0] is not None:
+        root.execute('DELETE FROM saved_items')
+        root.executemany('INSERT INTO saved_items (id,kind,ref,url,title,subtitle,note,created_at) VALUES (?,?,?,?,?,?,?,?)',
+                         pg.execute('SELECT id,kind,ref,url,title,subtitle,note,created_at FROM owner_saved_items ORDER BY id').fetchall())
