@@ -73,3 +73,37 @@ def install_video_projection_overlay(target, base_schema):
             FROM {}.document_list_projection b LEFT JOIN video_projection_overrides o ON o.document_id=b.document_id
             WHERE o.document_id IS NULL OR b.ordinal=o.list_ordinal""").format(base))
     return {'initialized': True}
+
+
+def install_video_analysis_overlay(target, base_schema):
+    """Let published video revisions replace, rather than mix, old analysis."""
+    _guard(target)
+    current = target.execute('SELECT current_schema()').fetchone()[0]
+    if not re.fullmatch(r'refactor_fixture_[0-9a-f]{32}', base_schema or '') or base_schema == current:
+        raise ValueError('Separate fixture base required')
+    with target.transaction():
+        if target.execute("SELECT to_regclass('video_projection_overrides')").fetchone()[0] is None:
+            raise ValueError('Video projection overlay is required')
+        depends = target.execute("""SELECT EXISTS(SELECT 1 FROM pg_rewrite rw
+            JOIN pg_depend dep ON dep.classid='pg_rewrite'::regclass AND dep.objid=rw.oid
+            JOIN pg_class source ON source.oid=dep.refobjid JOIN pg_namespace ns ON ns.oid=source.relnamespace
+            WHERE rw.ev_class=to_regclass('legacy_snapshot_rows') AND ns.nspname=%s AND source.relname='legacy_snapshot_rows')""", (base_schema,)).fetchone()[0]
+        if not depends:
+            raise ValueError('Fork does not reference the specified base')
+        constraint = target.execute("SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid=to_regclass('video_digest_overlay_rows') "
+                                    "AND conname='video_digest_overlay_rows_table_name_check'").fetchone()
+        if not constraint or 'enrichments' in constraint[0]:
+            raise ValueError('Unexpected or already expanded video overlay')
+        target.execute('ALTER TABLE video_digest_overlay_rows DROP CONSTRAINT video_digest_overlay_rows_table_name_check')
+        target.execute("ALTER TABLE video_digest_overlay_rows ADD CONSTRAINT video_digest_overlay_rows_table_name_check "
+                       "CHECK(table_name IN ('raw_documents','youtube_digest_jobs','enrichments','entity_links'))")
+        target.execute(sql.SQL("""CREATE OR REPLACE VIEW legacy_snapshot_rows AS
+            SELECT b.* FROM {}.legacy_snapshot_rows b
+            WHERE b.table_name NOT IN ('entity_relations','narrative_edge_evidence')
+              AND (b.table_name NOT IN ('raw_documents','youtube_digest_jobs') OR NOT EXISTS
+                (SELECT 1 FROM video_digest_overlay_rows v WHERE v.table_name=b.table_name AND v.row_ordinal=b.row_ordinal))
+              AND (b.table_name NOT IN ('enrichments','entity_links') OR NOT EXISTS
+                (SELECT 1 FROM video_projection_overrides p WHERE p.document_id::text=b.row_data->>'doc_id'))
+            UNION ALL SELECT * FROM question_graph_overlay_rows
+            UNION ALL SELECT * FROM video_digest_overlay_rows""").format(sql.Identifier(base_schema)))
+    return {'initialized': True}
