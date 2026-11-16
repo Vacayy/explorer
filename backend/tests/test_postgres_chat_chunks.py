@@ -1,0 +1,85 @@
+"""Import conversation-search chunks into an isolated document generation."""
+import os
+from pathlib import Path
+import sqlite3
+import struct
+import unittest
+
+from pipeline.postgres_chat_chunks import ChatChunkImportConflict, PostgreSQLChunkSearch, import_chat_chunks
+from pipeline.postgres_ingest_fixture import store_document
+from pipeline.postgres_ingest_rebuild_fixture import rebuild
+import tests.test_postgres_ingest_fixture as fixtures
+
+
+@unittest.skipUnless(os.getenv('REFACTOR_TEST_DISPOSABLE') == '1', 'disposable fixture required')
+class PostgreSQLChatChunkTests(unittest.TestCase):
+    def setUp(self):
+        self.fixture = fixtures.IngestFixtureTests('runTest')
+        self.fixture.setUp()
+        self.addCleanup(self.fixture.doCleanups)
+        with self.fixture.pg() as conn:
+            doc = store_document(conn, source_type='note', source_id='chunk-test', title='반도체',
+                                 markdown='반도체 원문', raw_content='반도체 원문', published_at='2026-01-01')
+            rebuild(conn)
+            conn.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/chat_chunks.sql').read_text())
+            raw = conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='raw_documents' AND row_data->>'id'=%s",
+                               (str(doc['id']),)).fetchone()[0]
+        self.doc_id = doc['id']
+        self.source = sqlite3.connect(':memory:')
+        self.addCleanup(self.source.close)
+        self.source.executescript('''
+          CREATE TABLE raw_documents(id INTEGER PRIMARY KEY,source_type TEXT,url TEXT,title TEXT,published_at TEXT,content_hash TEXT);
+          CREATE TABLE doc_chunks(id INTEGER PRIMARY KEY,doc_id INTEGER,idx INTEGER,text TEXT,prefix TEXT,content_hash TEXT);
+          CREATE TABLE chunk_vec(rowid INTEGER PRIMARY KEY,embedding BLOB);
+        ''')
+        self.source.execute('INSERT INTO raw_documents VALUES(?,?,?,?,?,?)',
+                            tuple(raw.get(k) for k in ('id', 'source_type', 'url', 'title', 'published_at', 'content_hash')))
+        self.source.execute('INSERT INTO doc_chunks VALUES(?,?,?,?,?,?)', (31, self.doc_id, 0, '반도체 원문', '제목', raw.get('content_hash')))
+        self.source.execute('INSERT INTO chunk_vec VALUES(?,?)', (31, struct.pack('<384f', *([0.1] * 384))))
+
+    def test_import_preserves_chunks_vectors_and_rejects_reimport(self):
+        with self.fixture.pg() as conn:
+            result = import_chat_chunks(self.source, conn, document_ids=[self.doc_id])
+        self.assertEqual(result, {'chunks': 1, 'documents': 1, 'stale_chunks': 0, 'complete': False})
+        with self.fixture.pg() as conn:
+            row = conn.execute('SELECT id,document_id,text,octet_length(embedding) FROM chat_chunk_projection').fetchone()
+        self.assertEqual(row, (31, self.doc_id, '반도체 원문', 1536))
+        with self.fixture.pg() as conn, self.assertRaises(ChatChunkImportConflict):
+            import_chat_chunks(self.source, conn, document_ids=[self.doc_id])
+
+    def test_changed_document_leaves_target_empty(self):
+        self.source.execute('UPDATE raw_documents SET title=?', ('changed',))
+        with self.fixture.pg() as conn, self.assertRaises(ChatChunkImportConflict):
+            import_chat_chunks(self.source, conn, document_ids=[self.doc_id])
+        with self.fixture.pg() as conn:
+            self.assertEqual(conn.execute('SELECT count(*) FROM chat_chunk_projection').fetchone()[0], 0)
+
+    def test_bad_vector_leaves_target_empty(self):
+        self.source.execute('UPDATE chunk_vec SET embedding=?', (b'bad',))
+        with self.fixture.pg() as conn, self.assertRaises(ChatChunkImportConflict):
+            import_chat_chunks(self.source, conn, document_ids=[self.doc_id])
+        with self.fixture.pg() as conn:
+            self.assertEqual(conn.execute('SELECT count(*) FROM chat_chunk_projection').fetchone()[0], 0)
+
+    def test_pg_chunks_reuse_original_hybrid_search_and_reject_generation_change(self):
+        with self.fixture.pg() as conn:
+            import_chat_chunks(self.source, conn, document_ids=[self.doc_id])
+
+        class Model:
+            def embed(self, queries):
+                return [[0.1] * 384 for _ in queries]
+
+        provider = lambda **kwargs: Model()
+        with self.assertRaises(ChatChunkImportConflict):
+            PostgreSQLChunkSearch(self.fixture.pg, provider)
+        index = PostgreSQLChunkSearch(self.fixture.pg, provider, allow_partial=True)
+        try:
+            matches = index.search('반도체', k=5, pool=8)
+            self.assertEqual(matches[0]['doc_id'], self.doc_id)
+            self.assertEqual(matches[0]['text'], '반도체 원문')
+            with self.fixture.pg() as conn:
+                conn.execute("UPDATE snapshot_metadata SET generation_id='11111111-1111-1111-1111-111111111111'")
+            with self.assertRaises(ChatChunkImportConflict):
+                index.search('반도체', k=5, pool=8)
+        finally:
+            index.close()

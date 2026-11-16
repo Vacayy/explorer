@@ -205,7 +205,7 @@ def _fts_terms(texts: list[str], cap: int = 16) -> list[str]:
 
 
 def search_chunks(q: str, k: int = 40, pool: int = 80, variants: list[str] | None = None,
-                  must_any: list[str] | None = None) -> list[dict]:
+                  must_any: list[str] | None = None, runtime=None) -> list[dict]:
     """청크 하이브리드 검색 → 문서별 최고 청크. 반환 [{doc_id, chunk_id, score, prefix, text}] (RRF 순).
 
     - variants: 검색어 변형(한/영/티커/약어, D-137) — BM25는 토큰 합집합, 벡터는 원문+변형 각각 임베딩해 RRF.
@@ -228,7 +228,7 @@ def search_chunks(q: str, k: int = 40, pool: int = 80, variants: list[str] | Non
         fts_queries.append(f"({ent_q}) AND ({topic_q})")
     fts_queries.append(topic_q)
 
-    conn = get_connection()
+    conn = runtime.get_connection() if runtime is not None else get_connection()
     for fq in fts_queries:
         try:
             rows = conn.execute("SELECT rowid FROM chunk_fts WHERE chunk_fts MATCH ? ORDER BY rank LIMIT ?",
@@ -243,12 +243,13 @@ def search_chunks(q: str, k: int = 40, pool: int = 80, variants: list[str] | Non
             break
     conn.close()
 
-    vconn = _vec_conn()
+    vconn = runtime.vector_connection() if runtime is not None else _vec_conn()
     if vconn is not None:
         try:
             has = vconn.execute("SELECT count(*) FROM chunk_vec").fetchone()[0]
             if has:
-                embs = list(_get_model(local_files_only=True).embed(queries))
+                model = runtime.get_model(local_files_only=True) if runtime is not None else _get_model(local_files_only=True)
+                embs = list(model.embed(queries))
                 for j, emb in enumerate(embs):
                     vrows = vconn.execute("SELECT rowid FROM chunk_vec WHERE embedding MATCH ? AND k = ? ORDER BY distance",
                                           (_serialize(emb), pool)).fetchall()
@@ -270,7 +271,7 @@ def search_chunks(q: str, k: int = 40, pool: int = 80, variants: list[str] | Non
     order = [c for c, _ in sorted(ranks.items(), key=lambda x: -x[1])]
     order = [c for c in order if c in guaranteed] + [c for c in order if c not in guaranteed]
 
-    conn = get_connection()
+    conn = runtime.get_connection() if runtime is not None else get_connection()
     ph = ",".join("?" * len(order))
     meta = {r["id"]: r for r in conn.execute(
         f"SELECT id, doc_id, prefix, text FROM doc_chunks WHERE id IN ({ph})", order)}
