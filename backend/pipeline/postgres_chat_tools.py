@@ -1,6 +1,6 @@
 """Experimental PG document tools for the isolated chat runtime.
 
-Document opening, search and saved earnings-call digests are experimental.
+Document opening, search, narratives and saved earnings-call digests are experimental.
 Other tools fail explicitly; this is not a replacement for the full chat API.
 """
 from pipeline.chat_tools import ToolResult
@@ -61,6 +61,21 @@ class PostgreSQLChatTools:
                                            connection_factory=connect, entity_resolver=resolve_entity)
                 finally:
                     db.close()
+        if name == 'get_narrative':
+            from pipeline.chat_tools import get_narrative
+            from pipeline.postgres_narrative_fixture import cached_narrative
+            if self.chunk_rag is None:
+                raise UnsupportedPostgresChatTool('entity resolver is required for narratives')
+            with self.connect() as pg:
+                pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                def cache_lookup(topic):
+                    return cached_narrative(pg, topic).model_dump()
+
+                def entity_lookup(topic):
+                    ident, terms, _ = self.chunk_rag.entity_scope(topic, prefer=('theme', 'sector'))
+                    return terms[0] if ident and terms else None
+
+                return get_narrative(args['topic'], cache_lookup=cache_lookup, entity_lookup=entity_lookup)
         if name != 'search_docs':
             raise UnsupportedPostgresChatTool(f'{name} is not implemented in the PG fixture')
         if (args.get('entity') or args.get('channel')) and self.chunk_rag is None:

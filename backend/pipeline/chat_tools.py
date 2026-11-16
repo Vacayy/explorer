@@ -829,19 +829,29 @@ def get_proxies(query: str, n: int = 8) -> ToolResult:
     return ToolResult("get_proxies", {"query": query}, items, None if items else "해당 프록시 없음")
 
 
-def get_narrative(topic: str) -> ToolResult:
+def get_narrative(topic: str, *, cache_lookup=None, entity_lookup=None) -> ToolResult:
     """주제 내러티브(최신 버전) 본문."""
-    from pipeline.narrative import cached_meta
-    conn = get_connection()
-    try:
-        r = cached_meta(conn, topic)
-        if r.get("status") != "cached":
-            ent = resolve_entity(conn, topic, prefer=("theme", "sector"))
-            if ent and ent["name"] != topic:
-                r = cached_meta(conn, ent["name"])
-                topic = ent["name"]
-    finally:
-        conn.close()
+    if cache_lookup is None:
+        from pipeline.narrative import cached_meta
+        conn = get_connection()
+        try:
+            r = cached_meta(conn, topic)
+            if r.get("status") != "cached":
+                ent = resolve_entity(conn, topic, prefer=("theme", "sector"))
+                if ent and ent["name"] != topic:
+                    r = cached_meta(conn, ent["name"])
+                    topic = ent["name"]
+        finally:
+            conn.close()
+    else:
+        if entity_lookup is None:
+            raise ValueError('an injected narrative lookup requires an entity resolver')
+        r = cache_lookup(topic)
+        if r.get('status') != 'cached':
+            name = entity_lookup(topic)
+            if name and name != topic:
+                r = cache_lookup(name)
+                topic = name
     if r.get("status") != "cached":
         return ToolResult("get_narrative", {"topic": topic}, [], f"'{topic}' 내러티브 미생성({r.get('status')})")
     return ToolResult("get_narrative", {"topic": topic}, [{

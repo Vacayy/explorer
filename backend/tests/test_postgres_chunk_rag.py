@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from pipeline.rag import retrieve_docs
 class ChunkRAGTests(unittest.TestCase):
@@ -44,6 +44,21 @@ class ChunkRAGTests(unittest.TestCase):
             tools.run_tool({'name': 'search_docs', 'args': {'query': '질문', 'entity': '기업'}})
         self.assertEqual(retrieve.call_args.kwargs['entity_id'], 3)
         self.assertEqual(retrieve.call_args.kwargs['entity_terms'], ['기업', 'ABC'])
+
+    def test_narrative_tool_resolves_alias_and_returns_existing_contract(self):
+        from pipeline.postgres_chat_tools import PostgreSQLChatTools
+        from routers.spine_narrative import Narrative
+        rag = Mock()
+        rag.entity_scope.return_value = (3, ['정식 주제'], {})
+        tools = PostgreSQLChatTools(MagicMock(), None, chunk_rag=rag)
+        with patch('pipeline.postgres_narrative_fixture.cached_narrative', side_effect=[
+            Narrative(status='not_found'),
+            Narrative(status='cached', title='시험 내러티브', narrative='시험 본문', created_at='2026-01-01', stale=False),
+        ]):
+            result = tools.run_tool({'name': 'get_narrative', 'args': {'topic': '별칭'}})
+        self.assertEqual(result.args['topic'], '정식 주제')
+        self.assertEqual(result.items[0]['text'], '시험 본문')
+        self.assertFalse(result.items[0]['stale'])
 
     def test_shared_filters_preserve_existing_mute_and_entity_rules(self):
         from pipeline.rag import _filter_with_settings
