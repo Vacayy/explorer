@@ -89,3 +89,71 @@ def rollup_question(connect,question_id,*,run_llm):
                                    (Jsonb(row),table,str(row['id'])))
                 if changed.rowcount!=1:raise ValueError('Question capture identity mismatch')
     return {'status':'ok',**result}
+
+
+def rollup_question_native(connect, question_id, *, run_llm):
+    """Apply existing verdict rules to native PG; reject unconnected graph writes."""
+    from psycopg.rows import dict_row
+
+    def capture(pg):
+        with pg.cursor(row_factory=dict_row) as cur:
+            cur.execute('SELECT * FROM questions WHERE id=%s', (question_id,))
+            question = cur.fetchone()
+            cur.execute('SELECT * FROM sub_questions WHERE question_id=%s ORDER BY id', (question_id,))
+            subs = cur.fetchall()
+            cur.execute('SELECT p.* FROM proxy_registry p JOIN sub_questions s ON s.id=p.sub_question_id '
+                        'WHERE s.question_id=%s AND p.active=1 ORDER BY p.id', (question_id,))
+            proxies = cur.fetchall()
+            cur.execute('SELECT o.* FROM proxy_observations o JOIN proxy_registry p ON p.id=o.proxy_id '
+                        'JOIN sub_questions s ON s.id=p.sub_question_id WHERE s.question_id=%s AND p.active=1 '
+                        'ORDER BY o.id', (question_id,))
+            return question, subs, proxies, cur.fetchall()
+
+    with connect() as pg:
+        _guard(pg)
+        before = capture(pg)
+    question, subs, proxies, observations = before
+    if question is None:
+        return {'error': '질문 없음'}
+    lead, confirm, sub_verdicts = [], [], {}
+    for sub in subs:
+        scores = []
+        for proxy in (p for p in proxies if p['sub_question_id'] == sub['id']):
+            obs = [o for o in observations if o['proxy_id'] == proxy['id'] and o['direction'] is not None]
+            obs.sort(key=lambda o: (o['observed_at'] is not None, o['observed_at'] or '', o['id']), reverse=True)
+            if not obs:
+                continue
+            direction = obs[0]['direction']
+            score = 0 if direction == 'flat' else (1 if direction == (proxy['yes_direction'] or 'up') else -1)
+            scores.append(score)
+            (lead if proxy['modality'] in questions._FAST else confirm).append(score)
+        sub_verdicts[sub['id']] = questions._verdict(sum(scores), len(scores))
+    lead_v = questions._verdict(sum(lead), len(lead))
+    confirm_v = questions._verdict(sum(confirm), len(confirm))
+    divergence = questions._divergence(lead_v, confirm_v)
+    now_confirmed = confirm_v == 'leaning_yes' and divergence == 'aligned' and question['narrative_id'] is not None
+    if now_confirmed and not question['edge_confirmed']:
+        raise NotImplementedError('Writable shared graph ledger is not connected')
+    changed = (lead_v, confirm_v, divergence) != (question['lead_verdict'], question['confirm_verdict'], question['divergence'])
+    summary = question['verdict_summary']
+    if changed:
+        text = ' / '.join(f"{s['text']}: {questions._KO.get(sub_verdicts[s['id']], '미판정')}" for s in subs)
+        prompt = questions._SUMMARY_PROMPT.format(q=question['text'], lead=questions._KO.get(lead_v),
+                                                  confirm=questions._KO.get(confirm_v), subs=text)
+        try:
+            summary = run_llm(prompt, task='question.summarize').text.strip().split('\n')[0][:400] or None
+        except Exception:
+            summary = None
+    with connect() as pg:
+        _guard(pg)
+        pg.execute('LOCK TABLE questions,sub_questions,proxy_registry,proxy_observations IN SHARE ROW EXCLUSIVE MODE')
+        if capture(pg) != before:
+            return {'status': 'stale'}
+        for sub_id, verdict in sub_verdicts.items():
+            pg.execute('UPDATE sub_questions SET verdict=%s WHERE id=%s', (verdict, sub_id))
+        conviction = abs(sum(confirm)) / len(confirm) if confirm else None
+        pg.execute("UPDATE questions SET lead_verdict=%s,confirm_verdict=%s,divergence=%s,verdict_summary=%s, "
+                   "conviction=%s,edge_confirmed=%s,updated_at=to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS') WHERE id=%s",
+                   (lead_v, confirm_v, divergence, summary, conviction, int(now_confirmed), question_id))
+    return {'status': 'ok', 'lead_verdict': lead_v, 'confirm_verdict': confirm_v,
+            'divergence': divergence, 'changed': changed, 'edges_confirmed': 0}
