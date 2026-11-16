@@ -42,7 +42,7 @@ def route_policy(method, path):
         return 'member'
     if _MEMBER.match(path):
         return 'member'
-    if _PERSONAL.match(path) and not (method in {'GET', 'HEAD'} and path.startswith('/api/spine/questions')):
+    if _PERSONAL.match(path):  # questions too: the user's own tracked questions, read by the PG-native router
         return 'operator'
     if _ADMIN.match(path) or (_OPERATOR_COMPUTE.match(path) and method not in {'GET', 'HEAD'}):
         return 'operator'

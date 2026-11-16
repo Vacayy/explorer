@@ -316,6 +316,8 @@ class LegacyProjection:
             from pipeline.postgres_owner_overrides import COMPUTED
             _derive_owner_records(conn, pg, skip_overrides=() if writable else COMPUTED)
             _derive_native(conn, pg)
+            if not writable and not requester_is_operator():
+                _scope_to_requester(conn)
             if writable and legacy:
                 for table, seq in legacy[2].items():
                     # Never hand out an ID the legacy writer already used.
@@ -358,6 +360,48 @@ class LegacyProjection:
             conn.close()
             raise RuntimeError('Foreign keys could not be enabled')
         return conn, version
+
+
+# Personal state a public reader other than the operator must not see (pipeline.postgres_principals):
+# whole tables, rows of mixed tables, and the operator's personal flags on shared rows.
+PERSONAL_TABLES = ('follows', 'kalshi_pins', 'channel_reads', 'saved_items', 'tracker_conditions', 'portfolio_transactions',
+                   'portfolio_principles', 'stock_groups', 'stock_group_members', 'watch_rules', 'watch_evaluations',
+                   'questions', 'sub_questions', 'study_projects', *NATIVE_FILE_ONLY)
+PERSONAL_ROWS = (("DELETE FROM temp.knowledge WHERE model='user'"),  # knowledge the user injected
+                 'DELETE FROM temp.proxy_observations WHERE proxy_id IN (SELECT id FROM temp.proxy_registry WHERE sub_question_id IS NOT NULL)',
+                 'DELETE FROM temp.proxy_registry WHERE sub_question_id IS NOT NULL',  # proxies of the user's questions
+                 'UPDATE temp.transcript_follow SET core_pinned=0',
+                 # A source mute is the owner's personal setting; every collected source shows to others.
+                 'UPDATE temp.telegram_channels SET is_active=1', 'UPDATE temp.youtube_channels SET is_active=1')
+
+
+def requester_is_operator():
+    """In the private (loopback) mode every reader is the operator. In the public mode only a request whose
+    boundary-resolved principal is the operator reads the operator's personal state; anonymous visitors, other
+    members and requests outside the boundary read none."""
+    from security.access_boundary import configured_access_mode
+    if configured_access_mode() != 'public':
+        return True
+    from pipeline.postgres_usage_gate import usage
+    context = usage.get()
+    return context is not None and context.role == 'operator'
+
+
+def _scope_to_requester(conn):
+    """Empty the requester's view of the operator's personal state (TEMP shadows hide the file's tables,
+    so whatever a legacy reader joins, it sees no one's records)."""
+    temp = {row[0] for row in conn.execute("SELECT name FROM temp.sqlite_master WHERE type='table'")}
+    for table in PERSONAL_TABLES:
+        if table in temp:
+            conn.execute(f'DELETE FROM temp."{table}"')
+        elif conn.execute("SELECT 1 FROM main.sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
+            conn.execute(f'CREATE TEMP TABLE "{table}" AS SELECT * FROM main."{table}" WHERE 0')
+    for statement in PERSONAL_ROWS:
+        table = statement.split('temp.')[1].split()[0]
+        if table not in temp:
+            conn.execute(f'CREATE TEMP TABLE "{table}" AS SELECT * FROM main."{table}"')
+            temp.add(table)
+        conn.execute(statement)
 
 
 def _derive_native(root, pg):
