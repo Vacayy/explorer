@@ -4,7 +4,7 @@ The caller must supply a verified internal principal; this module is not an
 authentication boundary and is never registered with the running service.
 """
 from models.portfolio import TransactionCreate
-from pipeline.portfolio import EPS, LedgerError, replay
+from pipeline.portfolio import EPS, LedgerError, history_from_source, replay, summary_from_source
 from pipeline.postgres_graph_fixture import _guard
 
 
@@ -40,6 +40,32 @@ def list_transactions(conn, principal, *, names):
     return [{'id':t['id'],'trade_date':t['trade_date'],'kind':t['kind'],'stock_code':t['stock_code'],
              'name':names.get(t['stock_code'],t['stock_code']) if t['stock_code'] else None,'price':t['price']}
             for t in reversed(rows)]
+
+
+class FixturePortfolioReadSource:
+    """Use member transactions with explicitly supplied shared market data."""
+    def __init__(self, conn, principal, *, names, prices):
+        if not callable(prices):
+            raise ValueError('Explicit market price provider required')
+        self.conn=conn
+        self.account=_account(conn,principal)
+        self._names=names
+        self._prices=prices
+
+    def transactions(self):
+        return _transactions(self.conn,self.account)
+
+    def names(self, codes):
+        return {code:self._names[code] for code in codes if code in self._names}
+
+    def prices(self, txs, ledger):
+        return self._prices(txs,ledger)
+
+
+def read_portfolio(conn, principal, *, names, prices):
+    source=FixturePortfolioReadSource(conn,principal,names=names,prices=prices)
+    return {'summary':summary_from_source(source),'history':history_from_source(source),
+            'transactions':list_transactions(conn,principal,names=names)}
 
 
 def add_transaction(conn, principal, raw, *, companies, last_close):

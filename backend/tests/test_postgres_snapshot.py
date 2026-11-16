@@ -118,6 +118,14 @@ class SnapshotReplacementTests(unittest.TestCase):
             rows=portfolio.list_transactions(c,'member-a',names={'000001':'합성 회사'})
             self.assertEqual([r['kind'] for r in rows],['buy','deposit'])
             self.assertNotIn('amount',rows[0])
+            def market_prices(txs,ledger):
+                return {'000001':[('2026-01-02',10.0),('2026-01-03',12.0)]},{}
+            result=portfolio.read_portfolio(c,'member-a',names={'000001':'합성 회사'},prices=market_prices)
+            self.assertEqual(result['summary']['holdings'][0]['return_pct'],20.0)
+            self.assertEqual(result['summary']['holdings'][0]['name'],'합성 회사')
+            self.assertEqual(result['history'][-1]['cum_return_pct'],20.0)
+            other=portfolio.read_portfolio(c,'member-b',names={},prices=market_prices)
+            self.assertEqual((other['summary']['holdings'],other['history']),([],[]))
         with self.assertRaises(LedgerError):
             with self.pg() as c:
                 portfolio.add_transaction(c,'member-a',{'trade_date':'2026-01-03','kind':'withdraw','amount':1},companies=set(),last_close=lambda *_:None)
