@@ -24,7 +24,9 @@ def run(projection, factory, compute, *, results, source, before_commit=None):
     from pipeline import postgres_owner_overrides as overrides
     from pipeline.postgres_collected_documents_fixture import publish
     from pipeline.postgres_legacy_projection import write_connection_var
+    from pipeline.postgres_usage_gate import require_signed_in
     from routers.postgres_owner_legacy_fixture import _Borrowed
+    require_signed_in()  # an anonymous request is refused before the copy (the model call comes after it)
     directory = Path(projection.directory)
     work_path = directory / f'copy-{uuid.uuid4().hex}.db'
     lock = factory()

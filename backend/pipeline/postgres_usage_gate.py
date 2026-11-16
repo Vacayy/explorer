@@ -22,6 +22,38 @@ class LoginRequired(PermissionError):
     pass
 
 
+ANONYMOUS_PER_MINUTE = 20  # anonymous computation requests per network per minute (models stay refused anyway)
+
+
+def initialize(conn):
+    from pipeline.postgres_graph_fixture import _guard
+    _guard(conn)
+    with conn.transaction():
+        if conn.execute("SELECT to_regclass('anonymous_compute_requests')").fetchone()[0] is not None:
+            raise ValueError('Anonymous compute requests already initialized')
+        conn.execute('CREATE TABLE anonymous_compute_requests (network_hash TEXT NOT NULL,at TIMESTAMPTZ NOT NULL DEFAULT now())')
+        conn.execute('CREATE INDEX anonymous_compute_recent ON anonymous_compute_requests(network_hash,at)')
+
+
+def require_signed_in():
+    """Call before heavy preparation that precedes the model call (a private projection copy): an anonymous
+    request is refused before anything is copied or queued."""
+    context = usage.get()
+    if context is not None and context.role is None:
+        context.refused = 'login'
+        raise LoginRequired('로그인이 필요합니다')
+
+
+def _admit_anonymous(factory, network_hash, limit):
+    with factory() as conn, conn.transaction():
+        conn.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))', ('anonymous-compute:' + network_hash,))
+        conn.execute("DELETE FROM anonymous_compute_requests WHERE at < now() - interval '1 minute'")
+        if conn.execute("SELECT count(*) FROM anonymous_compute_requests WHERE network_hash=%s", (network_hash,)).fetchone()[0] >= limit:
+            return False
+        conn.execute('INSERT INTO anonymous_compute_requests(network_hash) VALUES (%s)', (network_hash,))
+        return True
+
+
 @dataclass
 class UsageContext:
     role: str | None                  # 'operator', 'member' or None (anonymous)
@@ -61,7 +93,7 @@ def install(llm_module, quota):
     llm_module._execute = gated
 
 
-def add_middleware(app, *, identity):
+def add_middleware(app, *, identity, factory, anonymous_per_minute=ANONYMOUS_PER_MINUTE):
     """After the access boundary: the request's principal (scope state) decides the usage context and whose
     personal ledgers it reads (pipeline.postgres_principals.request_principal)."""
     from pipeline.postgres_principals import request_principal
@@ -73,10 +105,15 @@ def add_middleware(app, *, identity):
             return await call_next(request)  # private (loopback) mode: no boundary, no gate
         role = user.role if user is not None else None
         context = UsageContext(role=role)
+        network = identity.network_hash(request.client.host if request.client else None,
+                                        request.headers.get('x-explorer-client-ip'))
         if role == 'member':
-            context.actor_hash = identity.account_hash(user.id)
-            context.network_hash = identity.network_hash(request.client.host if request.client else None,
-                                                         request.headers.get('x-explorer-client-ip'))
+            context.actor_hash, context.network_hash = identity.account_hash(user.id), network
+        elif role is None and request.method not in {'GET', 'HEAD', 'OPTIONS'}:
+            # Anonymous computations (the boundary already refused anonymous personal and admin writes).
+            from starlette.concurrency import run_in_threadpool
+            if not await run_in_threadpool(_admit_anonymous, factory, network, anonymous_per_minute):
+                return JSONResponse({'detail': '요청이 너무 많습니다. 잠시 뒤 다시 시도해 주세요.'}, status_code=429)
         token_usage, token_principal = usage.set(context), request_principal.set(user.id if user else None)
         try:
             response = await call_next(request)
