@@ -41,3 +41,9 @@ CREATE TABLE conversation_import_unresolved_docs (
     document_id BIGINT PRIMARY KEY,
     reason TEXT NOT NULL CHECK (reason = 'missing_in_source')
 );
+
+-- Distinguish imported conversations from new PG conversations when an old
+-- dangling document ID is later reused in the new document store.
+CREATE TABLE conversation_import_origin (
+    conversation_id BIGINT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE
+);

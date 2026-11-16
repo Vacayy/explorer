@@ -60,9 +60,9 @@ def import_sqlite_conversations(source, target):
         raise ConversationImportConflict('invalid document reference in source') from exc
 
     with target.transaction():
-        target.execute('LOCK TABLE conversations, chat_messages, chat_entity_links, conversation_import_unresolved_docs IN ACCESS EXCLUSIVE MODE')
+        target.execute('LOCK TABLE conversations, chat_messages, chat_entity_links, conversation_import_unresolved_docs, conversation_import_origin IN ACCESS EXCLUSIVE MODE')
         if any(target.execute('SELECT EXISTS(SELECT 1 FROM ' + table + ')').fetchone()[0]
-               for table in ('conversations', 'chat_messages', 'chat_entity_links', 'conversation_import_unresolved_docs')):
+               for table in ('conversations', 'chat_messages', 'chat_entity_links', 'conversation_import_unresolved_docs', 'conversation_import_origin')):
             raise ConversationImportConflict('target is not empty; refusing to overwrite')
         unresolved_source = set()
         if document_ids:
@@ -97,6 +97,7 @@ def import_sqlite_conversations(source, target):
             cur.executemany('INSERT INTO chat_entity_links (message_id,entity_id,link_type) VALUES (%s,%s,%s)', links)
             cur.executemany("INSERT INTO conversation_import_unresolved_docs (document_id,reason) VALUES (%s,'missing_in_source')",
                             [(i,) for i in sorted(unresolved_source)])
+            cur.executemany('INSERT INTO conversation_import_origin (conversation_id) VALUES (%s)', [(r[0],) for r in conversations])
         for table in ('conversations', 'chat_messages'):
             target.execute("SELECT setval(pg_get_serial_sequence(%s, 'id'), COALESCE((SELECT max(id) FROM " + table + "), 1), EXISTS(SELECT 1 FROM " + table + '))', (table,))
     return {'conversations': len(conversations), 'messages': len(messages), 'entity_links': len(links),
@@ -163,6 +164,64 @@ class PostgreSQLConversations:
             conversation = self._owned(cur, conversation_id, owner_chat_id)
             cur.execute('SELECT * FROM chat_messages WHERE conversation_id=%s ORDER BY id', (conversation_id,))
             return conversation, cur.fetchall()
+
+    def document_reference_status(self, conversation_id, document_id, *, owner_chat_id=None):
+        """Never resolve an imported dangling ID to a later, unrelated document."""
+        with self.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+            self._owned(cur, conversation_id, owner_chat_id)
+            cur.execute('SELECT EXISTS(SELECT 1 FROM conversation_import_origin WHERE conversation_id=%s) '
+                        'AND EXISTS(SELECT 1 FROM conversation_import_unresolved_docs WHERE document_id=%s) AS unresolved',
+                        (conversation_id, document_id))
+            if cur.fetchone()['unresolved']:
+                return {'available': False, 'reason': 'missing_in_source'}
+            cur.execute('SELECT detail_document FROM document_projection WHERE id=%s', (document_id,))
+            row = cur.fetchone()
+            return {'available': row is not None, 'reason': None if row else 'not_found',
+                    'document': row['detail_document'] if row else None}
+
+    def load_context(self, conversation_id, question, *, owner_chat_id=None):
+        """Match existing recent-message and same-owner related-note semantics."""
+        with self.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+            conversation = self._owned(cur, conversation_id, owner_chat_id)
+            try:
+                state = json.loads(conversation['state_json'] or '{}')
+            except (ValueError, TypeError):
+                state = {}
+            cur.execute('SELECT id,role,content FROM chat_messages WHERE conversation_id=%s ORDER BY id DESC LIMIT 5',
+                        (conversation_id,))
+            recent = list(reversed(cur.fetchall()))
+            if recent and recent[-1]['role'] == 'user' and recent[-1]['content'] == question:
+                recent.pop()
+            entity_ids = [e['id'] for e in state.get('entities', []) if isinstance(e, dict) and e.get('id')]
+            related = []
+            if entity_ids:
+                cur.execute('SELECT DISTINCT c.id,c.title,c.summary,c.updated_at FROM conversations c '
+                            'LEFT JOIN chat_messages m ON m.conversation_id=c.id '
+                            'LEFT JOIN chat_entity_links l ON l.message_id=m.id '
+                            'WHERE c.id<>%s AND c.summary IS NOT NULL AND c.chat_id IS NOT DISTINCT FROM %s '
+                            'AND (c.anchor_entity_id=ANY(%s) OR l.entity_id=ANY(%s)) '
+                            'ORDER BY c.updated_at DESC LIMIT 2',
+                            (conversation_id, conversation['chat_id'], entity_ids, entity_ids))
+                related = [{'id': r['id'], 'title': r['title'], 'note': r['summary'], 'updated_at': r['updated_at']}
+                           for r in cur.fetchall()]
+            return {'note': conversation['summary'], 'state': state, 'recent': recent[-4:], 'related': related}
+
+    def update_state(self, conversation_id, *, entities, intent, tools, doc_ids, last_citations=None, owner_chat_id=None):
+        with self.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+            conversation = self._owned(cur, conversation_id, owner_chat_id, lock=True)
+            try:
+                state = json.loads(conversation['state_json'] or '{}')
+            except (ValueError, TypeError):
+                state = {}
+            merged = {e['name']: e for e in state.get('entities', []) if e.get('name')}
+            for entity in entities:
+                if entity.get('name'):
+                    merged[entity['name']] = entity
+            state.update({'entities': list(merged.values())[-8:], 'last_intent': intent, 'last_tools': tools,
+                          'doc_ids': (doc_ids + [d for d in state.get('doc_ids', []) if d not in doc_ids])[:10],
+                          'last_citations': (last_citations or [])[:10]})
+            cur.execute('UPDATE conversations SET state_json=%s WHERE id=%s',
+                        (json.dumps(state, ensure_ascii=False), conversation_id))
 
     def list(self, *, owner_chat_id=None, limit=20):
         with self.connect() as conn, conn.cursor(row_factory=dict_row) as cur:

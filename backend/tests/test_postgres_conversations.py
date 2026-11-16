@@ -3,6 +3,8 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import subprocess
+import sys
 import unittest
 import uuid
 
@@ -40,7 +42,7 @@ class PostgreSQLConversationTests(unittest.TestCase):
     def test_document_question_answer_and_fresh_connection(self):
         cid, mid = self.store.create_question('What does the document say?', document_id=7)
         self.store.append_assistant(cid, 'Fixture answer', model='fixture', citations=[{'doc_id': 7}])
-        # A new store and connection simulate a service process restart.
+        # A new store opens a fresh connection to the same database.
         reopened = PostgreSQLConversations(self.connect)
         conversation, messages = reopened.detail(cid)
         self.assertEqual(json.loads(conversation['state_json'])['attached_doc_ids'], [7])
@@ -49,6 +51,21 @@ class PostgreSQLConversationTests(unittest.TestCase):
         self.assertEqual(json.loads(messages[1]['citations_json'])[0]['doc_id'], 7)
         self.assertEqual(reopened.list()[0]['message_count'], 2)
         self.assertEqual(messages[0]['id'], mid)
+
+    def test_saved_conversation_is_readable_in_a_fresh_process(self):
+        cid, _ = self.store.create_question('persistent fixture', document_id=7)
+        self.store.append_assistant(cid, 'persistent answer')
+        code = '''import os,sys,psycopg
+from pipeline.postgres_conversations import PostgreSQLConversations
+schema=sys.argv[1]; cid=int(sys.argv[2]); dsn=os.environ['REFACTOR_POSTGRES_DSN']
+store=PostgreSQLConversations(lambda:psycopg.connect(dsn,options='-c search_path='+schema))
+conversation,messages=store.detail(cid)
+assert [m['content'] for m in messages]==['persistent fixture','persistent answer']
+print('fresh_process_read_ok')'''
+        result = subprocess.run([sys.executable, '-c', code, self.schema, str(cid)],
+                                capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('fresh_process_read_ok', result.stdout)
 
     def test_missing_document_does_not_create_a_conversation(self):
         with self.assertRaises(DocumentNotFound):
@@ -132,4 +149,22 @@ class PostgreSQLConversationTests(unittest.TestCase):
         self.assertEqual(counts['documents_missing_in_source'], 1)
         with self.connect() as target:
             self.assertEqual(target.execute('SELECT document_id FROM conversation_import_unresolved_docs').fetchone()[0], 7)
+        self.assertEqual(self.store.document_reference_status(12, 7), {'available': False, 'reason': 'missing_in_source'})
+        new_id, _ = self.store.create_question('new document', document_id=7)
+        self.assertTrue(self.store.document_reference_status(new_id, 7)['available'])
         source.close()
+
+    def test_memory_keeps_recent_context_and_related_notes_with_same_owner(self):
+        cid, _ = self.store.create_question('first', document_id=7)
+        self.store.append_assistant(cid, 'answer')
+        self.store.update_state(cid, entities=[{'id': 42, 'name': 'entity'}], intent='research',
+                                tools=['open_doc'], doc_ids=[7], last_citations=[{'doc_id': 7}])
+        self.store.create_question('next', conversation_id=cid)
+        with self.connect() as conn:
+            conn.execute("INSERT INTO conversations(title,channel,chat_id,anchor_entity_id,summary) "
+                         "VALUES ('same','web',NULL,42,'same owner note'),('other','telegram','other',42,'private note')")
+        ctx = self.store.load_context(cid, 'next')
+        self.assertEqual([m['content'] for m in ctx['recent']], ['first', 'answer'])
+        self.assertEqual(ctx['state']['attached_doc_ids'], [7])
+        self.assertEqual(ctx['state']['last_intent'], 'research')
+        self.assertEqual([r['note'] for r in ctx['related']], ['same owner note'])

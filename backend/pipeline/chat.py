@@ -103,6 +103,7 @@ class Turn:
     follow_ups: list[dict] = field(default_factory=list)  # 후속 질문 제안 [{kind, question}] (D-145, 종합 META — 추가 LLM 콜 0)
     quote: dict | None = None                   # 드래그 인용 {message_id, selected, block, citations[]} (D-146)
     page_context: dict | None = None            # AI 패널이 보낸 '보고 있는 화면' {kind, label, path, ref} (app-shell.md §5)
+    runtime: object | None = None                # optional injected document/tool backend
 
     @property
     def standalone(self) -> str:
@@ -305,7 +306,7 @@ def _gather(turn: Turn, status, calls: list[dict] | None = None, round_no: int =
                                   'note':'이미 확보된 첨부 본문을 재사용함. 조회 실패가 아님.', 'ms':0,'round':round_no})
             continue
         t0 = time.time()
-        res = run_tool(call)
+        res = turn.runtime.run_tool(call) if turn.runtime is not None else run_tool(call)
         room = cap - len(turn.evidence)
         existing = {it.get('doc_id') for it in turn.evidence if it.get('tool') == 'attached_documents'}
         items = [it for it in res.items if not it.get('doc_id') or it['doc_id'] not in existing][:max(0, room)]
@@ -646,13 +647,17 @@ def _no_evidence_text(turn: "Turn") -> str:
 
 def run_turn(question: str, *, conversation_id: int | None = None, ctx: dict | None = None,
              on_text=None, on_status=None, quote: dict | None = None, study_context: dict | None = None,
-             page_context: dict | None = None) -> Turn:
+             page_context: dict | None = None, runtime=None) -> Turn:
     """한 턴 실행(영속화 없음). ctx가 없으면 chat_memory.load_context로 로드.
     quote: 드래그 인용 {message_id, selected, block, citations[]} (D-146)."""
     from pipeline.chat_memory import load_context
+    if runtime is not None and ctx is None:
+        raise ValueError('an injected runtime requires an explicit conversation context')
+    if runtime is not None and study_context:
+        raise NotImplementedError('study context is not implemented for an injected runtime')
     status = on_status or (lambda _: None)
     turn = Turn(question=question.strip(), conversation_id=conversation_id, quote=quote or None,
-                page_context=page_context or None,
+                page_context=page_context or None, runtime=runtime,
                 ctx=ctx if ctx is not None else load_context(conversation_id, question))
     if study_context:
         turn.route = {'intent':'study', 'answer_style':'analysis', 'tools':[]}
@@ -665,23 +670,30 @@ def run_turn(question: str, *, conversation_id: int | None = None, ctx: dict | N
         return turn
     attached = turn.ctx.get('state', {}).get('attached_doc_ids') or []
     if attached:
-        from pipeline.expectation_reading import attached_evidence
         status('선택한 수집 자료를 읽는 중')
-        turn.evidence.extend(attached_evidence(attached))
+        if runtime is None:
+            from pipeline.expectation_reading import attached_evidence
+            items = attached_evidence(attached)
+        else:
+            items = runtime.attached_evidence(attached)
+        turn.evidence.extend(items)
         turn.tool_log.append({'name':'attached_documents', 'args':{'doc_ids':attached},
                               'n':len(turn.evidence), 'note':'사용자가 읽던 자료. 채널 운영자와 원 발언자를 구분한다.',
                               'ms':0, 'round':1})
     refs = _attached_refs(turn)
     if any(r.get("kind") != "doc" for r in refs):
         # 붙인 대상은 식별자로 바로 근거를 모은다 — 라우터가 이름을 추측하지 않게 (ia-redesign §4.14a)
-        from pipeline.chat_targets import gather
         status("붙인 대상의 자료를 모으는 중")
         t0 = time.time()
-        conn = get_connection()
-        try:
-            items, empty = gather(conn, refs)
-        finally:
-            conn.close()
+        if runtime is None:
+            from pipeline.chat_targets import gather
+            conn = get_connection()
+            try:
+                items, empty = gather(conn, refs)
+            finally:
+                conn.close()
+        else:
+            items, empty = runtime.gather_attached_refs(refs)
         turn.evidence.extend(items)
         turn.tool_log.append({"name": "attached_targets", "args": {"refs": [f"{r['kind']}={r['ref']}" for r in refs if r.get("kind") != "doc"]},
                               "n": len(items), "note": ("자료가 없던 대상: " + ", ".join(empty)) if empty else None,
