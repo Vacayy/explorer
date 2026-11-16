@@ -93,8 +93,9 @@ def chat_tool(factory, request):
     if name not in WORKER_CHAT_TOOLS:
         raise ValueError(f'{name} does not run in the compute worker')
     allowed = chat_tools.TOOLS[name]['args'] | ({'k'} if name == 'search_docs' else set())
-    result = chat_tools.TOOLS[name]['fn'](**{key: value for key, value in request['args'].items()
-                                             if key in allowed and value is not None})
+    # The legacy run_tool: a missing argument or a failing tool answers with its note, as in the legacy turn.
+    result = chat_tools.run_tool({'name': name, 'args': {key: value for key, value in request['args'].items()
+                                                         if key in allowed and value is not None}})
     items = result.items
     if name == 'get_quote':  # the legacy title says real time; these are saved closes
         items = [{**item, 'title': STORED_QUOTE_TITLE} if item.get('kind') == 'quote' else item for item in items]
