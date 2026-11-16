@@ -2,8 +2,8 @@
 
 Features that need the legacy chunk search and reranker (too large for the preview API) put a job
 here; the worker (`pipeline.postgres_compute_worker`) runs the job's handler with the legacy
-retrieval pointed at the chunk index and the projection. Document claims are the first kind;
-AI-answer evidence search is meant to use the same ledger.
+retrieval pointed at the chunk index and the projection. Document claims and AI-answer
+tools (`chat_tool`) use it.
 """
 import sqlite3
 
@@ -49,15 +49,20 @@ def legacy_retrieval(chunks_path, projection_path):
     return connection
 
 
-CHAT_SEARCH_ARGS = ('query', 'since_days', 'source', 'entity', 'variants', 'channel', 'k')
+# AI-answer tools run here unchanged on the chunk index and projection: evidence search (chunk hybrid search
+# and rerank), the causal graph and cached narratives. All are reads without model calls.
+WORKER_CHAT_TOOLS = ('search_docs', 'get_worldmodel', 'get_narrative')
 
 
-def chat_search(factory, request):
-    """AI-answer evidence: the unchanged legacy search_docs (chunk hybrid search and rerank)."""
+def chat_tool(factory, request):
     from pipeline import chat_tools
-    result = chat_tools.search_docs(**{key: value for key, value in request['args'].items()
-                                       if key in CHAT_SEARCH_ARGS and value is not None})
-    return {'items': result.items, 'note': result.note, 'assumed': result.assumed}
+    name = request['name']
+    if name not in WORKER_CHAT_TOOLS:
+        raise ValueError(f'{name} does not run in the compute worker')
+    allowed = chat_tools.TOOLS[name]['args'] | ({'k'} if name == 'search_docs' else set())
+    result = chat_tools.TOOLS[name]['fn'](**{key: value for key, value in request['args'].items()
+                                             if key in allowed and value is not None})
+    return {'args': result.args, 'items': result.items, 'note': result.note, 'assumed': result.assumed}
 
 
 def run_queued(factory, handlers):

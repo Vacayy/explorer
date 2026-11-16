@@ -15,7 +15,7 @@ class UnsupportedPostgresChatTool(NotImplementedError):
 
 class PostgreSQLChatTools:
     def __init__(self, connect, index, *, query_vector=None, allow_lexical_only=False, chunk_rag=None, entity_resolver=None,
-                 portfolio_provider=None, evidence_search=None):
+                 portfolio_provider=None, worker_tool=None):
         if query_vector is None and not allow_lexical_only and chunk_rag is None:
             raise ValueError('query embedding provider or explicit lexical-only mode required')
         self.connect = connect
@@ -24,9 +24,9 @@ class PostgreSQLChatTools:
         self.chunk_rag = chunk_rag
         self.entity_resolver = entity_resolver
         self.portfolio_provider = portfolio_provider
-        # evidence_search(args) -> ToolResult | None: the legacy chunk search run elsewhere (compute worker);
-        # None falls back to the document index search below.
-        self.evidence_search = evidence_search
+        # worker_tool(name, args) -> ToolResult | None: the legacy tool run in the compute worker (evidence search,
+        # causal graph, cached narratives); None falls back to the paths below.
+        self.worker_tool = worker_tool
         self.reader = PostgreSQLDocumentReader(connect)
 
     def gather_attached_refs(self, refs):
@@ -77,8 +77,13 @@ class PostgreSQLChatTools:
                 'href': f'/doc/{doc.id}', 'source_type': doc.source_type}
 
     def run_tool(self, call):
+        from pipeline.postgres_retrieval_jobs import WORKER_CHAT_TOOLS
         name = call.get('name')
         args = call.get('args') or {}
+        if self.chunk_rag is None and self.worker_tool is not None and name in WORKER_CHAT_TOOLS:
+            result = self.worker_tool(name, args)
+            if result is not None:
+                return result
         if name == 'open_doc':
             doc = self.reader.get(int(args['doc_id']))
             return ToolResult(name, args, [self._item(doc)] if doc else [], None if doc else '문서 없음')
@@ -190,10 +195,6 @@ class PostgreSQLChatTools:
                                              connection_factory=factory, company_resolver=resolve_company)
         if name != 'search_docs':
             raise UnsupportedPostgresChatTool(f'{name} is not implemented in the PG fixture')
-        if self.chunk_rag is None and self.evidence_search is not None:
-            result = self.evidence_search(args)
-            if result is not None:
-                return result
         if (args.get('channel') or (args.get('entity') and self.entity_resolver is None)) and self.chunk_rag is None:
             raise UnsupportedPostgresChatTool('requested filter is not implemented in the PG fixture')
         query = (args.get('query') or '').strip()

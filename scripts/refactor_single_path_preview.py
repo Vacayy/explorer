@@ -168,14 +168,16 @@ entity_resolver = PostgreSQLChunkRAG(SnapshotMetadata(), None)
 EVIDENCE_WAIT_SECONDS = float(os.environ.get('REFACTOR_EVIDENCE_WAIT_SECONDS', '90'))
 
 
-def evidence_search(args):
-    # AI-answer evidence through the legacy chunk search, which runs in the compute worker (models too large
-    # for this process). A job not done in time is marked failed and the index search answers instead.
+def worker_tool(name, args):
+    # AI-answer tools (evidence search, causal graph, cached narratives) run unchanged in the compute worker
+    # (search models too large for this process). A job not done in time is marked failed and the tool falls
+    # back (the index search for evidence).
     import time
     from pipeline.chat_tools import ToolResult
     from pipeline.postgres_retrieval_jobs import enqueue
     with factory() as conn:
-        ident = enqueue(conn, 'chat_search', (args.get('query') or '')[:200], {'args': args})
+        ident = enqueue(conn, 'chat_tool', f"{name}: {args.get('query') or args.get('entity') or args.get('topic') or ''}"[:200],
+                        {'name': name, 'args': args})
     deadline = time.monotonic() + EVIDENCE_WAIT_SECONDS
     while time.monotonic() < deadline:
         time.sleep(.3)
@@ -183,19 +185,20 @@ def evidence_search(args):
             status, result, error = conn.execute('SELECT status,result,error FROM retrieval_jobs WHERE id=%s',
                                                  (ident,)).fetchone()
         if status == 'done':
-            return ToolResult('search_docs', args, result['items'], result.get('note'), assumed=result.get('assumed') or [])
+            return ToolResult(name, result.get('args') or args, result['items'], result.get('note'),
+                              assumed=result.get('assumed') or [])
         if status == 'failed':
-            logging.getLogger('preview.evidence').warning('Evidence job %s failed: %s', ident, error)
+            logging.getLogger('preview.evidence').warning('Tool job %s (%s) failed: %s', ident, name, error)
             return None
     with factory() as conn:
         conn.execute("UPDATE retrieval_jobs SET status='failed',error='timed out in the API',updated_at=now() "
                      "WHERE id=%s AND status='queued'", (ident,))
-    logging.getLogger('preview.evidence').warning('Evidence job %s timed out', ident)
+    logging.getLogger('preview.evidence').warning('Tool job %s (%s) timed out', ident, name)
     return None
 
 
 tools = PostgreSQLChatTools(factory, search, query_vector=query_vector,
-                            entity_resolver=entity_resolver.entity_scope, evidence_search=evidence_search)
+                            entity_resolver=entity_resolver.entity_scope, worker_tool=worker_tool)
 turns = StudyTurnsFixture(factory, store, tools, owner_chat_id=owner)
 actions = StudyActionsFixture(factory, store, tools, owner_chat_id=owner)
 app.include_router(chat_router(store, tools, owner_chat_id=owner))

@@ -1,7 +1,8 @@
 #!/bin/sh
 # Start the single-path preview's compute worker beside the preview API: a separate container
-# (3GB) for model-backed work too large for the API (reranker, chunk retrieval), run as a fresh
-# process each cycle (pipeline.postgres_compute_worker); no model credentials are mounted.
+# (3GB) for model-backed work too large for the API (reranker, chunk retrieval). A light watcher checks
+# for queued jobs every second and runs each pass as a fresh process (pipeline.postgres_compute_worker);
+# no model credentials are mounted.
 #   scripts/refactor_compute_worker.sh            # (re)create the worker container
 set -eu
 API=${REFACTOR_API_CONTAINER:-explorer-refactor-single-path}
@@ -20,4 +21,4 @@ docker rm -f "$NAME" >/dev/null 2>&1 || true
 docker run -d --name "$NAME" --restart unless-stopped --memory=3g --network "$NETWORK" --env-file "$ENV_FILE" \
   --user "$USER_ID" -v explorer-refactor-single-projection:/projection -v "$MODELS:/models:ro" \
   -v "$ROOT/backend:/app/backend:ro" -w /app/backend -e PYTHONPATH=/app/backend -e PYTHONDONTWRITEBYTECODE=1 \
-  "$IMAGE" sh -c 'while true; do python -m pipeline.postgres_compute_worker || echo "pass failed"; sleep 5; done'
+  "$IMAGE" python -m pipeline.postgres_compute_worker --watch
