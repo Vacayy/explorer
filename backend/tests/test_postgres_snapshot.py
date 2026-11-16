@@ -159,6 +159,16 @@ class SnapshotReplacementTests(unittest.TestCase):
             tx=c.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='portfolio_transactions'").fetchone()[0]
             self.assertEqual(groups,2)
             self.assertEqual((tx['id'],tx['group_id'],tx['amount']),(30,10,1000))
+            from pipeline import postgres_portfolio_fixture as portfolio
+            portfolio.initialize(c)
+            portfolio.map_archived_portfolio(c,'member-a',10)
+            result=portfolio.list_transactions(c,'member-a',names={})
+            self.assertEqual([(row['id'],row['kind']) for row in result],[(30,'deposit')])
+            self.assertEqual(portfolio.list_transactions(c,'member-b',names={}),[])
+            self.assertEqual(c.execute("SELECT count(*) FROM legacy_snapshot_rows WHERE table_name='portfolio_transactions'").fetchone()[0],1)
+        with self.assertRaisesRegex(ValueError,'already mapped'):
+            with self.pg() as c:
+                portfolio.map_archived_portfolio(c,'member-b',10)
 
     def test_knowledge_snapshot_preserves_evidence_and_refuses_missing_table(self):
         with closing(self.fixture.connect()) as source:

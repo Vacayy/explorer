@@ -26,6 +26,9 @@ def initialize(conn):
         account_id BIGINT NOT NULL REFERENCES fixture_portfolio_accounts(id),
         stock_code TEXT NOT NULL, bought_at TEXT NOT NULL,
         PRIMARY KEY(account_id,stock_code))''')
+    conn.execute('''CREATE TABLE fixture_portfolio_legacy_mapping (
+        legacy_group_id BIGINT PRIMARY KEY,
+        account_id BIGINT UNIQUE NOT NULL REFERENCES fixture_portfolio_accounts(id))''')
 
 
 def _account(conn, principal, *, create=False):
@@ -51,6 +54,39 @@ def _sync_members(conn, account, ledger):
                      (account,code,position.entry_date))
     conn.execute('DELETE FROM fixture_portfolio_members WHERE account_id=%s AND NOT (stock_code=ANY(%s))',
                  (account,list(ledger.positions)))
+
+
+def map_archived_portfolio(conn, principal, legacy_group_id):
+    """Explicitly map one archived fixture group; never infer an owner."""
+    _guard(conn)
+    if not isinstance(legacy_group_id,int) or isinstance(legacy_group_id,bool) or legacy_group_id<=0:
+        raise ValueError('Explicit legacy group required')
+    required=['stock_groups','stock_group_members','portfolio_transactions','portfolio_quotes']
+    if conn.execute('SELECT count(*) FROM legacy_snapshot_tables WHERE table_name=ANY(%s)',(required,)).fetchone()[0] != len(required):
+        raise ValueError('Complete portfolio snapshot required')
+    # Prevent concurrent inserts while retaining legacy IDs and advancing the
+    # destination sequence. The archive itself remains unchanged.
+    account=_account(conn,principal,create=True)
+    conn.execute('LOCK TABLE fixture_portfolio_transactions IN EXCLUSIVE MODE')
+    if _transactions(conn,account) or conn.execute('SELECT 1 FROM fixture_portfolio_legacy_mapping WHERE account_id=%s OR legacy_group_id=%s',
+                                                  (account,legacy_group_id)).fetchone():
+        raise ValueError('Portfolio or legacy group already mapped')
+    group=conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='stock_groups' AND row_data->>'id'=%s",(str(legacy_group_id),)).fetchall()
+    if len(group)!=1 or group[0][0].get('kind')!='portfolio':
+        raise ValueError('Legacy portfolio group unavailable')
+    rows=[row for (row,) in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='portfolio_transactions' "
+        "AND row_data->>'group_id'=%s ORDER BY row_data->>'trade_date',(row_data->>'id')::bigint",(str(legacy_group_id),))]
+    ledger=replay(rows)
+    for row in rows:
+        conn.execute('INSERT INTO fixture_portfolio_transactions(id,account_id,trade_date,kind,stock_code,amount,price,note) '
+            'OVERRIDING SYSTEM VALUE VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',
+            (row['id'],account,row['trade_date'],row['kind'],row.get('stock_code'),row['amount'],row.get('price'),row.get('note') or ''))
+    if rows:
+        conn.execute("SELECT setval(pg_get_serial_sequence('fixture_portfolio_transactions','id'), "
+                     "GREATEST((SELECT max(id) FROM fixture_portfolio_transactions),"
+                     "(SELECT last_value FROM fixture_portfolio_transactions_id_seq),1),TRUE)")
+    _sync_members(conn,account,ledger)
+    conn.execute('INSERT INTO fixture_portfolio_legacy_mapping VALUES (%s,%s)',(legacy_group_id,account))
 
 
 def list_transactions(conn, principal, *, names):
