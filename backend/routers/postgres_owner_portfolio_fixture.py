@@ -29,15 +29,15 @@ def _rules(body):
 def create_router(factory, *, run_llm=None, search=None):
     router = APIRouter(prefix='/api/portfolio')
 
-    def owner(conn):
-        rows = conn.execute('SELECT a.id,a.principal FROM fixture_portfolio_legacy_mapping m '
-                            'JOIN fixture_portfolio_accounts a ON a.id=m.account_id').fetchall()
-        if len(rows) != 1:
-            raise HTTPException(503, 'Owner portfolio ledger unavailable')
-        return rows[0]
+    def owner(conn, create=False):
+        from pipeline.postgres_principals import owner_account
+        try:
+            return owner_account(conn, create=create)  # the request principal's ledger (the operator's without one)
+        except LookupError as exc:
+            raise HTTPException(503, 'Owner portfolio ledger unavailable') from exc
 
-    def account(conn):
-        return owner(conn)[0]
+    def account(conn, create=False):
+        return owner(conn, create)[0]
 
     def read():
         with factory() as conn:
@@ -138,7 +138,7 @@ def create_router(factory, *, run_llm=None, search=None):
             raise HTTPException(422, str(exc)) from exc
         with factory() as conn:
             ident = conn.execute('INSERT INTO fixture_portfolio_principles(account_id,text,rules_json,notes_json) '
-                                 'VALUES (%s,%s,%s,%s) RETURNING id', (account(conn), body.text.strip(), rules, notes)).fetchone()[0]
+                                 'VALUES (%s,%s,%s,%s) RETURNING id', (account(conn, True), body.text.strip(), rules, notes)).fetchone()[0]
         return {'id': ident}
 
     def change(sql, params, principle_id):

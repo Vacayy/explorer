@@ -130,12 +130,13 @@ def local_owner_portfolio():
         raise HTTPException(404, 'Local owner preview unavailable')
     with factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
-        if not connection.execute('''SELECT 1 FROM fixture_portfolio_legacy_mapping m
-                JOIN fixture_portfolio_accounts a ON a.id=m.account_id WHERE a.principal=%s''',
-                ('local-preview-owner',)).fetchone():
-            raise HTTPException(503, 'Local owner portfolio snapshot unavailable')
+        from pipeline.postgres_principals import operator_principal
+        try:
+            principal = operator_principal(connection)  # the legacy owner's ledger, whatever principal it maps to
+        except LookupError as exc:
+            raise HTTPException(503, 'Local owner portfolio snapshot unavailable') from exc
         market = FixturePortfolioMarket(connection, captured_quotes=True)
-        return read_portfolio(connection, 'local-preview-owner', names=market.names(), prices=market.prices)
+        return read_portfolio(connection, principal, names=market.names(), prices=market.prices)
 
 
 @app.get('/api/portfolio', response_model=PortfolioSummary)
