@@ -106,12 +106,16 @@ def chat_tool(factory, request):
 
 
 def run_queued(factory, handlers):
-    """Run every queued job whose kind has a handler; `handler(factory, request) -> result` may raise."""
-    with factory() as conn:
-        jobs = conn.execute("SELECT id,kind,request FROM retrieval_jobs WHERE status='queued' AND kind=ANY(%s) "
-                            'ORDER BY created_at', (list(handlers),)).fetchall()
+    """Run queued jobs whose kind has a handler, one at a time, AI-answer tools first (someone is waiting on the
+    answer; a heavy publishing job would otherwise hold them); `handler(factory, request) -> result` may raise."""
     done = []
-    for ident, kind, request in jobs:
+    while True:
+        with factory() as conn:
+            job = conn.execute("SELECT id,kind,request FROM retrieval_jobs WHERE status='queued' AND kind=ANY(%s) "
+                               "ORDER BY kind <> 'chat_tool', created_at LIMIT 1", (list(handlers),)).fetchone()
+        if job is None:
+            return done
+        ident, kind, request = job
         try:
             result, status, error = handlers[kind](factory, request), 'done', None
         except Exception as exc:  # noqa: BLE001 - kept with its reason; not retried automatically
@@ -120,4 +124,3 @@ def run_queued(factory, handlers):
             conn.execute('UPDATE retrieval_jobs SET status=%s,result=%s,error=%s,updated_at=now() WHERE id=%s',
                          (status, Jsonb(result) if result is not None else None, error, ident))
         done.append((ident, kind, status))
-    return done
