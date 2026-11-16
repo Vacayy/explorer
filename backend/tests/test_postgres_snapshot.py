@@ -841,6 +841,12 @@ run_exclusive_cycle(NoteConnector(Path(os.environ['FIXTURE_VAULT'])),factory,enr
             self.assertTrue(validate_narrative_claim(c,'합성 신주제',claim))
             self.assertFalse(validate_narrative_claim(c,'합성 신주제',uuid.uuid4()))
             self.assertIsNone(claim_narrative(c,'합성 신주제'))
+            c.execute("INSERT INTO legacy_snapshot_rows VALUES ('knowledge_evidence', 1, %s::jsonb)",
+                      (json.dumps({'id':2,'knowledge_id':1,'stance':'refute','independent':1,'observed_at':'2026-11-16'}),))
+            self.assertFalse(validate_narrative_claim(c,'합성 신주제',claim))
+            c.execute("DELETE FROM legacy_snapshot_rows WHERE table_name='knowledge_evidence' AND row_ordinal=1")
+            claim=claim_narrative(c,'합성 신주제')
+            self.assertTrue(validate_narrative_claim(c,'합성 신주제',claim))
             self.assertEqual(c.execute("SELECT source_row->>'meta_json' FROM ingest_graph_entities WHERE id=8").fetchone()[0],'{"pace_layer":"flow"}')
             self.assertEqual(c.execute("SELECT source_row->>'source_quote',source_row->>'mechanism' FROM ingest_graph_relations WHERE id=77").fetchone(),('이전 근거','이전 설명'))
         def target(schema): return psycopg.connect(self.dsn,options=f'-c search_path={schema}')

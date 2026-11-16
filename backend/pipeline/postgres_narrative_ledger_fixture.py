@@ -1,7 +1,4 @@
-"""Disposable narrative ledger initialization and stale-input claims.
-
-No narrative result is committed by this module yet. Caller owns transactions.
-"""
+"""Disposable narrative ledger and stale-input claims. Caller owns transactions."""
 from hashlib import sha256
 from uuid import uuid4
 import re
@@ -44,6 +41,12 @@ def _fingerprint(conn):
     for query in queries:
         value=conn.execute("SELECT md5(COALESCE(string_agg(to_jsonb(t)::text,'' ORDER BY t.id),'')) FROM ("+query+") t").fetchone()[0]
         parts.append(value)
+    # Include the entire candidate set and evidence, including new candidates
+    # that could change the top-four selection after an external call starts.
+    value=conn.execute("SELECT md5(COALESCE(string_agg(table_name || ':' || row_ordinal::text || ':' || row_data::text, '' "
+                       "ORDER BY table_name,row_ordinal),'')) FROM legacy_snapshot_rows "
+                       "WHERE table_name IN ('knowledge','knowledge_evidence')").fetchone()[0]
+    parts.append(value)
     return sha256('|'.join(parts).encode()).hexdigest()
 
 
@@ -89,10 +92,24 @@ def commit_staged_narrative(conn, topic, token, stage_schema):
         raise ValueError('Source and staging schemas must differ')
     # Acquire the document table before graph lock: graph writers may first
     # acquire a document row, then the graph lock.
+    conn.execute('LOCK TABLE legacy_snapshot_rows IN SHARE MODE')
     conn.execute('LOCK TABLE ingest_documents IN SHARE MODE')
     if not validate_narrative_claim(conn,topic,token):
         return False
     rows=sql.SQL('{}.legacy_snapshot_rows').format(sql.Identifier(stage_schema))
+    metadata=sql.SQL('{}.legacy_snapshot_tables').format(sql.Identifier(stage_schema))
+    required=['knowledge','knowledge_evidence']
+    for table in (sql.SQL('legacy_snapshot_tables'),metadata):
+        if conn.execute(sql.SQL('SELECT count(*) FROM {} WHERE table_name=ANY(%s)').format(table),(required,)).fetchone()[0] != 2:
+            raise ValueError('Knowledge and evidence snapshots are required')
+    for name in ('knowledge','knowledge_evidence'):
+        mismatch=conn.execute(sql.SQL('SELECT EXISTS ((SELECT row_ordinal,row_data FROM legacy_snapshot_rows WHERE table_name=%s '
+            'EXCEPT SELECT row_ordinal,row_data FROM {} WHERE table_name=%s) UNION ALL '
+            '(SELECT row_ordinal,row_data FROM {} WHERE table_name=%s EXCEPT '
+            'SELECT row_ordinal,row_data FROM legacy_snapshot_rows WHERE table_name=%s))').format(rows,rows),
+            (name,name,name,name)).fetchone()[0]
+        if mismatch:
+            raise ValueError('Staging knowledge does not match the current ledger')
     mismatch=conn.execute(sql.SQL("SELECT count(*) FROM ingest_documents d FULL JOIN "
         "(SELECT row_data FROM {} WHERE table_name='raw_documents') r "
         "ON d.id::text=r.row_data->>'id' WHERE d.id IS NULL OR r.row_data IS NULL OR "
