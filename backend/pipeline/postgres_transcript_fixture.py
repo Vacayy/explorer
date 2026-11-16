@@ -1,8 +1,9 @@
 """Disposable read adapter for existing earnings-call detail and quarters."""
+from datetime import datetime, timedelta, timezone
 from pipeline.postgres_signals_fixture import _guard_read
 from pipeline.postgres_doc_graph_fixture import document_graph
 from pipeline.transcript import cy_label
-from routers.spine_transcript import Detail, QuarterRow
+from routers.spine_transcript import Detail, QuarterRow, RecentCall
 
 
 def _ready(conn):
@@ -21,6 +22,28 @@ def quarters(conn, ticker):
                       "ORDER BY (row_data->>'fiscal_year')::integer DESC NULLS LAST,row_data->>'fiscal_period' DESC NULLS LAST,row_ordinal",(ticker,)).fetchall()
     return [QuarterRow(transcript_id=r['id'],fiscal_year=r.get('fiscal_year'),fiscal_period=r.get('fiscal_period'),
                        cy=cy_label(r.get('fiscal_year'),r.get('fiscal_period'),fye),call_date=r.get('call_date'),has_digest=bool(r.get('digest'))) for (r,) in rows]
+
+
+def recent_calls(conn, *, days=7, limit=40, now=None):
+    """Apply the original recent-call cutoff and ordering to the captured rows."""
+    _ready(conn)
+    if days<0:
+        return []  # SQLite's original '--N day' modifier produces NULL.
+    cutoff=((now or datetime.now(timezone.utc))-timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+    rows=conn.execute("SELECT t.row_data,f.row_data FROM legacy_snapshot_rows t LEFT JOIN legacy_snapshot_rows f "
+        "ON f.table_name='transcript_follow' AND f.row_data->>'ticker'=t.row_data->>'ticker' "
+        "WHERE t.table_name='transcripts' AND t.row_data->>'fetched_at'>=%s "
+        "ORDER BY t.row_data->>'fetched_at' DESC,t.row_ordinal,f.row_ordinal LIMIT %s",
+        (cutoff,None if limit<0 else limit)).fetchall()
+    result=[]
+    for transcript,follow in rows:
+        follow=follow or {}
+        result.append(RecentCall(transcript_id=transcript['id'],ticker=transcript['ticker'],
+            company_name=follow.get('company_name'),fiscal_year=transcript.get('fiscal_year'),
+            fiscal_period=transcript.get('fiscal_period'),cy=cy_label(transcript.get('fiscal_year'),transcript.get('fiscal_period'),follow.get('fiscal_year_end')),
+            call_date=transcript.get('call_date'),provider=transcript.get('provider'),fetched_at=transcript.get('fetched_at'),
+            has_digest=bool(transcript.get('digest'))))
+    return result
 
 
 def transcript_detail(conn, transcript_id):
