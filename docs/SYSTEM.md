@@ -967,8 +967,8 @@ Peer 번들은 SQLite가 아니라 별도 수집 파일에서 오므로 보충 �
 | 연결됨(모의만) | 질문 approve, 리서치 후보 승인(실제 승인은 소유자 판단), 보유 논지 생성(POST `/api/portfolio/thesis`, 관심 이유와 같은 네이티브 질문 생성 + stock_code, created_by='portfolio') |
 | Claude 로그인 대기 | 회사 프로필(company.profile 웹), TW 체인 리포트(chain.analyze 웹), 스터디 웹 조사(study.web), 질문 시나리오·synthesis 실제 확인(질문 19) |
 | not_run(수집, 단일 writer) | 매크로·리스크·레짐 스냅샷, 재무·가격·컨콜 수집, 출처 새로고침, trade seed, 트래커 수급 준비 |
+| 연결됨(실제 1회) | 큰 그림 재생성(POST `/world/big-picture/rebuild`): 계산 어댑터가 job_runs를 쓰기 사본으로 주고, 요청이 추가한 실행 기록은 후보 원장 `candidate_job_runs`(uuid 키, job_runs id 미저장)로 옮긴다. 투영 빌드가 그 행을 수집 행 뒤 새 id로 job_runs에 붙이므로 레거시 쿨다운·예산 판단과 화면이 이를 읽는다(`pipeline.postgres_candidate_job_runs`). 확인: 20초, 줄기 4, GET 반영, 쿨다운 적용·예산 7→6 |
 | 연결됨(모의 + 레짐 해설 실제 1회) | 증거 요약(레거시 라우트, 저장 없음), 레짐 해설(era_commentary, input_hash 키), Thesis 감사(thesis_audits) — 계산 어댑터 |
-| 미착수: 모델 계산(웹 없음) | 큰 그림 재생성(실행 기록 job_runs를 쓰고 그 기록으로 재생성 간격을 판단 — 수집 표라 override 키 설계 필요) |
 | 미착수: 외부 조회 포함 | 컨콜 반응, 기대치(저장값 응답 + 모델 계산, 외부 조회 부분만 not_run) |
 | 설계 확정·미구현 | 별칭 승인 소급 링크(문서 개정 경로로 게시, 일회성 컨테이너) |
 | 연결됨(모의 + 실제 0호출) | 컨콜 프록시 추출(POST `/transcript/proxies/extract`, `extract_all_numeric_native`): 레거시 의미 그대로(시드 → 활성 프록시마다 최근 40건, 관측·판정한 쌍은 건너뜀, 전체 40스캔 → 그래프 투영). 후보 선택은 메모리에서 한다(전사 메타·문서 ID·판정 쌍을 한 번씩 읽음). 질문별 추출도 같은 선택을 써서 질문 2 기준 113초→0.7초. 지금은 모든 대상 쌍이 판정돼 있어 실제 누름은 호출 0 |

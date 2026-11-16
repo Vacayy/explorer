@@ -28,9 +28,13 @@ ADAPTED = (('POST', '/api/spine/admin/flag'), ('PUT', '/api/spine/regimes/checks
            ('POST', '/api/spine/person/{name}/profile'), ('POST', '/api/spine/narrative/scenario/compute'),
            ('POST', '/api/spine/report/compute'), ('POST', '/api/spine/trade/{hs_code}/beneficiaries'),
            ('POST', '/api/spine/research/candidates/{candidate_id}/approve'),
-           ('POST', '/api/spine/regimes/commentary'), ('POST', '/api/spine/thesis/audit'))
+           ('POST', '/api/spine/regimes/commentary'), ('POST', '/api/spine/thesis/audit'),
+           ('POST', '/api/spine/world/big-picture/rebuild'))
 # Computations that also write the graph: graph tables are copied writable and their diff is published.
 GRAPH_WRITERS = {'/api/spine/narrative/compute', '/api/spine/narrative/scenario/compute'}
+# Computations that record their runs and read them back (cooldown, budget): job_runs is copied writable and
+# the rows they add are kept in the candidate's own run ledger (`pipeline.postgres_candidate_job_runs`).
+RUN_RECORDERS = {'/api/spine/world/big-picture/rebuild'}
 # Approvals whose legacy action only touches the decision tables (alias registration, acknowledgement).
 APPROVABLE = {'entity_alias', 'devils_advocate', 'falsifier_watch'}
 APPROVE = re.compile(r'^/api/spine/agent-proposals/(\d+)/approve$')
@@ -39,13 +43,13 @@ APPROVE = re.compile(r'^/api/spine/agent-proposals/(\d+)/approve$')
 def install(app, projection, factory):
     from routers import (spine_admin, spine_approvals, spine_causal, spine_keywords, spine_lens, spine_narrative,
                          spine_person, spine_regimes, spine_report, spine_research, spine_sources, spine_thesis,
-                         spine_trade)
+                         spine_trade, spine_world)
     from routers.postgres_owner_legacy_fixture import _Borrowed
     wanted = set(ADAPTED)
     for router in (spine_admin.router, spine_regimes.router, spine_research.router, spine_approvals.agent_router,
                    spine_keywords.router, spine_lens.router, spine_sources.router, spine_causal.beneficiary_router,
                    spine_narrative.router, spine_person.router, spine_report.router, spine_trade.router,
-                   spine_thesis.router):
+                   spine_thesis.router, spine_world.router):
         for route in router.routes:
             if isinstance(route, APIRoute) and any((method, route.path) in wanted for method in route.methods):
                 app.router.routes.append(route)
@@ -69,12 +73,16 @@ def install(app, projection, factory):
             if found and found not in APPROVABLE:
                 return JSONResponse({'detail': '이 제안의 승인 작업은 후보에서 아직 실행하지 않습니다'}, status_code=409)
         from pipeline import postgres_graph_compute as graph
+        from pipeline import postgres_candidate_job_runs as job_runs
         writes_graph = request.url.path in GRAPH_WRITERS
+        records_runs = request.url.path in RUN_RECORDERS
         from routers.postgres_legacy_read_fixture import _offline
         offline = _offline.set(True)  # in-process network guard; model calls run as CLI subprocesses
-        conn, _ = await run_in_threadpool(projection.write_connection, graph.GRAPH if writes_graph else ())
+        extra = (graph.GRAPH if writes_graph else ()) + (('job_runs',) if records_runs else ())
+        conn, _ = await run_in_threadpool(projection.write_connection, extra)
         try:
             before = overrides.rows(conn)
+            runs_floor = job_runs.floor(conn) if records_runs else None
             graph_before = await run_in_threadpool(graph.snapshot, conn) if writes_graph else None
             token = write_connection_var.set(_Borrowed(conn))
             try:
@@ -89,6 +97,8 @@ def install(app, projection, factory):
                     overrides.apply(pg, before, overrides.rows(conn), source=f'{request.method} {request.url.path}')
                     if writes_graph:
                         graph.publish(pg, graph_before, graph.snapshot(conn), run_id=f'compute:{request.url.path}')
+                    if records_runs:
+                        job_runs.capture(pg, conn, runs_floor, f'{request.method} {request.url.path}')
             await run_in_threadpool(store)
             return response
         finally:

@@ -118,6 +118,8 @@ def build_projection(factory, directory):
                 _derive_owner_legacy(root, pg, rows)
             _derive_owner_portfolio(root, pg)
             _derive_owner_records(root, pg)
+            from pipeline import postgres_candidate_job_runs
+            postgres_candidate_job_runs.derive(root, pg)
             for (sql,) in pg.execute('SELECT sql FROM legacy_snapshot_indexes'):
                 root.execute(sql)
         root.commit()
