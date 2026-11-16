@@ -78,6 +78,19 @@ def query_vector(query):
         return _serialize(next(iter(_get_model(local_files_only=True).embed([query]))))
 
 
+def legacy_search(q, k=20):
+    """The legacy `pipeline.search.search` contract ([{doc_id, score}]) over the candidate's hybrid index."""
+    return search.search(q, vector=query_vector(q), k=max(1, min(k, 100)))
+
+
+import sys  # noqa: E402 - legacy modules that bound `search` at import read the candidate index too
+import pipeline.search as legacy_search_module  # noqa: E402
+for module in list(sys.modules.values()):
+    if getattr(module, 'search', None) is legacy_search_module.search and module is not legacy_search_module:
+        module.search = legacy_search
+legacy_search_module.search = legacy_search
+
+
 class SnapshotMetadata:
     connect = staticmethod(factory)
 

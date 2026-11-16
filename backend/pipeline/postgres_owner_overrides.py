@@ -1,7 +1,8 @@
-"""Operator decisions over collected rows, by the rows' natural key (single-path candidate).
+"""Operator decisions and on-demand computations over collected rows, by key (single-path candidate).
 
 Admin flags, regime checklist entries, research-candidate and agent-proposal dismissals, and alias
-rejections change a few rows of tables the collector also writes. The unchanged legacy handler runs
+rejections change a few rows of tables the collector also writes; screen computations (investor
+lens, source profile, upside model, MER narrative) write one result row each. The unchanged legacy handler runs
 on writable TEMP copies of these tables (`routers.postgres_owner_overrides_fixture`); the rows it
 changed are kept here and laid over the collected rows in every read path and in the collector export.
 A removed row is kept as a NULL override.
@@ -14,7 +15,11 @@ from pipeline.postgres_graph_fixture import _guard
 
 # table -> natural key column
 OVERRIDES = {'feature_flags': 'name', 'era_checks': 'key', 'research_candidates': 'id',
-             'agent_proposals': 'id', 'entity_keywords': 'id'}
+             'agent_proposals': 'id', 'entity_keywords': 'id',
+             'lens_readings': 'id', 'source_digests': 'id', 'models': 'id', 'narratives': 'id'}
+# Computation outputs: copied into TEMP only for the computing request; reads see them from the
+# next projection build (the computing request answers with the result itself).
+COMPUTED = ('lens_readings', 'source_digests', 'models', 'narratives')
 
 
 def initialize(conn):
@@ -35,8 +40,10 @@ def writable_ddl(ddl):
 def rows(conn):
     """{table: {key: row}} of a SQLite connection's (TEMP) override tables."""
     out = {}
+    temp = {row[0] for row in conn.execute("SELECT name FROM temp.sqlite_master WHERE type='table'")}
     for table, key in OVERRIDES.items():
-        out[table] = {str(row[key]): dict(row) for row in conn.execute(f'SELECT * FROM temp."{table}"')}
+        if table in temp:
+            out[table] = {str(row[key]): dict(row) for row in conn.execute(f'SELECT * FROM temp."{table}"')}
     return out
 
 
@@ -44,7 +51,7 @@ def apply(conn, before, after):
     """Store what one successful request changed; returns the number of changed rows."""
     changed = 0
     conn.execute("SELECT pg_advisory_xact_lock(hashtextextended('owner-row-overrides',0))")
-    for table in OVERRIDES:
+    for table in after:
         old, new = before[table], after[table]
         for key in set(old) | set(new):
             if old.get(key) != new.get(key):
@@ -56,11 +63,13 @@ def apply(conn, before, after):
     return changed
 
 
-def derive(root, pg):
+def derive(root, pg, *, skip=()):
     """Lay the kept decisions over the collected rows (a NULL override removes the row)."""
     if pg.execute("SELECT to_regclass('owner_row_overrides')").fetchone()[0] is None:
         return
     for table, key, row in pg.execute('SELECT table_name,key,row_data FROM owner_row_overrides ORDER BY updated_at'):
+        if table in skip:
+            continue
         column = OVERRIDES[table]
         if row is None:
             root.execute(f'DELETE FROM "{table}" WHERE "{column}"=?', (key,))

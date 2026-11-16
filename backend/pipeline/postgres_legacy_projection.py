@@ -274,15 +274,17 @@ class LegacyProjection:
             legacy = self._owner_legacy(pg)
             ddl = dict(pg.execute('SELECT table_name,schema_sql FROM legacy_snapshot_tables WHERE table_name=ANY(%s)',
                                   (list(owner_legacy.TABLES),)).fetchall()) if writable else {}
+            computed = ()
             if writable:  # decision tables keep their keys and checks, not their foreign keys
-                from pipeline.postgres_owner_overrides import OVERRIDES, writable_ddl
+                from pipeline.postgres_owner_overrides import COMPUTED, OVERRIDES, writable_ddl
                 ddl.update({name: writable_ddl(sql) for name, sql in pg.execute(
                     'SELECT table_name,schema_sql FROM legacy_snapshot_tables WHERE table_name=ANY(%s)', (list(OVERRIDES),))})
+                computed = COMPUTED  # writable copies of computation outputs for this request only
             # The file already holds this ledger version: skip re-deriving its large evaluation table.
             current = self.current
             fresh = not writable and legacy is not None and current is not None and current[2] == legacy[0]
             skip = {'watch_evaluations'} if fresh else set()
-            for table in SHADOWED:
+            for table in (*SHADOWED, *computed):
                 if table in skip:
                     continue
                 if table in ddl:
@@ -299,7 +301,9 @@ class LegacyProjection:
             if legacy:
                 _derive_owner_legacy(conn, pg, legacy[1], skip=skip)
             _derive_owner_portfolio(conn, pg)
-            _derive_owner_records(conn, pg)
+            # A read connection has no copies of computation outputs (its file already holds them).
+            from pipeline.postgres_owner_overrides import COMPUTED
+            _derive_owner_records(conn, pg, skip_overrides=() if writable else COMPUTED)
             _derive_native(conn, pg)
             if writable and legacy:
                 for table, seq in legacy[2].items():
@@ -398,7 +402,7 @@ def _derive_owner_portfolio(root, pg):
                                     'WHERE account_id=%s ORDER BY id', (account,)).fetchall())
 
 
-def _derive_owner_records(root, pg):
+def _derive_owner_records(root, pg, *, skip_overrides=()):
     """Show the mapped owner's follows and prediction pins through the legacy tables."""
     if pg.execute("SELECT to_regclass('owner_follows')").fetchone()[0] is None:
         return
@@ -446,7 +450,7 @@ def _derive_owner_records(root, pg):
                          f'WHERE {column}=?', (active, collect, key))
     derive_owner_narrative_decisions(root, pg)
     from pipeline.postgres_owner_overrides import derive as derive_overrides
-    derive_overrides(root, pg)
+    derive_overrides(root, pg, skip=skip_overrides)
     if pg.execute("SELECT to_regclass('owner_trade_follow')").fetchone()[0] is not None:
         # The owner's on/off wins (a collector re-seed would switch items back on); names stay the collector's.
         for hs, name, group, active, updated in pg.execute(
