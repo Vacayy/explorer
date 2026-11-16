@@ -960,14 +960,21 @@ Peer 번들은 SQLite가 아니라 별도 수집 파일에서 오므로 보충 �
 
 게시로 본문이 바뀐 문서의 벡터: `postgres_embedding_refresh_fixture`가 레거시 `build_index`와 같은 입력(제목 + 본문 앞 2000자, 같은 로컬 모델)으로 다시 임베딩해 `document_embedding_overrides`에 넣고, `document_embeddings` VIEW에서 같은 문서의 base 행을 대체한다(벡터 수 불변, base 불변). 미리보기에서는 투영의 변경 감지 후 훅(`LegacyProjection(on_change=...)`)이 stale 벡터를 재임베딩하고 바뀐 것이 있으면 검색 색인을 닫는다. 영상 29425·29427 등 4건을 재임베딩해 다른 표현의 질의에서 의미 검색 1위를 확인했다. 새로 게시된 문서처럼 벡터가 없는 문서도 같은 훅이 임베딩하고, `document_embedding_metadata.vector_count`는 VIEW의 실제 벡터 수를 센다(`count_new_vectors`); `withdraw`는 그 벡터도 지운다. 청크 색인(`/projection/chunks.db`, AI 답변 근거·주장 관련 문서용): 빌더가 투영을 만들고 재임베딩한 뒤 `postgres_chunk_index.refresh`로 레거시 `build_chunk_index`를 그대로 실행한다. 투영을 붙인 청크 색인 위에서 content_hash가 바뀐 문서·새 문서를 다시 청킹·임베딩하고(로컬 모델만), 투영에 없는 문서의 청크는 지운다. 본문이 빈 문서는 청크가 없어 매번 대상에 남는다(레거시와 같다). 첫 실행: 실제 처리 5건(청크 21), 3초. 개정된 영상 29424는 새 해시로 청크 4개, 제목 질의 근거 검색 1위.
 
-**단일 경로 후보 미완 목록(2026-11-16 재집계, 프론트 쓰기 호출 107곳/고유 96)**
+**단일 경로 후보 미완 목록(2026-11-16, 아키텍트 4분류)**
+
+| 분류 | 항목 |
+|---|---|
+| 1. 구현 미완(지금 할 수 있음) | 프록시 보드 쓰기(보드·항목 CRUD·제안, 읽기는 연결됨 — 운영 전환 판단 때 기능 차이로 명시) · 후보가 수집한 문서의 재개정·삭제 문서(unsupported 충돌로 기록 중) · 타임라인 주제 필터가 옛 이름 기준인 문제 · 실시간 시세류(`/api/spine/quotes`·`us/movers`, 프론트 미사용, 기록만) · 모의로만 확인한 쓰기(질문 approve, 리서치 후보 승인, 보유 논지 생성)의 실제 확인 |
+| 2. 외부 조건 대기: Claude 로그인(사용자 1회 조치) | 회사 프로필(company.profile 웹), TW 체인 리포트(chain.analyze 웹), 스터디 웹 조사(study.web), 질문 시나리오·synthesis 실제 확인(질문 19), 시장 분석 실행(POST `/api/analysis/runs`, ClaudeModel CodeAct + 샌드박스) |
+| 3. 전환 시점에만 가능(단일 writer) | 일정 실행, 텔레그램 알림 발송, 수집 버튼 실제 실행(지금은 not_run 기록: 매크로·리스크·레짐 스냅샷, 재무·가격·컨콜 수집, 출처 새로고침, trade seed, 트래커 수급 준비), 출처 추가 직후 수집 |
+| 4. 전환 전 필수, 미착수 | 인증과 소유자 게이트(Google 로그인, 실제 principal 재매핑, 개인 기록 GET·쓰기·대화 도구 게이트) · 동기화 리허설(원천 교체 COPY 절차, 원장·overlay 보존과 대조, candidate_outputs 정리·재매핑, vault, 기준 스냅샷 이후 표 확인) · 운영 구조(외부 연결 없는 읽기 API, 모델 worker, 계산 worker 분리와 메모리 기준) · PG 백업·복원 1회 |
+
+**연결 기록(대표 확인 포함)**
 
 | 상태 | 항목 |
 |---|---|
 | 연결됨(모의만) | 질문 approve, 리서치 후보 승인(실제 승인은 소유자 판단), 보유 논지 생성(POST `/api/portfolio/thesis`, 관심 이유와 같은 네이티브 질문 생성 + stock_code, created_by='portfolio') |
-| Claude 로그인 대기 | 회사 프로필(company.profile 웹), TW 체인 리포트(chain.analyze 웹), 스터디 웹 조사(study.web), 질문 시나리오·synthesis 실제 확인(질문 19), 시장 분석 실행(POST `/api/analysis/runs`, ClaudeModel CodeAct + 샌드박스) |
 | 읽기만 연결, 쓰기는 남은 기능 차이 | 프록시 보드(`/api/spine/proxy-boards`): 원본에 있는 기능이다(D-240). 11-14 기준 스냅샷에는 보드가 없어서, 질문 가져오기가 만든 빈 PG 네이티브 표 2개를 투영으로 보이고 레거시 목록·상세 읽기를 그대로 실행한다(빈 목록 `[]`, 없는 보드 404). 보드·항목 만들기·편집·제안은 501 '후보에서 아직 지원하지 않습니다'로 답한다(`pipeline.postgres_proxy_boards`). 운영 전환 판단 때 남은 기능으로 명시하고, 최종 동기화 때 MacBook에 행이 있으면 네이티브 쓰기를 구현한 뒤 이관한다 |
-| not_run(수집, 단일 writer) | 매크로·리스크·레짐 스냅샷, 재무·가격·컨콜 수집, 출처 새로고침, trade seed, 트래커 수급 준비 |
 | 연결됨(실제 1회) | 큰 그림 재생성(POST `/world/big-picture/rebuild`): 계산 어댑터가 job_runs를 쓰기 사본으로 주고, 요청이 추가한 실행 기록은 후보 원장 `candidate_job_runs`(uuid 키, job_runs id 미저장)로 옮긴다. 투영 빌드가 그 행을 수집 행 뒤 새 id로 job_runs에 붙이므로 레거시 쿨다운·예산 판단과 화면이 이를 읽는다(`pipeline.postgres_candidate_job_runs`). 확인: 20초, 줄기 4, GET 반영, 쿨다운 적용·예산 7→6 |
 | 연결됨(모의 + 레짐 해설 실제 1회) | 증거 요약(레거시 라우트, 저장 없음), 레짐 해설(era_commentary, input_hash 키), Thesis 감사(thesis_audits) — 계산 어댑터 |
 | 연결됨(실제 1회) | 컨콜 반응(POST `/transcript/detail/{id}/reaction`, transcript_reactions 키 transcript_id, 계산 어댑터): 네트워크 가드 아래에서 미국 일봉·목표가 변경 수집(`us_data.fetch_prices`·`earnings_chain.refresh_pt`)은 저장값으로 답하고 건너뛴 수집을 not_run 요청으로 남긴다(하루 1건). yfinance는 curl_cffi로 소켓 가드를 우회하므로 `Ticker`를 명시적으로 막는다. 헤드라인 수집 실패는 레거시도 조용히 넘긴다. 확인: 631 200 23초 1,455자 |
@@ -975,4 +982,3 @@ Peer 번들은 SQLite가 아니라 별도 수집 파일에서 오므로 보충 �
 | 연결됨(합성 별칭 1건 확인 후 정리) | 별칭 승인 소급 링크(POST `/keywords/{id}/approve`, `pipeline.postgres_keyword_backfill`): API가 `retrieval_jobs`(keyword_backfill)에 넣고 기다린다(최대 300초, 레거시 응답 `retro_linked_docs`). 계산 워커(EXPLORER_ONESHOT=1, 무거운 게시 작업 허용)가 투영 사본에서 레거시 승인(상태 + `_retro_link`)을 그대로 실행하고, 링크가 바뀐 문서를 `publish_revisions`로, 별칭 행을 override로 한 PG 트랜잭션에 게시한다. 새로 수집된 문서의 개정은 기존 규칙대로 unsupported로 보존한다. 승인 취소(되돌리기)는 레거시에도 없다 |
 | 연결됨(모의 + 실제 0호출) | 컨콜 프록시 추출(POST `/transcript/proxies/extract`, `extract_all_numeric_native`): 레거시 의미 그대로(시드 → 활성 프록시마다 최근 40건, 관측·판정한 쌍은 건너뜀, 전체 40스캔 → 그래프 투영). 후보 선택은 메모리에서 한다(전사 메타·문서 ID·판정 쌍을 한 번씩 읽음). 질문별 추출도 같은 선택을 써서 질문 2 기준 113초→0.7초. 지금은 모든 대상 쌍이 판정돼 있어 실제 누름은 호출 0 |
 | AI 대화 도구(19개 모두 연결) | get_study는 네이티브 스터디 표(study_project_members·study_sessions·study_annotations, 열은 레거시와 같음)를 투영 파일에만 싣고(`NATIVE_FILE_ONLY`, 연결마다 재파생하지 않음, PG 기본 키 그대로) 워커에서 레거시를 그대로 실행한다. 나머지 16개 읽기 도구는 계산 워커의 `chat_tool`로 레거시를 그대로 실행한다. get_quote는 저장 종가만 쓰고 제목에 '실시간 시세 아님'을 표시한다. 개인 기록 도구(get_portfolio·get_saved)는 소유자 원장에서 투영된 행을 읽으므로, 공개 노출 전 소유자 게이트 미완 항목에 대화 도구도 포함된다 |
-| 기타 | 텔레그램 알림 발송(전환 후 단일 writer), 운영 전환 뒤 실제 수집 버튼 |
