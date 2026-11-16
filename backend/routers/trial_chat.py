@@ -13,6 +13,7 @@ from security.trial_chat import IncompleteExecution
 from security.trial_identity import COOKIE_NAME, COOKIE_TTL, InvalidTrialIdentity
 from security.trial_quota import QuotaExceeded
 from security.trial_service import TrialService
+from security.login_flow import LoginFlow, SESSION_COOKIE
 
 BODY_LIMIT = 96 * 1024
 
@@ -53,17 +54,32 @@ def check_origin(request, identity, write=False):
         raise HTTPException(403, 'Request rejected', headers=NO_STORE)
 
 
+def actor_for_request(request, identity, cookie):
+    # Verify the browser cookie even for an account: it also binds CSRF.
+    anonymous_actor = identity.actor_hash(cookie)
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token:
+        return anonymous_actor
+    try:
+        user = LoginFlow.from_environment().identities.resolve_session(token)
+    except (ValueError, OSError, sqlite3.Error):
+        raise HTTPException(503, 'Authentication unavailable', headers=NO_STORE) from None
+    if user is None or not user.enabled:
+        raise HTTPException(401, 'Authentication required', headers=NO_STORE)
+    return identity.account_hash(user.id)
+
+
 @router.get('/api/public/chat/session', response_model=TrialSession)
 def session(request: Request, response: Response, service=Depends(trial_service)):
     check_origin(request, service.identity)
     cookie = request.cookies.get(COOKIE_NAME)
     try:
-        actor = service.identity.actor_hash(cookie)
+        service.identity.actor_hash(cookie)
     except InvalidTrialIdentity:
         cookie = service.identity.issue_cookie()
-        actor = service.identity.actor_hash(cookie)
         response.set_cookie(COOKIE_NAME, cookie, max_age=COOKIE_TTL, secure=True,
                             httponly=True, samesite='lax', path='/')
+    actor = actor_for_request(request, service.identity, cookie)
     try:
         remaining = service.quota.remaining(actor)
     except (sqlite3.Error, OSError):
@@ -78,7 +94,7 @@ async def chat(body: TrialQuestion, request: Request, response: Response, servic
     check_origin(request, service.identity, write=True)
     try:
         cookie = request.cookies.get(COOKIE_NAME)
-        actor = service.identity.actor_hash(cookie)
+        actor = actor_for_request(request, service.identity, cookie)
         csrf = request.headers.get('x-csrf-token', '')
         if not hmac.compare_digest(csrf.encode(), service.identity.csrf(cookie).encode()):
             raise InvalidTrialIdentity('Invalid request')

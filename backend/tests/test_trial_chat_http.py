@@ -2,6 +2,7 @@ import logging
 import json
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -11,7 +12,7 @@ from fastapi.testclient import TestClient
 from starlette.requests import Request
 from routers.trial_chat import router, trial_service
 from security.access_boundary import PublicAccessBoundary
-from security.login_flow import CallbackQueryFilter
+from security.login_flow import CallbackQueryFilter, SESSION_COOKIE
 from security.trial_chat import TrialChat
 from security.trial_identity import COOKIE_NAME, TrialIdentity
 from security.trial_quota import TrialPolicy, TrialQuota
@@ -78,6 +79,21 @@ class TrialHttpTests(unittest.TestCase):
         self.assertEqual(self.ask().status_code, 429)
         self.assertEqual(len(self.calls), 3)
         self.assertEqual(self.session().json()['remaining'], 0)
+
+    def test_member_quota_survives_new_browser_cookie(self):
+        user = SimpleNamespace(id='a' * 32, enabled=True)
+        identities = SimpleNamespace(resolve_session=lambda token: user if token == 'valid' else None)
+        with patch('routers.trial_chat.LoginFlow.from_environment', return_value=SimpleNamespace(identities=identities)):
+            self.client.cookies.set(SESSION_COOKIE, 'valid')
+            self.session()
+            for _ in range(3):
+                self.assertEqual(self.ask().status_code, 200)
+            self.client.cookies.clear()
+            self.client.cookies.set(SESSION_COOKIE, 'valid')
+            self.assertEqual(self.session().json()['remaining'], 0)
+            self.assertEqual(self.ask().status_code, 429)
+            self.client.cookies.set(SESSION_COOKIE, 'invalid')
+            self.assertEqual(self.client.get('/api/public/chat/session').status_code, 401)
 
     def test_untrusted_forwarding_cannot_reset_network_limit(self):
         self.quota.policy = TrialPolicy(per_network_day_limit=1, global_day_limit=10, max_in_flight=1)

@@ -83,6 +83,11 @@ class TrialIdentity:
     def actor_hash(self, cookie) -> str:
         return self._digest(b'actor', self._verify(cookie))
 
+    def account_hash(self, user_id) -> str:
+        if not isinstance(user_id, str) or re.fullmatch(r'[0-9a-f]{32}', user_id) is None:
+            raise InvalidTrialIdentity('Invalid account identity')
+        return self._digest(b'account', user_id)
+
     def csrf(self, cookie) -> str:
         return self._digest(b'csrf', self._verify(cookie))
 
