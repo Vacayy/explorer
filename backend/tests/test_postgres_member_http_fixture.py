@@ -35,7 +35,10 @@ class MemberHTTPFixtureTests(unittest.TestCase):
         schema='refactor_fixture_'+uuid.uuid4().hex
         with psycopg.connect(dsn) as conn:
             conn.execute(psycopg.sql.SQL('CREATE SCHEMA {}').format(psycopg.sql.Identifier(schema)))
+        unavailable=[False]
         def factory():
+            if unavailable[0]:
+                raise psycopg.OperationalError('fixture storage error')
             return psycopg.connect(dsn,options='-c search_path='+schema)
         try:
             with factory() as conn:
@@ -78,6 +81,10 @@ class MemberHTTPFixtureTests(unittest.TestCase):
                     self.assertEqual(summary.status_code,200)
                     self.assertEqual(summary.json()['holdings'][0]['return_pct'],20.0)
                     self.assertEqual(client.get('/api/member/portfolio',headers=headers(tokens[1])).json()['holdings'],[])
+                    unavailable[0]=True
+                    failure=client.get(path,headers=headers(tokens[0]))
+                    self.assertEqual(failure.status_code,503)
+                    self.assertNotIn('fixture storage error',failure.text)
         finally:
             with psycopg.connect(dsn) as conn:
                 conn.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(schema)))

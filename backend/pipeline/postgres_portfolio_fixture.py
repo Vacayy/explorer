@@ -4,6 +4,8 @@ The caller must supply a verified internal principal; this module is not an
 authentication boundary and is never registered with the running service.
 """
 from datetime import date, timedelta
+from contextlib import contextmanager
+import psycopg
 from models.portfolio import TransactionCreate
 from pipeline.portfolio import EPS, LedgerError, history_from_source, replay, summary_from_source
 from pipeline.postgres_graph_fixture import _guard
@@ -178,9 +180,18 @@ class MemberPortfolioFixture:
         self.names,self.prices,self.last_close=names,prices,last_close
         self.unavailable=unavailable
 
+    @contextmanager
+    def connection(self):
+        try:
+            with self.factory() as conn:
+                yield conn
+        except psycopg.Error:
+            # Existing member router maps storage failures to a sanitized 503.
+            raise OSError('Portfolio storage unavailable') from None
+
     def read(self, operation):
         from pipeline import portfolio as legacy
-        with self.factory() as conn:
+        with self.connection() as conn:
             source=FixturePortfolioReadSource(conn,self.owner,names=self.names,prices=self.prices)
             if operation is legacy.summary:
                 return legacy.summary_from_source(source)
@@ -191,11 +202,11 @@ class MemberPortfolioFixture:
             raise ValueError('Unsupported portfolio operation')
 
     def add(self, body):
-        with self.factory() as conn:
+        with self.connection() as conn:
             return add_transaction(conn,self.owner,body.model_dump(),companies=set(self.names),last_close=self.last_close)
 
     def delete(self, ident):
-        with self.factory() as conn:
+        with self.connection() as conn:
             if not delete_transaction(conn,self.owner,ident):
                 raise self.unavailable()
 
