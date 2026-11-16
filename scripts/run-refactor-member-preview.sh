@@ -25,6 +25,12 @@ trap 'exit 130' INT TERM
 cd "$root"
 [ -f "$site/index.html" ] || { printf '%s\n' '기존 회원 화면 빌드를 찾지 못했습니다.' >&2; exit 1; }
 git cat-file -e "$source_commit^{commit}"
+if [ "$(docker inspect -f '{{.State.Running}}' explorer-refactor-preview-gateway 2>/dev/null || true)" != true ]; then
+  printf '%s\n' '기존 읽기 전용 미리보기가 실행 중이 아닙니다.' >&2; exit 1
+fi
+if [ "$(docker inspect -f '{{.State.Running}}' explorer-public-web-1 2>/dev/null || true)" != true ]; then
+  printf '%s\n' '기존 공개 읽기 사본이 실행 중이 아닙니다.' >&2; exit 1
+fi
 if docker network inspect "$network" >/dev/null 2>&1 || docker container inspect "$pgname" >/dev/null 2>&1 || docker container inspect "$appname" >/dev/null 2>&1 || docker image inspect "$image" >/dev/null 2>&1; then
   printf '%s\n' '같은 이름의 시험 리소스가 이미 있어 시작하지 않습니다.' >&2; exit 1
 fi
@@ -48,15 +54,17 @@ docker run -d --name "$appname" --network "$network" -p 127.0.0.1:19446:19446 \
   -v "$root/backend:/app/backend:ro" -v "$root/scripts:/app/scripts:ro" -v "$state/backend:/overlay:ro" \
   -v "$state:/preview-state" -v "$site:/site:ro" -w /tmp -e PYTHONPATH=/overlay:/app/backend \
   -e REFACTOR_POSTGRES_DSN='host=pg dbname=fixture user=fixture password=fixture' \
-  -e REFACTOR_FIXTURE_SCHEMA="$schema" -e REFACTOR_TEST_DISPOSABLE=1 \
+  -e REFACTOR_FIXTURE_SCHEMA="$schema" -e REFACTOR_TEST_DISPOSABLE=1 -e REFACTOR_PREVIEW_READ_FALLBACK=1 \
   "$image" python /app/scripts/refactor_member_preview.py >/dev/null
+docker network connect explorer-phase1-viewer-check_ingress "$appname"
+docker network connect explorer-public_public-reader "$appname"
 ready=0
 for i in {1..30}; do
   if curl -ksS --max-time 2 https://localhost:19446/api/auth/session >/dev/null 2>&1; then ready=1; break; fi
   sleep 1
 done
 [ "$ready" = 1 ] || { printf '%s\n' '미리보기 시작에 실패했습니다.' >&2; exit 1; }
-printf '%s\n' '시험용 미리보기: https://localhost:19446/portfolio (합성 데이터, 자체 서명 인증서)' \
+printf '%s\n' '시험용 미리보기: https://localhost:19446/portfolio (회원 원장 합성; 공개 API와 기타 읽기는 서로 다른 이전 사본; 자체 서명 인증서)' \
   "시험 세션은 $state/session.json 에만 저장되며 브라우저에 자동 적용되지 않습니다." \
   '종료하려면 Ctrl-C를 누르세요.'
 while :; do sleep 10; done

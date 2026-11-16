@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
 from starlette.responses import FileResponse
 import uvicorn
+import httpx
 
 from pipeline.postgres_member_app_fixture import create_app
 from pipeline.postgres_portfolio_fixture import initialize
@@ -49,8 +50,37 @@ api=create_app(factory,identity_service=SimpleNamespace(identities=identities,co
 
 
 async def app(scope,receive,send):
-    if scope['type']!='http' or scope['path'].startswith('/api'):
+    if scope['type']=='http' and scope['path']=='/__preview-info':
+        from starlette.responses import PlainTextResponse
+        message=('격리 미리보기: 회원 거래와 계정은 합성 자료입니다. /api/public/ 읽기는 기존 공개 사본, '
+                 '그 밖의 허용된 읽기는 18005의 이전 리허설 사본을 사용합니다. 두 사본은 서로 다르며 최신 맥북 자료가 아닙니다.')
+        await PlainTextResponse(message,headers={'Cache-Control':'no-store'})(scope,receive,send)
+        return
+    if scope['type']!='http' or scope['path'].startswith(('/api/auth/','/api/member/')):
         await api(scope,receive,send)
+        return
+    if scope['path'].startswith(('/api/','/media/')):
+        from starlette.responses import Response
+        if scope['method'] not in ('GET','HEAD'):
+            await Response(status_code=405)(scope,receive,send)
+            return
+        if os.environ.get('REFACTOR_PREVIEW_READ_FALLBACK')!='1':
+            await Response(status_code=404)(scope,receive,send)
+            return
+        # Fixed internal origin, no incoming cookies/authorization/host headers.
+        path=scope.get('raw_path',scope['path'].encode()).decode('ascii')
+        query=scope.get('query_string',b'').decode('ascii')
+        # The existing public frontend uses its public API contract. Its
+        # separate readonly projection is older/different from 18005.
+        upstream_origin=('http://explorer-public-web-1:8000' if scope['path'].startswith('/api/public/')
+                         else 'http://explorer-refactor-preview-gateway:8080')
+        try:
+            async with httpx.AsyncClient(timeout=90,follow_redirects=False,trust_env=False) as client:
+                upstream=await client.request(scope['method'],upstream_origin+path+('?' + query if query else ''))
+            headers={name:upstream.headers[name] for name in ('content-type','cache-control','x-preview-backend') if name in upstream.headers}
+            await Response(upstream.content,status_code=upstream.status_code,headers=headers)(scope,receive,send)
+        except httpx.HTTPError:
+            await Response(status_code=503)(scope,receive,send)
         return
     try:
         await site(scope,receive,send)
