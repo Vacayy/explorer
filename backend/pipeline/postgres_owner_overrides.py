@@ -21,8 +21,9 @@ OVERRIDES = {'feature_flags': 'name', 'era_checks': 'key', 'research_candidates'
              'agent_proposals': 'id', 'entity_keywords': 'id',
              'lens_readings': 'id', 'source_digests': 'id', 'models': 'id', 'narratives': 'id',
              'knowledge_falsifiers': 'id', 'knowledge': 'id', 'knowledge_evidence': 'id',
-             # A composite key is 'a|b'; through the PG view such an override can only add rows.
+             # A composite key is 'a|b' (the column values joined by '|'), for the PG view as for the build.
              'knowledge_entities': 'knowledge_id|entity_id',
+             'earnings_expectations': 'ticker|fiscal_year|fiscal_period|snapshot',
              'scenarios': 'topic', 'reports': 'id', 'company_profiles': 'id', 'trade_beneficiaries': 'id',
              'stock_briefs': 'id', 'era_commentary': 'input_hash', 'thesis_audits': 'id',
              'transcript_reactions': 'transcript_id'}
@@ -31,7 +32,7 @@ OVERRIDES = {'feature_flags': 'name', 'era_checks': 'key', 'research_candidates'
 COMPUTED = ('lens_readings', 'source_digests', 'models', 'narratives', 'knowledge_falsifiers',
             'knowledge_evidence', 'knowledge_entities', 'scenarios', 'reports', 'company_profiles', 'trade_beneficiaries',
             'stock_briefs', 'era_commentary', 'thesis_audits',
-            'transcript_reactions')
+            'transcript_reactions', 'earnings_expectations')
 
 
 def initialize(conn):
@@ -60,8 +61,31 @@ def install_view(conn):
         conn.execute(f'''CREATE OR REPLACE VIEW legacy_snapshot_rows AS
             SELECT v.table_name,v.row_ordinal,v.row_data FROM ({definition.rstrip().rstrip(";")}) v
             WHERE NOT EXISTS (SELECT 1 FROM owner_row_overrides o JOIN owner_override_keys k USING (table_name)
-                              WHERE o.table_name=v.table_name AND o.key=v.row_data->>k.key_column)
+                              WHERE o.table_name=v.table_name AND o.key=v.row_data->>k.key_column){COMPOSITE_HIDE}
             UNION ALL SELECT table_name,row_ordinal,row_data FROM owner_row_overrides WHERE row_data IS NOT NULL''')
+
+
+# Rows of composite-key tables (key 'a|b': the column values joined by '|', as `_key`) are matched in a second
+# test that only those tables' rows reach, so the single-column lookup stays as cheap as before.
+COMPOSITE_HIDE = (" AND (v.table_name NOT IN (SELECT table_name FROM owner_override_keys WHERE strpos(key_column,'|')>0)"
+                  " OR NOT EXISTS (SELECT 1 FROM owner_row_overrides o2 JOIN owner_override_keys k2 USING (table_name)"
+                  " WHERE o2.table_name=v.table_name AND o2.key=(SELECT string_agg(v.row_data->>u.c,'|' ORDER BY u.n)"
+                  " FROM unnest(string_to_array(k2.key_column,'|')) WITH ORDINALITY u(c,n))))")
+OWNER_ROWS = '\nUNION ALL\n SELECT owner_row_overrides.table_name,'
+
+
+def support_composite_keys(conn):
+    """Let an installed view hide rows by composite keys too (installed before composite keys could hide)."""
+    import re
+    _guard(conn)
+    with conn.transaction():
+        definition = conn.execute("SELECT pg_get_viewdef(to_regclass('legacy_snapshot_rows'),true)").fetchone()[0]
+        # An earlier form put the composite key into the single-column test (slow over every row): undo it.
+        definition = re.sub(r'o\.key =\s*CASE\s.*?\bEND\)\)', 'o.key = (v.row_data ->> k.key_column)))', definition, flags=re.S)
+        if 'o2.key' in definition or definition.count(OWNER_ROWS) != 1:
+            raise ValueError('Unexpected override view definition')
+        conn.execute('CREATE OR REPLACE VIEW legacy_snapshot_rows AS ' + definition.rstrip().rstrip(';').replace(
+            OWNER_ROWS, COMPOSITE_HIDE + OWNER_ROWS))
 
 
 def writable_ddl(ddl):

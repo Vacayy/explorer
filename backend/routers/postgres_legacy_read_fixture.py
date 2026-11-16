@@ -9,6 +9,7 @@ every branch (yfinance uses native curl), these routes also run under a network
 guard: any outbound connection during them fails and is logged, so a stale cache
 falls back to saved data instead of fetching.
 """
+import json
 import logging
 import os
 import re
@@ -231,8 +232,32 @@ def _install_offline_fetches(factory):
     earnings_chain.refresh_pt = lambda conn, symbol, max_age_hours=20: (
         skipped('us_pt_changes', ticker=symbol) if _offline.get() else refresh_pt(conn, symbol, max_age_hours))
 
-    def offline_ticker(*args, **kwargs):
-        if _offline.get():
+    quant_snapshot = earnings_chain.quant_snapshot
+
+    def offline_quant(conn, symbol, event_date, with_options):
+        # Consensus, estimate revisions and the option-implied move come from yfinance: not collected here; the
+        # values saved for this event answer instead, and the gap says so (not a fetch error).
+        out = quant_snapshot(conn, symbol, event_date, with_options)
+        if not _offline.get():
+            return out
+        out.pop('estimate_error', None)
+        saved = conn.execute("SELECT quant_json FROM earnings_expectations WHERE ticker=? AND event_date=? AND quant_json IS NOT NULL "
+                             "ORDER BY CASE snapshot WHEN 'd1' THEN 0 ELSE 1 END LIMIT 1", (symbol, event_date)).fetchone()
+        old = json.loads(saved[0]) if saved else {}
+        reused = [key for key in ('eps_est', 'rev_est', 'eps_rev_up30', 'eps_rev_down30', 'implied_move')
+                  if out.get(key) is None and old.get(key) is not None]
+        out.update({key: old[key] for key in reused})
+        out['not_run'] = ('컨센서스·추정치 수정·옵션 내재 변동폭은 후보에서 수집하지 않음'
+                          + (' (저장값 사용)' if reused else ''))
+        skipped('us_estimates', ticker=symbol)
+        return out
+    earnings_chain.quant_snapshot = offline_quant
+
+    class Blocked:
+        # Legacy code builds the Ticker before its try block and reads it inside; refuse at the read.
+        def __getattr__(self, name):
             raise RuntimeError('external request blocked: yfinance')
-        return ticker(*args, **kwargs)
+
+    def offline_ticker(*args, **kwargs):
+        return Blocked() if _offline.get() else ticker(*args, **kwargs)
     yfinance.Ticker = offline_ticker

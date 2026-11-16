@@ -31,7 +31,8 @@ ADAPTED = (('POST', '/api/spine/admin/flag'), ('PUT', '/api/spine/regimes/checks
            ('POST', '/api/spine/regimes/commentary'), ('POST', '/api/spine/thesis/audit'),
            ('POST', '/api/spine/world/big-picture/rebuild'),
            # Saved prices answer (fetches skipped offline, kept as not-run requests); the model call stays.
-           ('POST', '/api/spine/transcript/detail/{transcript_id}/reaction'))
+           ('POST', '/api/spine/transcript/detail/{transcript_id}/reaction'),
+           ('POST', '/api/spine/transcript/expectation/{ticker}'))
 # Computations that also write the graph: graph tables are copied writable and their diff is published.
 GRAPH_WRITERS = {'/api/spine/narrative/compute', '/api/spine/narrative/scenario/compute'}
 # Computations that record their runs and read them back (cooldown, budget): job_runs is copied writable and
