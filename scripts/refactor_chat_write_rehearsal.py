@@ -3,13 +3,76 @@
 Only the original feature routers are registered; no scheduler or unrelated
 application startup jobs run. Never attach this service to the public gateway.
 """
-from fastapi import FastAPI, HTTPException
+import json
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import urlopen
+
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
+from fastapi.encoders import jsonable_encoder
 import uvicorn
 
 from database import get_connection
 from routers import spine_ask, spine_chat_targets, spine_conversations, spine_doc
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+
+def same_video(source: dict, copy: dict) -> bool:
+    """Reject ambiguous IDs or changed transcripts across snapshot stores."""
+    return (source.get('source_type') == copy.get('source_type') == 'youtube'
+            and bool(source.get('url')) and bool(source.get('transcript'))
+            and all(source.get(key) == copy.get(key)
+                    for key in ('id', 'url', 'title', 'published_at', 'transcript')))
+
+
+def source_document(doc_id: int, generation: str | None = None):
+    url = f'http://explorer-refactor-durable-candidate:8000/api/spine/doc/{doc_id}'
+    if generation:
+        url += '?' + urlencode({'generation': generation})
+    try:
+        with urlopen(url, timeout=30) as upstream:
+            return json.load(upstream), {
+                k: v for k, v in upstream.headers.items()
+                if k.lower().startswith('x-explorer-')
+            }
+    except HTTPError as exc:
+        raise HTTPException(exc.code, '원본 문서를 조회할 수 없습니다') from exc
+    except (URLError, TimeoutError) as exc:
+        raise HTTPException(503, '원본 문서를 조회할 수 없습니다') from exc
+
+
+def copied_document(doc_id: int):
+    try:
+        return jsonable_encoder(spine_doc.get_document(doc_id))
+    except HTTPException as exc:
+        if exc.status_code == 404:
+            return None
+        raise
+
+
+@app.get('/api/spine/doc/{doc_id}')
+def document(doc_id: int, response: Response, generation: str | None = None):
+    source, headers = source_document(doc_id, generation)
+    for key, value in headers.items():
+        response.headers[key] = value
+    # Pinned generations remain immutable; an overlay is only for the current
+    # unpinned view and only when the original video/transcript still matches.
+    if not generation and source.get('source_type') == 'youtube' and source.get('digest_status') != 'ok':
+        copy = copied_document(doc_id)
+        if copy and same_video(source, copy) and copy.get('digest_status') in ('generating', 'failed', 'ok'):
+            for key in ('digest_status', 'digest_error', 'video_digest', 'transcript'):
+                source[key] = copy.get(key)
+    return source
+
+
+@app.post('/api/spine/doc/{doc_id}/digest', status_code=202)
+def digest(doc_id: int, background: BackgroundTasks):
+    source, _ = source_document(doc_id)
+    copy = copied_document(doc_id)
+    if not copy or not same_video(source, copy):
+        raise HTTPException(409, '미리보기와 작업 사본의 영상 또는 자막이 달라 정리할 수 없습니다')
+    return spine_doc.generate_digest(doc_id, background)
 
 
 @app.get('/api/spine/conversations/{conversation_id}')
