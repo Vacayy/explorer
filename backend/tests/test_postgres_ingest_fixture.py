@@ -267,6 +267,23 @@ class IngestFixtureTests(unittest.TestCase):
             finally:
                 index.close()
 
+        # A document can change after the generation metadata was captured.
+        # Its old embedding must be excluded without losing lexical search.
+        with self.pg() as conn:
+            conn.execute("UPDATE legacy_snapshot_rows SET row_data=jsonb_set(row_data, '{content_hash}', to_jsonb('newer-hash'::text)) WHERE table_name='raw_documents' AND row_data->>'id'=%s", (str(a['id']),))
+            conn.execute('UPDATE document_embedding_metadata SET stale_count=0')
+        with self.pg() as conn:
+            conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            with self.assertRaises(ValueError):
+                SearchSnapshot.from_postgres(conn)
+            index = SearchSnapshot.from_postgres(conn, allow_stale=True)
+            try:
+                self.assertEqual(index.db.execute('SELECT count(*) FROM doc_vec').fetchone()[0], 0)
+                self.assertEqual(index.excluded_vectors, 2)
+                self.assertEqual(index.db.execute('SELECT count(*) FROM raw_documents').fetchone()[0], 2)
+            finally:
+                index.close()
+
     def test_chat_search_filters_resolved_entity_without_broadening(self):
         from psycopg.types.json import Jsonb
         with self.pg() as conn:
