@@ -519,8 +519,8 @@ def _summarize(conn, q, lead_v, confirm_v, div) -> str | None:
         return None
 
 
-def get_tree(question_id: int) -> dict:
-    conn = get_connection()
+def get_tree(question_id: int, *, connection_factory=None) -> dict:
+    conn = (connection_factory or get_connection)()
     q = conn.execute("SELECT * FROM questions WHERE id=?", (question_id,)).fetchone()
     if not q:
         conn.close()
@@ -552,8 +552,8 @@ def get_tree(question_id: int) -> dict:
     return tree
 
 
-def list_questions(narrative_id: int | None = None, status: str | None = None) -> list[dict]:
-    conn = get_connection()
+def list_questions(narrative_id: int | None = None, status: str | None = None, *, connection_factory=None) -> list[dict]:
+    conn = (connection_factory or get_connection)()
     where = ["status != 'dismissed'"]
     params: list = []
     if narrative_id is not None:
@@ -569,9 +569,9 @@ def list_questions(narrative_id: int | None = None, status: str | None = None) -
     return [dict(r) for r in rows]
 
 
-def get_proxy_detail(proxy_id: int) -> dict | None:
+def get_proxy_detail(proxy_id: int, *, connection_factory=None) -> dict | None:
     """프록시 1개 디테일 — 메타(무엇을 측정·'예' 방향·하위질문) + 전체 관측 시계열(출처 포함, LLM 0)."""
-    conn = get_connection()
+    conn = (connection_factory or get_connection)()
     p = conn.execute(
         "SELECT pr.id, pr.label, pr.modality, pr.yes_direction, pr.unit, pr.tickers, pr.extract_hint, "
         "  sq.text AS sub_question_text, q.id AS question_id, q.text AS question_text "
