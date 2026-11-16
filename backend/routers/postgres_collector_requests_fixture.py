@@ -20,6 +20,7 @@ TRIGGERS = (('POST', r'/api/financials/[^/]+/collect'), ('POST', r'/api/portfoli
             ('POST', r'/api/spine/sources/refresh'), ('POST', r'/api/spine/trade/seed'),
             ('POST', r'/api/spine/transcript/calendar/refresh'), ('POST', r'/api/spine/transcript/check/[^/]+'),
             ('POST', r'/api/spine/transcript/collect'), ('POST', r'/api/spine/transcript/seed'),
+            ('POST', r'/api/spine/tracker/[^/]+/prepare'),  # 30-day flows for a newly tracked stock
             ('POST', r'/api/spine/us/[^/]+/prices/collect'))
 MESSAGE = '후보에서는 수집을 실행하지 않습니다. 요청만 기록했고, 운영 전환 뒤에도 자동으로 실행하지 않습니다.'
 
