@@ -92,7 +92,7 @@ def rollup_question(connect,question_id,*,run_llm):
 
 
 def rollup_question_native(connect, question_id, *, run_llm):
-    """Apply existing verdict rules to native PG; reject unconnected graph writes."""
+    """Apply existing verdict rules and graph confirmations to one PG fixture."""
     from psycopg.rows import dict_row
 
     def capture(pg):
@@ -108,6 +108,25 @@ def rollup_question_native(connect, question_id, *, run_llm):
                         'JOIN sub_questions s ON s.id=p.sub_question_id WHERE s.question_id=%s AND p.active=1 '
                         'ORDER BY o.id', (question_id,))
             return question, subs, proxies, cur.fetchall()
+
+    def capture_graph(pg, narrative_id):
+        required = ('question_graph_overlay_state', 'question_graph_overlay_rows',
+                    'question_graph_overlay_relations', 'question_graph_overlay_evidence')
+        kinds = dict(pg.execute("SELECT c.relname,c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+            "WHERE n.nspname=current_schema() AND c.relname=ANY(%s)", (list(required),)).fetchall())
+        if any(kinds.get(name) not in ('r', 'p') for name in required) or not pg.execute('SELECT 1 FROM question_graph_overlay_state').fetchone():
+            raise NotImplementedError('Writable shared graph ledger is not connected')
+        evidence = pg.execute("SELECT source_row FROM question_graph_overlay_evidence WHERE source_row->>'narrative_id'=%s ORDER BY id", (str(narrative_id),)).fetchall()
+        rows = pg.execute("SELECT row_data FROM question_graph_overlay_rows WHERE table_name='narrative_edge_evidence' AND row_data->>'narrative_id'=%s ORDER BY (row_data->>'id')::bigint", (str(narrative_id),)).fetchall()
+        if evidence != rows:
+            raise ValueError('Graph evidence representations disagree')
+        edge_ids = sorted({int(row[0]['entity_relation_id']) for row in evidence if row[0].get('entity_relation_id') is not None})
+        relations = pg.execute('SELECT id,source_row FROM question_graph_overlay_relations WHERE id=ANY(%s) ORDER BY id', (edge_ids,)).fetchall()
+        projected = pg.execute("SELECT (row_data->>'id')::bigint,row_data FROM question_graph_overlay_rows "
+            "WHERE table_name='entity_relations' AND (row_data->>'id')::bigint=ANY(%s) ORDER BY 1", (edge_ids,)).fetchall()
+        if relations != projected or len(relations) != len(edge_ids):
+            raise ValueError('Graph relation representations disagree')
+        return evidence, relations
 
     with connect() as pg:
         _guard(pg)
@@ -132,8 +151,11 @@ def rollup_question_native(connect, question_id, *, run_llm):
     confirm_v = questions._verdict(sum(confirm), len(confirm))
     divergence = questions._divergence(lead_v, confirm_v)
     now_confirmed = confirm_v == 'leaning_yes' and divergence == 'aligned' and question['narrative_id'] is not None
+    graph_before = None
     if now_confirmed and not question['edge_confirmed']:
-        raise NotImplementedError('Writable shared graph ledger is not connected')
+        with connect() as pg:
+            _guard(pg)
+            graph_before = capture_graph(pg, question['narrative_id'])
     changed = (lead_v, confirm_v, divergence) != (question['lead_verdict'], question['confirm_verdict'], question['divergence'])
     summary = question['verdict_summary']
     if changed:
@@ -149,6 +171,19 @@ def rollup_question_native(connect, question_id, *, run_llm):
         pg.execute('LOCK TABLE questions,sub_questions,proxy_registry,proxy_observations IN SHARE ROW EXCLUSIVE MODE')
         if capture(pg) != before:
             return {'status': 'stale'}
+        edges_confirmed = 0
+        if graph_before is not None:
+            pg.execute('SELECT pg_advisory_xact_lock(%s)', (GRAPH_LOCK,))
+            pg.execute('LOCK TABLE question_graph_overlay_rows,question_graph_overlay_relations,question_graph_overlay_evidence IN SHARE ROW EXCLUSIVE MODE')
+            if capture_graph(pg, question['narrative_id']) != graph_before:
+                return {'status': 'stale'}
+            edge_ids = [r[0] for r in graph_before[1]]
+            stamp = pg.execute("SELECT to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')").fetchone()[0]
+            pg.execute("UPDATE question_graph_overlay_rows SET row_data=row_data || jsonb_build_object('obs_confirmed_at',%s::text,'obs_confirmed_qid',%s::bigint) "
+                       "WHERE table_name='entity_relations' AND (row_data->>'id')::bigint=ANY(%s)", (stamp, question_id, edge_ids))
+            updated = pg.execute("UPDATE question_graph_overlay_relations SET source_row=source_row || jsonb_build_object('obs_confirmed_at',%s::text,'obs_confirmed_qid',%s::bigint) "
+                                 'WHERE id=ANY(%s)', (stamp, question_id, edge_ids))
+            edges_confirmed = updated.rowcount
         for sub_id, verdict in sub_verdicts.items():
             pg.execute('UPDATE sub_questions SET verdict=%s WHERE id=%s', (verdict, sub_id))
         conviction = abs(sum(confirm)) / len(confirm) if confirm else None
@@ -156,4 +191,4 @@ def rollup_question_native(connect, question_id, *, run_llm):
                    "conviction=%s,edge_confirmed=%s,updated_at=to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS') WHERE id=%s",
                    (lead_v, confirm_v, divergence, summary, conviction, int(now_confirmed), question_id))
     return {'status': 'ok', 'lead_verdict': lead_v, 'confirm_verdict': confirm_v,
-            'divergence': divergence, 'changed': changed, 'edges_confirmed': 0}
+            'divergence': divergence, 'changed': changed, 'edges_confirmed': edges_confirmed}
