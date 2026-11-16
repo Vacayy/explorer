@@ -41,6 +41,7 @@ export interface QTree {
   created_at?: string; updated_at?: string; created_by?: string
   divergence: string | null; verdict_summary: string | null; sub_questions: QSub[]
   scenario?: QScenario | null; source_doc?: { id: number; title: string | null; source_type: string } | null
+  processing?: { status: string; run_id: string }
 }
 export interface QListItem {
   id: number; text: string; status: string; lead_verdict: string | null; confirm_verdict: string | null
@@ -184,9 +185,19 @@ function LedgerBar({ data, sort, onSort }: {
 function QuestionConsole({ onDone }: { onDone: () => void }) {
   const [text, setText] = useState("")
   const ask = useMutation({
-    mutationFn: async () => (await api.post("/api/spine/questions", { text })).data as QTree,
-    onSuccess: () => { toast.success("분해 완료 — 서브질문·프록시로 추적을 시작합니다"); setText(""); onDone() },
-    onError: () => toast.error("분해 실패 — 다시 시도해주세요"),
+    mutationFn: async () => (await api.post("/api/spine/questions", { text }, { timeout: 300_000 })).data as QTree,
+    onSuccess: (result) => {
+      if (result.processing?.status === "partial") toast.warning("질문은 저장됐지만 일부 관측을 처리하지 못했어요.")
+      else toast.success("분해 완료 — 서브질문·프록시로 추적을 시작합니다")
+      setText(""); onDone()
+    },
+    onError: (error) => {
+      const runId = (error as { cause?: { response?: { data?: { detail?: { run_id?: string } } } } })
+        ?.cause?.response?.data?.detail?.run_id
+      toast.error(runId
+        ? `처리 결과를 확인하지 못했어요. 다시 요청하기 전 작업 번호 ${runId}를 확인해 주세요.`
+        : "처리 결과를 확인하지 못했어요. 질문 목록과 작업 상태를 확인하기 전에는 다시 요청하지 마세요.")
+    },
   })
   return (
     <div className="space-y-2">

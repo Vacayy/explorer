@@ -1,12 +1,46 @@
 """Read existing question-tracker data from a disposable PG fixture."""
 import json
+from uuid import UUID
 from fastapi import APIRouter, HTTPException, Response
 from psycopg.rows import dict_row
 from pipeline.postgres_graph_fixture import _guard
+from routers.spine_questions import AskRequest
 
 
-def create_router(connect):
+def create_router(connect, *, run_llm=None, search=None):
     router = APIRouter(prefix='/api/spine/questions')
+
+    @router.get('/creation-runs/{run_id}')
+    def creation_run(run_id: UUID):
+        with connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+            _guard(conn)
+            cur.execute('SELECT id,question_id,status,steps,created_at,finished_at FROM question_creation_runs WHERE id=%s', (run_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(404, '질문 생성 작업을 찾을 수 없습니다')
+            return row
+
+    @router.post('', status_code=201)
+    def create(body: AskRequest):
+        from pipeline.postgres_question_orchestration_fixture import create_question_native, QuestionRunUnresolved, QuestionModelUncertain
+        if not body.text.strip():
+            raise HTTPException(400, '질문이 비어 있습니다')
+        if run_llm is None or search is None:
+            raise HTTPException(503, '질문 생성이 준비되지 않았습니다')
+        try:
+            result = create_question_native(connect, body.text, run_llm=run_llm, search=search,
+                created_by=body.created_by if body.created_by in ('user', 'thesis') else 'user',
+                narrative_id=body.narrative_id, source_doc_id=body.source_doc_id)
+        except QuestionRunUnresolved as exc:
+            raise HTTPException(409, {'message': str(exc), 'run_id': exc.run_id}) from exc
+        except QuestionModelUncertain as exc:
+            raise HTTPException(503, {'message': str(exc), 'run_id': exc.run_id}) from exc
+        except ValueError as exc:
+            raise HTTPException(503, '질문 분해 결과를 확인하지 못했습니다') from exc
+        tree = detail(result['question_id'])
+        if result['status'] != 'completed':
+            tree['processing'] = {'status': result['status'], 'run_id': result['run_id'], 'steps': result['steps']}
+        return tree
 
     @router.get('')
     def index(narrative_id: int | None = None, status: str | None = None):

@@ -15,6 +15,18 @@ from pipeline.postgres_question_sentiment_fixture import extract_sentiment_nativ
 from pipeline.postgres_question_rollup_fixture import rollup_question_native
 
 
+class QuestionRunUnresolved(ValueError):
+    def __init__(self, run_id):
+        super().__init__('같은 질문의 이전 작업을 확인해 주세요')
+        self.run_id = str(run_id)
+
+
+class QuestionModelUncertain(RuntimeError):
+    def __init__(self, run_id):
+        super().__init__('질문 분해 결과를 확인하지 못했습니다')
+        self.run_id = str(run_id)
+
+
 def initialize_creation_runs(connect):
     """Create the journal once in an explicitly disposable fixture."""
     with connect() as pg:
@@ -35,8 +47,9 @@ def _begin_run(connect, text, created_by, narrative_id, source_doc_id):
     with connect() as pg:
         _guard(pg)
         pg.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))', (digest,))
-        if pg.execute("SELECT 1 FROM question_creation_runs WHERE request_hash=%s AND status IN ('running','unknown')", (digest,)).fetchone():
-            raise ValueError('같은 질문의 이전 작업을 확인해 주세요')
+        existing = pg.execute("SELECT id FROM question_creation_runs WHERE request_hash=%s AND status IN ('running','unknown')", (digest,)).fetchone()
+        if existing:
+            raise QuestionRunUnresolved(existing[0])
         pg.execute("INSERT INTO question_creation_runs(id,request_hash,status) VALUES(%s,%s,'running')", (run_id, digest))
     return run_id
 
@@ -59,9 +72,9 @@ def create_question_native(connect, text, *, run_llm, search, created_by='user',
     steps = {}
     try:
         raw = run_llm(questions._DECOMPOSE_PROMPT.format(question=text.strip()), task='question.decompose').text
-    except Exception:
+    except Exception as exc:
         _record_run(connect, run_id, {'decompose': {'status': 'unknown'}}, 'unknown')
-        raise
+        raise QuestionModelUncertain(run_id) from exc
     try:
         left, right = raw.find('{'), raw.rfind('}')
         if left < 0 or right < left:

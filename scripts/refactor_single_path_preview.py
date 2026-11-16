@@ -81,7 +81,16 @@ tools = PostgreSQLChatTools(factory, search, query_vector=query_vector,
 turns = StudyTurnsFixture(factory, store, tools, owner_chat_id=owner)
 actions = StudyActionsFixture(factory, store, tools, owner_chat_id=owner)
 app.include_router(chat_router(store, tools, owner_chat_id=owner))
-app.include_router(questions_router(factory))
+def question_model(prompt, *, task):
+    from pipeline import llm
+    return llm.run(prompt, task=task, record_call=lambda *args: None)
+
+
+def question_search(query, *, k):
+    return tools.run_tool({'name': 'search_docs', 'args': {'query': query, 'k': k}})
+
+
+app.include_router(questions_router(factory, run_llm=question_model, search=question_search))
 app.include_router(study_router(StudyFixture(factory), turns=turns, actions=actions))
 app.include_router(project_router(StudyProjectsFixture(factory), turns=turns))
 
