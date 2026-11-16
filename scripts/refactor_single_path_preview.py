@@ -102,16 +102,10 @@ app.include_router(questions_router(factory, run_llm=question_model, search=ques
 app.include_router(video_router(factory, search_lock=document_ui.search_lock, invalidate_search=search.close))
 app.include_router(study_router(StudyFixture(factory), turns=turns, actions=actions))
 app.include_router(project_router(StudyProjectsFixture(factory), turns=turns))
-def refresh_changed_embeddings():
-    # Published videos/collected documents changed content: re-embed them and let the next search rebuild.
-    from pipeline.postgres_embedding_refresh_fixture import refresh
-    from pipeline.search import _get_model, _serialize
-    with factory() as connection:
-        if refresh(connection, _get_model(local_files_only=True), _serialize):
-            search.close()
-
-
-legacy_projection = LegacyProjection(factory, '/projection', on_change=refresh_changed_embeddings)
+# The projection builder container builds the legacy projection and re-embeds changed documents
+# (pipeline.postgres_legacy_projection_builder); this process only switches files and lets the
+# next search rebuild over the new vectors.
+legacy_projection = LegacyProjection(factory, '/projection', on_change=search.close, external=True)
 install_legacy_reads(app, legacy_projection,
                      database_host=psycopg.conninfo.conninfo_to_dict(os.environ['REFACTOR_POSTGRES_DSN'])['host'])
 install_owner_portfolio(app, factory)  # after the legacy reads it replaces

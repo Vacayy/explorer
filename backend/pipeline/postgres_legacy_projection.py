@@ -9,6 +9,7 @@ until the new one is complete, so they never see a half-built projection.
 Document bodies are kept in full: `get_connection` is replaced process-wide, so
 any legacy reader in this process must see the same text as the PG reader.
 """
+import json
 import logging
 import os
 import re
@@ -72,72 +73,84 @@ def ensure_projection_triggers(target):
                                'FOR EACH STATEMENT EXECUTE FUNCTION legacy_projection_bump()')
 
 
+def projection_version(pg):
+    changes = pg.execute('SELECT counter FROM legacy_projection_version WHERE singleton').fetchone()[0]
+    generation = pg.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()[0]
+    return f'{generation}:{changes}'
+
+def build_projection(factory, directory):
+    path = Path(directory) / f'projection-{uuid.uuid4().hex}.db'
+    root = sqlite3.connect(path)
+    try:
+        root.execute('PRAGMA journal_mode=OFF')
+        root.execute('PRAGMA synchronous=OFF')
+        with factory() as pg:
+            pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            _guard(pg)
+            version = projection_version(pg)
+            tables = pg.execute('SELECT table_name,columns,schema_sql FROM legacy_snapshot_tables ORDER BY table_name').fetchall()
+            for name, columns, ddl in tables:
+                root.execute(ddl)
+                actual = [row[1] for row in root.execute(f'PRAGMA table_info("{name}")')]
+                if actual != columns:
+                    raise ValueError(f'Projection schema mismatch: {name}')
+                quoted = ','.join('"' + column.replace('"', '""') + '"' for column in columns)
+                insert = f'INSERT INTO "{name}" ({quoted}) VALUES ({",".join("?" for _ in columns)})'
+                with pg.cursor(name=f'p{uuid.uuid4().hex}') as cursor:
+                    cursor.execute('SELECT row_data FROM legacy_snapshot_rows WHERE table_name=%s ORDER BY row_ordinal', (name,))
+                    root.executemany(insert, (tuple(row[0].get(column) for column in columns) for row in cursor))
+            for name in NATIVE:
+                # Same column names as the legacy table; SQLite keeps each value's own type.
+                columns = [row[0] for row in pg.execute('SELECT column_name FROM information_schema.columns WHERE '
+                                                        'table_schema=current_schema() AND table_name=%s '
+                                                        'ORDER BY ordinal_position', (name,))]
+                quoted = ','.join('"' + column + '"' for column in columns)
+                root.execute(f'CREATE TABLE "{name}" ({quoted}, PRIMARY KEY("id"))')
+                rows = pg.execute(f'SELECT {quoted} FROM {name}').fetchall()
+                root.executemany(f'INSERT INTO "{name}" ({quoted}) VALUES ({",".join("?" for _ in columns)})', rows)
+            legacy_version = None
+            if pg.execute("SELECT to_regclass('owner_legacy_rows')").fetchone()[0] is not None:
+                legacy_version, rows, _ = owner_legacy.load(pg)
+                _derive_owner_legacy(root, pg, rows)
+            _derive_owner_portfolio(root, pg)
+            _derive_owner_records(root, pg)
+            for (sql,) in pg.execute('SELECT sql FROM legacy_snapshot_indexes'):
+                root.execute(sql)
+        root.commit()
+        root.execute('ANALYZE')
+        root.close()
+        os.chmod(path, 0o400)
+        return path, version, legacy_version
+    except BaseException:
+        root.close()
+        path.unlink(missing_ok=True)
+        raise
+
+
 class LegacyProjection:
-    def __init__(self, factory, directory, *, on_change=None):
+    def __init__(self, factory, directory, *, on_change=None, external=False):
+        """`external`: a separate builder process (`postgres_legacy_projection_builder`) writes the files and
+        a manifest; this process only switches to each new file, so the rebuild never uses its memory."""
         self.factory = factory
         self.on_change = on_change  # called after a rebuild caused by a ledger/overlay change
         self.directory = Path(directory)
-        self.directory.mkdir(parents=True, exist_ok=True)
-        for stale in (*self.directory.glob('projection-*.db'), *self.directory.glob('current*')):
-            stale.unlink()  # a previous process's files are never reused
+        self.external = external
+        if not external:
+            self.directory.mkdir(parents=True, exist_ok=True)
+            for stale in (*self.directory.glob('projection-*.db'), *self.directory.glob('current*')):
+                stale.unlink()  # a previous process's files are never reused
         self.lock = threading.Lock()
         self.current = None  # (path, version)
         self.building = False
+        self.polling = False
         self.failures = 0
         self.legacy_cache = None  # (version, rows, sequences) of the owner legacy ledger
 
     def _version(self, pg):
-        changes = pg.execute('SELECT counter FROM legacy_projection_version WHERE singleton').fetchone()[0]
-        generation = pg.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()[0]
-        return f'{generation}:{changes}'
+        return projection_version(pg)
 
     def _build(self):
-        path = self.directory / f'projection-{uuid.uuid4().hex}.db'
-        root = sqlite3.connect(path)
-        try:
-            root.execute('PRAGMA journal_mode=OFF')
-            root.execute('PRAGMA synchronous=OFF')
-            with self.factory() as pg:
-                pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
-                _guard(pg)
-                version = self._version(pg)
-                tables = pg.execute('SELECT table_name,columns,schema_sql FROM legacy_snapshot_tables ORDER BY table_name').fetchall()
-                for name, columns, ddl in tables:
-                    root.execute(ddl)
-                    actual = [row[1] for row in root.execute(f'PRAGMA table_info("{name}")')]
-                    if actual != columns:
-                        raise ValueError(f'Projection schema mismatch: {name}')
-                    quoted = ','.join('"' + column.replace('"', '""') + '"' for column in columns)
-                    insert = f'INSERT INTO "{name}" ({quoted}) VALUES ({",".join("?" for _ in columns)})'
-                    with pg.cursor(name=f'p{uuid.uuid4().hex}') as cursor:
-                        cursor.execute('SELECT row_data FROM legacy_snapshot_rows WHERE table_name=%s ORDER BY row_ordinal', (name,))
-                        root.executemany(insert, (tuple(row[0].get(column) for column in columns) for row in cursor))
-                for name in NATIVE:
-                    # Same column names as the legacy table; SQLite keeps each value's own type.
-                    columns = [row[0] for row in pg.execute('SELECT column_name FROM information_schema.columns WHERE '
-                                                            'table_schema=current_schema() AND table_name=%s '
-                                                            'ORDER BY ordinal_position', (name,))]
-                    quoted = ','.join('"' + column + '"' for column in columns)
-                    root.execute(f'CREATE TABLE "{name}" ({quoted}, PRIMARY KEY("id"))')
-                    rows = pg.execute(f'SELECT {quoted} FROM {name}').fetchall()
-                    root.executemany(f'INSERT INTO "{name}" ({quoted}) VALUES ({",".join("?" for _ in columns)})', rows)
-                legacy_version = None
-                if pg.execute("SELECT to_regclass('owner_legacy_rows')").fetchone()[0] is not None:
-                    legacy_version, rows, _ = owner_legacy.load(pg)
-                    _derive_owner_legacy(root, pg, rows)
-                _derive_owner_portfolio(root, pg)
-                _derive_owner_records(root, pg)
-                for (sql,) in pg.execute('SELECT sql FROM legacy_snapshot_indexes'):
-                    root.execute(sql)
-            root.commit()
-            root.execute('ANALYZE')
-            root.close()
-            os.chmod(path, 0o400)
-            return path, version, legacy_version
-        except BaseException:
-            root.close()
-            path.unlink(missing_ok=True)
-            raise
+        return build_projection(self.factory, self.directory)
 
     def _refresh(self):
         try:
@@ -173,7 +186,35 @@ class LegacyProjection:
         temporary.symlink_to(path.name)
         os.replace(temporary, self.stable_path)
 
+    @property
+    def manifest(self):
+        return self.directory / 'current.json'
+
+    def _read_manifest(self):
+        try:
+            data = json.loads(self.manifest.read_text())
+        except FileNotFoundError:
+            return None
+        return self.directory / data['file'], data['version'], data['legacy_version']
+
+    def _adopt_external(self):
+        """Switch to the builder's latest file if it changed; run the change hook once per switch."""
+        built = self._read_manifest()
+        with self.lock:
+            changed = built is not None and (self.current is None or built[:2] != self.current[:2])
+            if changed:
+                self.current = built
+        if changed and self.on_change is not None:
+            try:
+                self.on_change()
+            except Exception as exc:
+                log.warning('Legacy projection change hook failed (%s)', type(exc).__name__)
+        return changed
+
     def _check(self):
+        if self.external:
+            self._adopt_external()
+            return
         with self.lock:
             current = self.current
         with self.factory() as pg:
@@ -193,6 +234,16 @@ class LegacyProjection:
                 log.warning('Legacy projection version check failed (%s)', type(exc).__name__)
 
     def path(self):
+        if self.external:
+            with self.lock:
+                start, self.polling = not self.polling, True
+            if start:
+                threading.Thread(target=self._poll, daemon=True, name='legacy-projection-poll').start()
+            for _ in range(600):  # the builder may still be writing the first file
+                if self.current is not None or self._adopt_external():
+                    return self.current[0]
+                time.sleep(1)
+            raise RuntimeError('No legacy projection from the builder')
         with self.lock:
             if self.current is None:
                 self.current = self._build()
