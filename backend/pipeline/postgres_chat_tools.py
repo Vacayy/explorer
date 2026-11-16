@@ -15,7 +15,7 @@ class UnsupportedPostgresChatTool(NotImplementedError):
 
 class PostgreSQLChatTools:
     def __init__(self, connect, index, *, query_vector=None, allow_lexical_only=False, chunk_rag=None, entity_resolver=None,
-                 portfolio_provider=None):
+                 portfolio_provider=None, evidence_search=None):
         if query_vector is None and not allow_lexical_only and chunk_rag is None:
             raise ValueError('query embedding provider or explicit lexical-only mode required')
         self.connect = connect
@@ -24,6 +24,9 @@ class PostgreSQLChatTools:
         self.chunk_rag = chunk_rag
         self.entity_resolver = entity_resolver
         self.portfolio_provider = portfolio_provider
+        # evidence_search(args) -> ToolResult | None: the legacy chunk search run elsewhere (compute worker);
+        # None falls back to the document index search below.
+        self.evidence_search = evidence_search
         self.reader = PostgreSQLDocumentReader(connect)
 
     def gather_attached_refs(self, refs):
@@ -187,6 +190,10 @@ class PostgreSQLChatTools:
                                              connection_factory=factory, company_resolver=resolve_company)
         if name != 'search_docs':
             raise UnsupportedPostgresChatTool(f'{name} is not implemented in the PG fixture')
+        if self.chunk_rag is None and self.evidence_search is not None:
+            result = self.evidence_search(args)
+            if result is not None:
+                return result
         if (args.get('channel') or (args.get('entity') and self.entity_resolver is None)) and self.chunk_rag is None:
             raise UnsupportedPostgresChatTool('requested filter is not implemented in the PG fixture')
         query = (args.get('query') or '').strip()

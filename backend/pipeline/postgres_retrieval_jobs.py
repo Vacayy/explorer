@@ -32,7 +32,7 @@ def enqueue(conn, kind, subject, request):
 def legacy_retrieval(chunks_path, projection_path):
     """Point the unchanged legacy retrieval modules at the chunk index with the projection attached."""
     import database
-    from pipeline import chunks, rag, search, visibility
+    from pipeline import chat_tools, chunks, rag, search, visibility
 
     def connection():
         conn = sqlite3.connect(chunks_path, timeout=30)
@@ -40,13 +40,24 @@ def legacy_retrieval(chunks_path, projection_path):
         conn.row_factory = sqlite3.Row
         return conn
 
-    for module in (database, chunks, rag, search):  # each bound get_connection at import
+    for module in (database, chat_tools, chunks, rag, search):  # each bound get_connection at import
         module.get_connection = connection
     # The owner's personal mute is not applied without per-user identity (all collected material shows),
     # and retrieval shown to users does not drop unverified sources (scrap) either (PM decision).
     visibility.get_muted = lambda conn: {'telegram': set(), 'blog': []}
     visibility.UNVERIFIED_SOURCES = frozenset()
     return connection
+
+
+CHAT_SEARCH_ARGS = ('query', 'since_days', 'source', 'entity', 'variants', 'channel', 'k')
+
+
+def chat_search(factory, request):
+    """AI-answer evidence: the unchanged legacy search_docs (chunk hybrid search and rerank)."""
+    from pipeline import chat_tools
+    result = chat_tools.search_docs(**{key: value for key, value in request['args'].items()
+                                       if key in CHAT_SEARCH_ARGS and value is not None})
+    return {'items': result.items, 'note': result.note, 'assumed': result.assumed}
 
 
 def run_queued(factory, handlers):
