@@ -8,6 +8,7 @@ import unittest
 from pipeline.postgres_chat_chunks import ChatChunkImportConflict, PostgreSQLChunkSearch, import_chat_chunks
 from pipeline.postgres_ingest_fixture import store_document
 from pipeline.postgres_ingest_rebuild_fixture import rebuild
+from pipeline.postgres_chunk_rag import PostgreSQLChunkRAG
 import tests.test_postgres_ingest_fixture as fixtures
 
 
@@ -83,3 +84,26 @@ class PostgreSQLChatChunkTests(unittest.TestCase):
                 index.search('반도체', k=5, pool=8)
         finally:
             index.close()
+
+    def test_postgres_rag_reads_document_and_applies_snapshot_entity_filter(self):
+        with self.fixture.pg() as conn:
+            generation = str(conn.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()[0])
+            for table in ('telegram_channels', 'blog_sources', 'entity_links'):
+                conn.execute("INSERT INTO legacy_snapshot_tables VALUES (%s,'[]'::jsonb,'fixture',0)", (table,))
+            from psycopg.types.json import Jsonb
+            conn.execute("INSERT INTO legacy_snapshot_rows VALUES ('entity_links',0,%s)",
+                         (Jsonb({'doc_id': self.doc_id, 'entity_id': 5}),))
+
+        class Chunks:
+            connect = self.fixture.pg
+        chunks = Chunks()
+        chunks.generation = generation
+        adapter = PostgreSQLChunkRAG(chunks, lambda *_: None)
+        docs = adapter.fetch_docs([self.doc_id])
+        self.assertEqual(docs[0]['id'], self.doc_id)
+        self.assertEqual(adapter.apply_filters(docs, None, None, 5, None), docs)
+        self.assertEqual(adapter.apply_filters(docs, None, None, 6, None), [])
+        with self.fixture.pg() as conn:
+            conn.execute("DELETE FROM legacy_snapshot_tables WHERE table_name='blog_sources'")
+        with self.assertRaises(ChatChunkImportConflict):
+            adapter.apply_filters(docs, None, None, None, None)

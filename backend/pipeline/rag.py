@@ -31,11 +31,15 @@ def _fetch_docs(doc_ids: list[int]) -> list[dict]:
 def retrieve_docs(query: str, k: int = TOP_K, since_days: int | None = None,
                   source: str | None = None, entity_id: int | None = None,
                   variants: list[str] | None = None, entity_terms: list[str] | None = None,
-                  doc_ids: set[int] | None = None) -> list[dict]:
+                  doc_ids: set[int] | None = None, *, runtime=None) -> list[dict]:
     """청크 경로(D-132): 청크 하이브리드 → 문서별 최고 청크 → 필터 → 리랭크 → 상위 k, excerpt=접두어+청크.
     청크 인덱스가 비어 있으면 문서 경로(제목+앞 1,200자)로 폴백."""
     from pipeline.chunks import chunk_index_ready, search_chunks
+    if runtime is not None:
+        chunk_index_ready, search_chunks = runtime.chunk_index_ready, runtime.search_chunks
     if not chunk_index_ready():
+        if runtime is not None:
+            raise RuntimeError("Injected search runtime has no chunk index")
         return _retrieve_docs_legacy(query, k, since_days, source, entity_id, doc_ids)
 
     # 날짜·소스·엔티티 필터가 후보의 대부분을 걸러내면 찌꺼기(짧은 잡담 청크)만 남아 인용된다 —
@@ -46,7 +50,7 @@ def retrieve_docs(query: str, k: int = TOP_K, since_days: int | None = None,
             if len(h.get("text") or "") >= MIN_CHUNK_CHARS]
     if not hits:
         return []
-    docs = _fetch_docs([h["doc_id"] for h in hits])
+    docs = (runtime.fetch_docs if runtime is not None else _fetch_docs)([h["doc_id"] for h in hits])
     by_id = {d["id"]: d for d in docs}
     cands = []
     for h in hits:
@@ -56,10 +60,13 @@ def retrieve_docs(query: str, k: int = TOP_K, since_days: int | None = None,
             d["excerpt"] = f"{h['prefix']}\n{h['text']}"[:EXCERPT_CHARS + 300]
             d["chunk_id"] = h["chunk_id"]
             cands.append(d)
-    cands = _dedupe(_apply_filters(cands, since_days, source, entity_id, doc_ids))[:CANDIDATES]
+    apply_filters = runtime.apply_filters if runtime is not None else _apply_filters
+    cands = _dedupe(apply_filters(cands, since_days, source, entity_id, doc_ids))[:CANDIDATES]
     if not cands:
         return []
     from pipeline.rerank import rerank
+    if runtime is not None:
+        rerank = runtime.rerank
     rq = query if not variants else f"{query} ({' / '.join(v for v in variants[:2] if v)})"
     scores = rerank(rq, [c["excerpt"][:RERANK_CHARS] for c in cands])
     if scores is not None:
@@ -82,7 +89,7 @@ def _dedupe(docs: list[dict]) -> list[dict]:
 
 
 def _apply_filters(docs: list[dict], since_days, source, entity_id, doc_ids=None) -> list[dict]:
-    from pipeline.visibility import UNVERIFIED_SOURCES, get_muted, is_muted
+    from pipeline.visibility import get_muted
     conn = get_connection()
     muted = get_muted(conn)
     linked: set[int] | None = None
@@ -90,6 +97,11 @@ def _apply_filters(docs: list[dict], since_days, source, entity_id, doc_ids=None
         linked = {r["doc_id"] for r in conn.execute(
             "SELECT doc_id FROM entity_links WHERE entity_id=?", (entity_id,))}
     conn.close()
+    return _filter_with_settings(docs, since_days, source, linked, doc_ids, muted)
+
+
+def _filter_with_settings(docs, since_days, source, linked, doc_ids, muted):
+    from pipeline.visibility import UNVERIFIED_SOURCES, is_muted
     since = (date.today() - timedelta(days=int(since_days))).isoformat() if since_days else None
     out = []
     for d in docs:
