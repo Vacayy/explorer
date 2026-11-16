@@ -27,7 +27,7 @@ from pipeline.postgres_graph_fixture import _guard
 write_connection_var = ContextVar('legacy_write_connection', default=None)
 
 # PG-native ledgers that replaced a legacy table; legacy reads must see their rows.
-NATIVE = ('study_projects', 'questions')
+NATIVE = ('study_projects', 'questions', 'sub_questions')
 # Everything the projection reads that can change after the base load.
 VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'question_graph_overlay_rows',
              'legacy_supplement_tables', 'legacy_supplement_rows', *NATIVE,
@@ -37,7 +37,7 @@ VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'questio
 # Small owner-ledger tables re-derived per connection in TEMP shadows, so writes
 # show at once; the file keeps its own (possibly older) derived copy underneath.
 SHADOWED = ('portfolio_transactions', 'stock_group_members', 'stock_groups', 'watch_rules', 'watch_evaluations', 'portfolio_principles', 'follows', 'kalshi_pins', 'channel_reads',
-            'saved_items', 'tracker_conditions')
+            'saved_items', 'tracker_conditions', *NATIVE)
 CHECK_SECONDS = 10
 log = logging.getLogger(__name__)
 
@@ -233,6 +233,7 @@ class LegacyProjection:
                 _derive_owner_legacy(conn, pg, legacy[1], skip=skip)
             _derive_owner_portfolio(conn, pg)
             _derive_owner_records(conn, pg)
+            _derive_native(conn, pg)
             if writable and legacy:
                 for table, seq in legacy[2].items():
                     # Never hand out an ID the legacy writer already used.
@@ -271,6 +272,16 @@ class LegacyProjection:
             conn.close()
             raise RuntimeError('Foreign keys could not be enabled')
         return conn, version
+
+
+def _derive_native(root, pg):
+    """Current rows of the PG-native ledgers (questions, study projects), so new ones show at once."""
+    for name in NATIVE:
+        columns = [row[1] for row in root.execute(f'PRAGMA table_info("{name}")')]
+        quoted = ','.join('"' + column + '"' for column in columns)
+        root.execute(f'DELETE FROM "{name}"')
+        root.executemany(f'INSERT INTO "{name}" ({quoted}) VALUES ({",".join("?" for _ in columns)})',
+                         pg.execute(f'SELECT {quoted} FROM {name}').fetchall())
 
 
 def _derive_owner_legacy(root, pg, rows, *, skip=()):

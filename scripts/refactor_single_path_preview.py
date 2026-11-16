@@ -107,7 +107,7 @@ install_legacy_reads(app, legacy_projection,
                      database_host=psycopg.conninfo.conninfo_to_dict(os.environ['REFACTOR_POSTGRES_DSN'])['host'])
 install_owner_portfolio(app, factory)  # after the legacy reads it replaces
 install_owner_records(app, factory, document_ui.timeline_reader)
-install_owner_legacy(app, legacy_projection, factory)
+install_owner_legacy(app, legacy_projection, factory, run_llm=question_model, search=question_search)
 threading.Thread(target=legacy_projection.path, daemon=True).start()  # warm before the first home visit
 
 

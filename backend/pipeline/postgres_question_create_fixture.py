@@ -71,7 +71,8 @@ def stage_plan(connect,text,plan,*,created_by='user',narrative_id=None,source_do
             finally:db.close()
 
 
-def stage_plan_native(connect, text, plan, *, created_by='user', narrative_id=None, source_doc_id=None, run_id=None):
+def stage_plan_native(connect, text, plan, *, created_by='user', narrative_id=None, source_doc_id=None, run_id=None,
+                      stock_code=None):
     """Save a decomposition into the single-path fixture, without starting jobs.
 
     Extraction and rollup are separate required steps; do not expose this as a
@@ -83,9 +84,9 @@ def stage_plan_native(connect, text, plan, *, created_by='user', narrative_id=No
         _guard(pg)
         pg.execute("SELECT pg_advisory_xact_lock(hashtextextended('native-question-create',0))")
         now = "to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')"
-        qid = pg.execute("INSERT INTO questions(text,narrative_id,source_doc_id,created_by,status,created_at,updated_at) "
-                         "VALUES(%s,%s,%s,%s,'tracking'," + now + ',' + now + ') RETURNING id',
-                         (text.strip(), narrative_id, source_doc_id, created_by)).fetchone()[0]
+        qid = pg.execute("INSERT INTO questions(text,narrative_id,source_doc_id,created_by,status,stock_code,created_at,updated_at) "
+                         "VALUES(%s,%s,%s,%s,'tracking',%s," + now + ',' + now + ') RETURNING id',
+                         (text.strip(), narrative_id, source_doc_id, created_by, stock_code)).fetchone()[0]
         has_numeric = has_sentiment = False
         for sub in plan['sub_questions']:
             sqid = pg.execute('INSERT INTO sub_questions(question_id,text,falsifier,weight,created_at) '

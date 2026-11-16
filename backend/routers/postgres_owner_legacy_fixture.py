@@ -5,11 +5,12 @@ add/update/remove its members, replace its rules and toggle member tracking. Eac
 whose owner tables are TEMP copies of the PG ledger; the legacy handler runs
 unchanged on it and, only if it ends 2xx, the PK diff is stored in one PG
 transaction that first checks no other write landed. Writes to any other table
-hit the read-only projection and fail the request (fail closed). Evaluation,
-tracker preparation and reasons (model call) stay unavailable here.
+hit the read-only projection and fail the request (fail closed). Evaluation and
+tracker preparation stay unavailable; watch reasons use the native question gate.
 """
 import re
 
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
@@ -62,7 +63,60 @@ def _diff(before, after, group):
     return changes
 
 
-def install(app, projection, factory):
+def _reasons_router(projection, factory, run_llm, search):
+    """Watch reasons: the legacy checks on the projection, then the native question gate."""
+    from models.groups import ReasonCreate
+    from pipeline import portfolio_thesis as pt
+    from pipeline import watch_reasons as wrs
+    from routers.spine_groups import _group
+    router = APIRouter()
+
+    @router.post('/api/spine/groups/{group_id}/reasons', status_code=201)
+    def create_reason(group_id: int, body: ReasonCreate, request: Request):
+        from pipeline.postgres_question_orchestration_fixture import (QuestionModelUncertain, QuestionRunUnresolved,
+                                                                      create_question_native)
+        conn = projection.connect()
+        try:
+            group = _group(conn, group_id)
+            if group['kind'] != 'watch':
+                raise HTTPException(409, '관심 묶음에서만 이유를 감시합니다. 보유 종목은 포트폴리오의 ‘보유 논지’를 쓰세요.')
+            row = conn.execute('''SELECT c.corp_name FROM stock_group_members m LEFT JOIN companies c ON c.stock_code = m.stock_code
+                                  WHERE m.group_id=? AND m.stock_code=?''', (group_id, body.stock_code)).fetchone()
+            if not row:
+                raise HTTPException(404, '이 묶음의 종목이 아닙니다.')
+            name = row['corp_name'] or body.stock_code
+        finally:
+            conn.close()
+        if run_llm is None or search is None:
+            raise HTTPException(503, '질문 생성이 준비되지 않았습니다')
+        # Same optional fixture cap as question creation, for deliberate representative tests only.
+        limit = request.headers.get('x-explorer-fixture-model-limit')
+        if limit is not None and (not limit.isdigit() or not 1 <= int(limit) <= 4):
+            raise HTTPException(400, '시험 호출 제한이 올바르지 않습니다')
+        calls = 0
+
+        def model(prompt, *, task):
+            nonlocal calls
+            if limit is not None and calls >= int(limit):
+                raise RuntimeError('fixture model call limit reached')
+            calls += 1
+            return run_llm(prompt, task=task)
+        hint = pt.KR_HINT.format(name=name, code=body.stock_code).replace('보유 종목', '관심 종목')
+        try:
+            result = create_question_native(factory, wrs.question_text(name, body.why, body.trigger), run_llm=model,
+                                            search=search, created_by=wrs.CREATOR, stock_code=body.stock_code, hint=hint,
+                                            numeric_limit=1 if limit is not None else 40)
+        except QuestionRunUnresolved as exc:
+            raise HTTPException(409, {'message': str(exc), 'run_id': exc.run_id}) from exc
+        except (QuestionModelUncertain, ValueError) as exc:
+            raise HTTPException(503, '이유를 질문으로 분해하지 못했습니다') from exc
+        return {'id': result['question_id']}
+
+    return router
+
+
+def install(app, projection, factory, *, run_llm=None, search=None):
+    app.include_router(_reasons_router(projection, factory, run_llm, search))
     from routers import spine_groups
     wanted = set(ADAPTED)
     for route in spine_groups.router.routes:
