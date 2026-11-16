@@ -14,7 +14,7 @@ ENV_FILE=$(mktemp)
 trap 'rm -f "$ENV_FILE"' EXIT
 chmod 600 "$ENV_FILE"
 docker inspect "$C" | python3 -c "import sys,json;print('\n'.join(json.load(sys.stdin)[0]['Config']['Env']))" > "$ENV_FILE"
-IMAGE=$(docker inspect "$C" --format '{{.Config.Image}}')
+IMAGE=${REFACTOR_API_IMAGE:-$(docker inspect "$C" --format '{{.Config.Image}}')}  # override to switch images
 docker rm -f "$C" >/dev/null
 docker run -d --name "$C" --user 10001:10001 --network explorer-refactor-preview-private --memory "$MEMORY" --read-only \
   --tmpfs /tmp:rw,size=512m,uid=10001,gid=10001,mode=700 --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 \
