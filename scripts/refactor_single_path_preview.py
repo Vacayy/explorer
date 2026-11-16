@@ -27,6 +27,7 @@ from routers.postgres_study_fixture import create_router as study_router
 from routers.postgres_study_projects_fixture import create_router as project_router
 from pipeline.postgres_legacy_projection import LegacyProjection
 from routers.postgres_legacy_read_fixture import install as install_legacy_reads
+from routers.postgres_owner_portfolio_fixture import install as install_owner_portfolio
 
 if os.environ.get('REFACTOR_FEED_POINTER_SCHEMA'):
     raise RuntimeError('Single-path preview does not permit a separate feed pointer')
@@ -100,6 +101,7 @@ app.include_router(study_router(StudyFixture(factory), turns=turns, actions=acti
 app.include_router(project_router(StudyProjectsFixture(factory), turns=turns))
 legacy_projection = LegacyProjection(factory, '/projection')
 install_legacy_reads(app, legacy_projection)
+install_owner_portfolio(app, factory)  # after the legacy reads it replaces
 threading.Thread(target=legacy_projection.path, daemon=True).start()  # warm before the first home visit
 
 

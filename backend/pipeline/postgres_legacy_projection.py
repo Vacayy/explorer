@@ -23,7 +23,8 @@ from pipeline.postgres_graph_fixture import _guard
 NATIVE = ('study_projects', 'questions')
 # Everything the projection reads that can change after the base load.
 VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'question_graph_overlay_rows',
-             'legacy_supplement_tables', 'legacy_supplement_rows', *NATIVE)
+             'legacy_supplement_tables', 'legacy_supplement_rows', *NATIVE,
+             'fixture_portfolio_transactions', 'fixture_portfolio_members', 'fixture_portfolio_principles')
 CHECK_SECONDS = 10
 log = logging.getLogger(__name__)
 
@@ -48,6 +49,8 @@ def ensure_projection_triggers(target):
     _guard(target)
     with target.transaction():
         for table in VERSIONED:
+            if target.execute('SELECT to_regclass(%s)', (table,)).fetchone()[0] is None:
+                continue  # e.g. no portfolio ledger in this schema yet
             if not target.execute("SELECT 1 FROM pg_trigger WHERE tgname='legacy_projection_bump' AND tgrelid=to_regclass(%s)",
                                   (table,)).fetchone():
                 target.execute(f'CREATE TRIGGER legacy_projection_bump AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON {table} '
@@ -102,6 +105,7 @@ class LegacyProjection:
                     root.execute(f'CREATE TABLE "{name}" ({quoted}, PRIMARY KEY("id"))')
                     rows = pg.execute(f'SELECT {quoted} FROM {name}').fetchall()
                     root.executemany(f'INSERT INTO "{name}" ({quoted}) VALUES ({",".join("?" for _ in columns)})', rows)
+                _derive_owner_portfolio(root, pg)
                 for (sql,) in pg.execute('SELECT sql FROM legacy_snapshot_indexes'):
                     root.execute(sql)
             root.commit()
@@ -168,3 +172,33 @@ class LegacyProjection:
         conn.row_factory = sqlite3.Row
         conn.execute('PRAGMA query_only=ON')
         return conn
+
+
+def _derive_owner_portfolio(root, pg):
+    """Show the mapped owner's PG ledger through the legacy portfolio tables.
+
+    Mirrors the legacy writer: the group's transactions and principles come from
+    the ledger, held members are upserted by bought_at and others removed.
+    """
+    if pg.execute("SELECT to_regclass('fixture_portfolio_legacy_mapping')").fetchone()[0] is None:
+        return
+    for group, account in pg.execute('SELECT legacy_group_id,account_id FROM fixture_portfolio_legacy_mapping').fetchall():
+        created = dict(root.execute('SELECT id,created_at FROM portfolio_transactions WHERE group_id=?', (group,)))
+        root.execute('DELETE FROM portfolio_transactions WHERE group_id=?', (group,))
+        root.executemany('INSERT INTO portfolio_transactions (id,group_id,trade_date,kind,stock_code,amount,price,note,created_at) '
+                         'VALUES (?,?,?,?,?,?,?,?,?)',
+                         [(ident, group, day, kind, code, amount, price, note, created.get(ident))
+                          for ident, day, kind, code, amount, price, note in pg.execute(
+                              'SELECT id,trade_date,kind,stock_code,amount,price,note FROM fixture_portfolio_transactions '
+                              'WHERE account_id=%s ORDER BY id', (account,))])
+        held = dict(pg.execute('SELECT stock_code,bought_at FROM fixture_portfolio_members WHERE account_id=%s', (account,)))
+        for code, bought in held.items():
+            if not root.execute('UPDATE stock_group_members SET bought_at=? WHERE group_id=? AND stock_code=?',
+                                (bought, group, code)).rowcount:
+                root.execute('INSERT INTO stock_group_members (group_id,stock_code,bought_at) VALUES (?,?,?)', (group, code, bought))
+        root.execute('DELETE FROM stock_group_members WHERE group_id=?' +
+                     (f' AND stock_code NOT IN ({",".join("?" * len(held))})' if held else ''), (group, *held))
+        root.execute('DELETE FROM portfolio_principles')
+        root.executemany('INSERT INTO portfolio_principles (id,text,rules_json,created_at,notes_json) VALUES (?,?,?,?,?)',
+                         pg.execute('SELECT id,text,rules_json,created_at,notes_json FROM fixture_portfolio_principles '
+                                    'WHERE account_id=%s ORDER BY id', (account,)).fetchall())

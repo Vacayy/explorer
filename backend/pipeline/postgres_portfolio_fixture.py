@@ -94,6 +94,28 @@ def map_archived_portfolio(conn, principal, legacy_group_id):
     conn.execute('INSERT INTO fixture_portfolio_legacy_mapping VALUES (%s,%s)',(legacy_group_id,account))
 
 
+def map_archived_principles(conn, principal):
+    """Move the archived owner's principles to an explicitly mapped account, keeping IDs."""
+    _guard(conn)
+    account=_account(conn,principal)
+    if account is None or not conn.execute('SELECT 1 FROM fixture_portfolio_legacy_mapping WHERE account_id=%s',(account,)).fetchone():
+        raise ValueError('Map the archived portfolio first')
+    if conn.execute("SELECT 1 FROM legacy_snapshot_tables WHERE table_name='portfolio_principles'").fetchone() is None:
+        raise ValueError('Principle snapshot required')
+    conn.execute('LOCK TABLE fixture_portfolio_principles IN EXCLUSIVE MODE')
+    if conn.execute('SELECT 1 FROM fixture_portfolio_principles LIMIT 1').fetchone():
+        raise ValueError('Principles already mapped')
+    rows=[row for (row,) in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='portfolio_principles' "
+                                        "ORDER BY (row_data->>'id')::bigint")]
+    for row in rows:
+        conn.execute('INSERT INTO fixture_portfolio_principles(id,account_id,text,rules_json,notes_json,created_at) '
+                     'OVERRIDING SYSTEM VALUE VALUES (%s,%s,%s,%s,%s,%s)',
+                     (row['id'],account,row['text'],row['rules_json'],row.get('notes_json') or '[]',row['created_at']))
+    conn.execute("SELECT setval(pg_get_serial_sequence('fixture_portfolio_principles','id'),"
+                 "GREATEST((SELECT coalesce(max(id),0) FROM fixture_portfolio_principles),1),TRUE)")
+    return len(rows)
+
+
 def list_transactions(conn, principal, *, names):
     rows=_transactions(conn,_account(conn,principal,lock=False))
     return [{'id':t['id'],'trade_date':t['trade_date'],'kind':t['kind'],'stock_code':t['stock_code'],
