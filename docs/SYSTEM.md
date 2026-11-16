@@ -966,7 +966,7 @@ Peer 번들은 SQLite가 아니라 별도 수집 파일에서 오므로 보충 �
 |---|---|
 | 연결됨(모의만) | 질문 approve, 리서치 후보 승인(실제 승인은 소유자 판단), 보유 논지 생성(POST `/api/portfolio/thesis`, 관심 이유와 같은 네이티브 질문 생성 + stock_code, created_by='portfolio') |
 | Claude 로그인 대기 | 회사 프로필(company.profile 웹), TW 체인 리포트(chain.analyze 웹), 스터디 웹 조사(study.web), 질문 시나리오·synthesis 실제 확인(질문 19), 시장 분석 실행(POST `/api/analysis/runs`, ClaudeModel CodeAct + 샌드박스) |
-| 보류 | 프록시 보드(`/api/spine/proxy-boards`, 11-14 기준 스냅샷에 표 없음 = 사용 기록 0). 최종 동기화 때 MacBook 최신 DB에 표·행이 있으면 네이티브 원장으로 구현 후 이관한다 |
+| 읽기만 연결, 쓰기는 남은 기능 차이 | 프록시 보드(`/api/spine/proxy-boards`): 원본에 있는 기능이다(D-240). 11-14 기준 스냅샷에는 보드가 없어서, 질문 가져오기가 만든 빈 PG 네이티브 표 2개를 투영으로 보이고 레거시 목록·상세 읽기를 그대로 실행한다(빈 목록 `[]`, 없는 보드 404). 보드·항목 만들기·편집·제안은 501 '후보에서 아직 지원하지 않습니다'로 답한다(`pipeline.postgres_proxy_boards`). 운영 전환 판단 때 남은 기능으로 명시하고, 최종 동기화 때 MacBook에 행이 있으면 네이티브 쓰기를 구현한 뒤 이관한다 |
 | not_run(수집, 단일 writer) | 매크로·리스크·레짐 스냅샷, 재무·가격·컨콜 수집, 출처 새로고침, trade seed, 트래커 수급 준비 |
 | 연결됨(실제 1회) | 큰 그림 재생성(POST `/world/big-picture/rebuild`): 계산 어댑터가 job_runs를 쓰기 사본으로 주고, 요청이 추가한 실행 기록은 후보 원장 `candidate_job_runs`(uuid 키, job_runs id 미저장)로 옮긴다. 투영 빌드가 그 행을 수집 행 뒤 새 id로 job_runs에 붙이므로 레거시 쿨다운·예산 판단과 화면이 이를 읽는다(`pipeline.postgres_candidate_job_runs`). 확인: 20초, 줄기 4, GET 반영, 쿨다운 적용·예산 7→6 |
 | 연결됨(모의 + 레짐 해설 실제 1회) | 증거 요약(레거시 라우트, 저장 없음), 레짐 해설(era_commentary, input_hash 키), Thesis 감사(thesis_audits) — 계산 어댑터 |

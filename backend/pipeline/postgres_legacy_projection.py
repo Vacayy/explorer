@@ -28,7 +28,8 @@ from pipeline.postgres_graph_fixture import _guard
 write_connection_var = ContextVar('legacy_write_connection', default=None)
 
 # PG-native ledgers that replaced a legacy table; legacy reads must see their rows.
-NATIVE = ('study_projects', 'questions', 'sub_questions', 'proxy_registry', 'proxy_observations')
+NATIVE = ('study_projects', 'questions', 'sub_questions', 'proxy_registry', 'proxy_observations', 'proxy_boards',
+          'proxy_board_items')
 # PG-native ledgers shown only in the projection file (read by legacy reads in the worker, e.g. the chat's study
 # tool); too large to re-derive on every connection, so they show from the next build.
 NATIVE_FILE_ONLY = ('study_project_members', 'study_sessions', 'study_annotations')

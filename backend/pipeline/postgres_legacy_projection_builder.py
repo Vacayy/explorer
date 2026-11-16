@@ -11,6 +11,7 @@ coalesce into one more build.
 import json
 import os
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -19,6 +20,7 @@ import psycopg
 from pipeline.postgres_legacy_projection import build_projection, projection_version
 
 KEEP = 2  # the current file and the one before it, for readers still on it
+KEEP_SECONDS = 120  # and any written in the last two minutes (readers switch every 10s)
 
 
 def run(directory):
@@ -44,8 +46,10 @@ def run(directory):
             temporary.write_text(json.dumps({'file': path.name, 'version': version, 'legacy_version': legacy_version,
                                              'reembedded': refreshed}))
         os.replace(temporary, directory / name)
+    # Readers switch files every CHECK_SECONDS; back-to-back builds must not remove a file one may still be on.
     for old in sorted(directory.glob('projection-*.db'), key=lambda item: item.stat().st_mtime)[:-KEEP]:
-        old.unlink(missing_ok=True)
+        if time.time() - old.stat().st_mtime > KEEP_SECONDS:
+            old.unlink(missing_ok=True)
     print(json.dumps({'built': path.name, 'version': version, 'reembedded': len(refreshed), 'chunked': chunked}), flush=True)
     return True
 

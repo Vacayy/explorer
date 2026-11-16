@@ -39,6 +39,8 @@ READ_ROUTES = {'/api/spine/home', '/api/spine/home/ai-activity', '/api/spine/hom
                '/api/spine/narrative/versions', '/api/spine/narrative/version', '/api/spine/world/checkpoint',
                # Earnings-call proxies list and the causal panel's beneficiary screen
                '/api/spine/transcript/proxies', '/api/spine/beneficiary/screen',
+               # Proxy boards: empty PG-native tables (writes answer unavailable, pipeline.postgres_proxy_boards)
+               '/api/spine/proxy-boards', '/api/spine/proxy-boards/', '/api/spine/proxy-boards/{board_id}',
                '/api/spine/narratives/{narrative_id}/market-today', '/api/spine/follows',
                # Company detail: saved prices, valuation, DART statements and disclosures
                '/api/financials/{stock_code}', '/api/financials/{stock_code}/income-flow',
