@@ -120,9 +120,9 @@ def _latest_report(conn, question_id: int):
         (question_id,)).fetchone()
 
 
-def synthesis_status(question_id: int) -> dict:
+def synthesis_status(question_id: int, *, connection_factory=None) -> dict:
     """LLM 0 — 캐시된 리포트 + stale 플래그. 시나리오는 get_tree가 이미 반환하므로 여기선 리포트만."""
-    conn = get_connection()
+    conn = (connection_factory or get_connection)()
     ev = _gather(conn, question_id)
     if not ev:
         conn.close()

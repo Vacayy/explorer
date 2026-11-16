@@ -8,14 +8,17 @@ import sqlite3
 import uuid
 from contextlib import contextmanager
 from psycopg.types.json import Jsonb
-from pipeline import questions
+from pipeline import questions, question_report
 from pipeline.postgres_graph_fixture import _guard
 
-TABLES=('questions','sub_questions','proxy_registry','proxy_observations','question_reports','proxy_scans','scenarios','transcripts','raw_documents')
+TABLES=('questions','sub_questions','proxy_registry','proxy_observations','question_reports','proxy_scans','scenarios','transcripts','raw_documents','entity_relations','knowledge','knowledge_falsifiers')
 FILTERS={
     'scenarios': 'WHERE question_id IS NOT NULL',
     'transcripts': 'WHERE id IN (SELECT transcript_id FROM proxy_observations WHERE transcript_id IS NOT NULL)',
     'raw_documents': 'WHERE id IN (SELECT source_doc_id FROM questions WHERE source_doc_id IS NOT NULL)',
+    'entity_relations': 'WHERE narrative_id IN (SELECT narrative_id FROM questions WHERE narrative_id IS NOT NULL)',
+    'knowledge': 'WHERE id IN (SELECT promoted_knowledge_id FROM entity_relations WHERE narrative_id IN (SELECT narrative_id FROM questions WHERE narrative_id IS NOT NULL) AND promoted_knowledge_id IS NOT NULL)',
+    'knowledge_falsifiers': 'WHERE knowledge_id IN (SELECT promoted_knowledge_id FROM entity_relations WHERE narrative_id IN (SELECT narrative_id FROM questions WHERE narrative_id IS NOT NULL) AND promoted_knowledge_id IS NOT NULL)',
 }
 
 
@@ -76,6 +79,22 @@ class QuestionsFixture:
     def listing(self, narrative_id=None,status=None):
         with _projection(self.connect) as factory:return questions.list_questions(narrative_id,status,connection_factory=factory)
     def detail(self,question_id):
-        with _projection(self.connect) as factory:return questions.get_tree(question_id,connection_factory=factory)
+        with _projection(self.connect) as factory:
+            result=questions.get_tree(question_id,connection_factory=factory)
+        if 'error' not in result:
+            with self.connect() as pg:
+                _guard(pg)
+                pg.execute("""UPDATE question_capture_rows SET row_data=jsonb_set(row_data,'{last_viewed_at}',
+                    to_jsonb(to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')),true)
+                    WHERE table_name='questions' AND row_data->>'id'=%s""",(str(question_id),))
+        return result
+
+    def dismiss(self,question_id):
+        with self.connect() as pg:
+            _guard(pg)
+            pg.execute("""UPDATE question_capture_rows SET row_data=jsonb_set(row_data,'{status}',to_jsonb('dismissed'::text),true)
+                WHERE table_name='questions' AND row_data->>'id'=%s""",(str(question_id),))
+    def synthesis(self,question_id):
+        with _projection(self.connect) as factory:return question_report.synthesis_status(question_id,connection_factory=factory)
     def proxy(self,proxy_id):
         with _projection(self.connect) as factory:return questions.get_proxy_detail(proxy_id,connection_factory=factory)

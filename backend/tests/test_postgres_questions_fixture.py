@@ -12,23 +12,28 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
         super().setUp()
         self.q=sqlite3.connect(':memory:');self.addCleanup(self.q.close)
         self.q.executescript('''
-        CREATE TABLE questions(id INTEGER PRIMARY KEY,text TEXT,narrative_id INTEGER,source_doc_id INTEGER,status TEXT,updated_at TEXT);
-        CREATE TABLE sub_questions(id INTEGER PRIMARY KEY,question_id INTEGER,text TEXT);
-        CREATE TABLE proxy_registry(id INTEGER PRIMARY KEY,sub_question_id INTEGER,label TEXT,modality TEXT,yes_direction TEXT,unit TEXT,tickers TEXT,extract_hint TEXT);
+        CREATE TABLE questions(id INTEGER PRIMARY KEY,text TEXT,narrative_id INTEGER,source_doc_id INTEGER,status TEXT,updated_at TEXT,lead_verdict TEXT,confirm_verdict TEXT,divergence TEXT,last_viewed_at TEXT);
+        CREATE TABLE sub_questions(id INTEGER PRIMARY KEY,question_id INTEGER,text TEXT,verdict TEXT);
+        CREATE TABLE proxy_registry(id INTEGER PRIMARY KEY,sub_question_id INTEGER,label TEXT,modality TEXT,yes_direction TEXT,unit TEXT,tickers TEXT,extract_hint TEXT,active INTEGER);
         CREATE TABLE proxy_observations(id INTEGER PRIMARY KEY,proxy_id INTEGER,transcript_id INTEGER,observed_at TEXT,value_num REAL,value_text TEXT,direction TEXT,confidence REAL,source_type TEXT);
-        CREATE TABLE question_reports(id INTEGER PRIMARY KEY,question_id INTEGER,body TEXT);
+        CREATE TABLE question_reports(id INTEGER PRIMARY KEY,question_id INTEGER,body TEXT,inputs_hash TEXT,created_at TEXT);
         CREATE TABLE proxy_scans(proxy_id INTEGER,transcript_id INTEGER);
         CREATE TABLE scenarios(topic TEXT,event TEXT,answer TEXT,beneficiaries TEXT,created_at TEXT,question_id INTEGER);
         CREATE TABLE transcripts(id INTEGER PRIMARY KEY,raw_doc_id INTEGER,ticker TEXT,fiscal_year INTEGER,fiscal_period TEXT);
         CREATE TABLE raw_documents(id INTEGER PRIMARY KEY,title TEXT,source_type TEXT);
-        INSERT INTO questions VALUES(1,'원래 질문',NULL,10,'active','2026-01-01');
-        INSERT INTO sub_questions VALUES(2,1,'하위 질문');
-        INSERT INTO proxy_registry VALUES(3,2,'관측','numeric','up','개',NULL,NULL);
+        INSERT INTO questions VALUES(1,'원래 질문',7,10,'active','2026-01-01','unknown','unknown',NULL,NULL);
+        INSERT INTO sub_questions VALUES(2,1,'하위 질문','unknown');
+        INSERT INTO proxy_registry VALUES(3,2,'관측','numeric','up','개',NULL,NULL,1);
         INSERT INTO transcripts VALUES(4,10,'ABC',2026,'Q1');
         INSERT INTO proxy_observations VALUES(5,3,4,'2026-01-01',1,NULL,'up',0.8,'transcript');
         INSERT INTO raw_documents VALUES(10,'자료','transcript');
         INSERT INTO scenarios VALUES('주제','사건','답변','[]','2026-01-01',1);
-        INSERT INTO question_reports VALUES(6,1,'저장 보고서');
+        CREATE TABLE entity_relations(id INTEGER PRIMARY KEY,narrative_id INTEGER,promoted_knowledge_id INTEGER);
+        CREATE TABLE knowledge(id INTEGER PRIMARY KEY,statement TEXT,epistemic_status TEXT);
+        CREATE TABLE knowledge_falsifiers(id INTEGER PRIMARY KEY,knowledge_id INTEGER,condition TEXT,triggered_at TEXT);
+        INSERT INTO entity_relations VALUES(1,7,9);
+        INSERT INTO knowledge VALUES(9,'검증된 지식','verified');
+        INSERT INTO question_reports VALUES(6,1,'저장 보고서','old-hash','2026-01-01');
         ''')
         self.q.execute('PRAGMA query_only=ON');self.q.execute('BEGIN')
 
@@ -43,7 +48,14 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
             self.assertEqual(tree['sub_questions'][0]['proxies'][0]['obs_count'],1)
             self.assertEqual(tree['scenario']['beneficiaries'],[])
             self.assertEqual(client.get('/api/spine/questions/proxy/3').json()['observations'][0]['source']['doc_id'],10)
+            report=client.get('/api/spine/questions/1/synthesis').json()
+            self.assertEqual(report['body'],'저장 보고서')
+            self.assertTrue(report['stale'])
+            self.assertEqual(client.get('/api/spine/questions/999/synthesis').status_code,404)
             self.assertEqual(client.get('/api/spine/questions/999').status_code,404)
+            self.assertIsNotNone(client.get('/api/spine/questions/1').json()['last_viewed_at'])
+            self.assertEqual(client.delete('/api/spine/questions/1').status_code,204)
+            self.assertEqual(client.get('/api/spine/questions').json(),[])
             self.assertEqual(client.post('/api/spine/questions',json={'text':'새 질문'}).status_code,405)
 
     def test_read_transaction_required(self):
