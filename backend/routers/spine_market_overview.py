@@ -5,18 +5,19 @@ GET /api/spine/market/{kr|us}/overview — 지수(1일 장중 경로·1개월·3
 """
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from database import get_connection
 from models.market_overview import MarketOverview
 from pipeline.market_overview import overview
+from security.public_market import market_connection
 
 router = APIRouter(prefix="/api/spine/market", tags=["spine"])
 
 
 @router.get("/{market}/overview", response_model=MarketOverview)
-def market_overview(market: Literal["kr", "us"]):
-    conn = get_connection()
+def market_overview(market: Literal["kr", "us"], request: Request):
+    conn = market_connection() if getattr(request.state, 'public_access', False) else get_connection()
     try:
         return overview(conn, market)
     finally:

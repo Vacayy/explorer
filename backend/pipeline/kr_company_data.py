@@ -101,6 +101,8 @@ class DartClient:
 def targets(conn, top_n: int = TOP_N) -> list[dict]:
     """수집 순서: 보유 → 관심 묶음 → 최신 시총 상위. corp_code 기준 중복 제거."""
     out, seen = [], set()
+    from pipeline.group_ownership import legacy_groups_condition
+    legacy = legacy_groups_condition(conn)
 
     def add(rows, tier):
         for r in rows:
@@ -109,14 +111,14 @@ def targets(conn, top_n: int = TOP_N) -> list[dict]:
                 seen.add(corp)
                 out.append({"stock_code": r[0], "corp_code": corp, "tier": tier})
 
-    add(conn.execute("""
+    add(conn.execute(f"""
         SELECT m.stock_code, c.corp_code, g.kind FROM stock_group_members m
         JOIN stock_groups g ON g.id = m.group_id JOIN companies c ON c.stock_code = m.stock_code
-        WHERE g.kind = 'portfolio' ORDER BY m.id""").fetchall(), "portfolio")
-    add(conn.execute("""
+        WHERE g.kind = 'portfolio' AND {legacy} ORDER BY m.id""").fetchall(), "portfolio")
+    add(conn.execute(f"""
         SELECT m.stock_code, c.corp_code, g.kind FROM stock_group_members m
         JOIN stock_groups g ON g.id = m.group_id JOIN companies c ON c.stock_code = m.stock_code
-        WHERE g.kind != 'portfolio' ORDER BY m.id""").fetchall(), "watch")
+        WHERE g.kind != 'portfolio' AND {legacy} ORDER BY m.id""").fetchall(), "watch")
     # 대만 연결 종목(pipeline/tw_links)·밸류체인 칸의 한국 종목(pipeline/value_chain) — 근거 계산에 분기 재무가 필요하다
     from pipeline.tw_links import LINKS
     from pipeline.value_chain import NODES

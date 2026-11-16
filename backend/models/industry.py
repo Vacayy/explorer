@@ -105,7 +105,7 @@ class DataLink(BaseModel):
     verdict: str | None
 
 
-class SectorDetailResponse(BaseModel):
+class KrSectorMarketResponse(BaseModel):
     as_of: str | None
     name: str
     benchmark: Benchmark
@@ -123,6 +123,9 @@ class SectorDetailResponse(BaseModel):
     series: list[SeriesPoint]              # 저장된 대표지수 전부(최대 3년)
     top_weights: list[Constituent]         # 섹터 시총 비중 상위 8
     constituents: list[Constituent]        # 시총 순 전체
+
+
+class SectorDetailResponse(KrSectorMarketResponse):
     narratives: list[SectorNarrative]
     overview: SectorOverview | None        # AI 산업 개괄 (아직 없으면 null)
     docs: list[SectorDoc]                  # 최근 10일 주요 자료
@@ -153,7 +156,7 @@ class SectorPeerListResponse(BaseModel):
 
 # ---------- 미국 (GET /api/spine/industry/us/*, pipeline/us_sectors, ia-redesign §4.36) ----------
 
-class UsEtfRow(BaseModel):
+class UsEtfMarketRow(BaseModel):
     ticker: str                            # 섹터 ETF (XLK · SMH …)
     name: str                              # 한국어 섹터·업종 이름
     full_name: str                         # ETF 정식 이름
@@ -167,10 +170,14 @@ class UsEtfRow(BaseModel):
     rs_long: float | None                  # 24개 ETF 간 백분위 — 장기 91일 수익률
     rs_short: float | None                 # 단기 7일 수익률
     trail: list[RsTrail]                   # 1·2·3·4주 전 RS
+
+
+class UsEtfRow(UsEtfMarketRow):
     coverage: int                          # 내 커버리지(팔로우 종목 중 이 섹터·업종) 수
 
 
 class UsMapSector(UsEtfRow):
+    coverage: int | None                  # null: public projection excludes personal follows
     series: list[float]                    # ETF 최근 61거래일 종가
 
 
@@ -229,12 +236,16 @@ class UsSeriesPoint(BaseModel):
     k: float | None                        # 같은 날 SPY
 
 
-class UsSectorDetailResponse(UsEtfRow):
+class UsSectorMarketResponse(UsEtfMarketRow):
     as_of: str | None
     zone: Literal["주도", "숨 고르기", "반등 시도", "소외"] | None
     parent_name: str | None
     series: list[UsSeriesPoint]            # 저장된 ETF 종가 전부(최대 3년)
     siblings: list[UsSibling]              # 같은 상위 GICS 안(상위 자신 먼저)
+
+
+class UsSectorDetailResponse(UsSectorMarketResponse):
+    coverage: int
     members: list[UsMember]                # 내 커버리지, 시총 순
     docs: list[UsSectorDoc]                # 최근 10일, 커버리지 종목이 붙은 자료(붙은 수 많은 순)
     data_links: list[UsDataLink]

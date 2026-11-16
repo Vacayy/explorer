@@ -3,7 +3,7 @@
 이 라우터의 GET은 저장된 행만 읽는다(생성은 POST /big-picture/rebuild 하나뿐). 생성(서사·세계관·drift 요약)을 일으키는 경로는 부르지 않는다
 — 위젯과 랜딩이 열릴 때마다 LLM이 돌지 않게. tests/test_world_reads.py가 이를 지킨다.
 """
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from database import get_connection
 from models.world import BigPicture, Checkpoint, Contested, MyStockNarratives, NarrativeChanges, RebuildResult
@@ -34,8 +34,11 @@ def rebuild_big_picture():
 
 
 @router.get("/changes", response_model=NarrativeChanges)
-def changes(days: int = Query(7, ge=1, le=60), limit: int = Query(20, ge=1, le=100)):
+def changes(request: Request, days: int = Query(7, ge=1, le=60), limit: int = Query(20, ge=1, le=100)):
     """최근 days일에 새 버전이 나온 서사 — 바뀐 것 한 줄 + 추가·삭제 고리."""
+    if getattr(request.state, "public_access", False):
+        from security.public_narratives import changes as stored
+        return stored(days,limit)
     return _read(world_reads.narrative_changes, days, limit)
 
 

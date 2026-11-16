@@ -6,6 +6,7 @@
 
   python scripts/check_live_contracts.py
 """
+import os
 import shutil
 import subprocess
 import sys
@@ -17,7 +18,7 @@ PROJECT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT / "backend"))
 from pipeline.ops import record_run  # noqa: E402
 
-BASE = "http://localhost:8000"
+BASE = os.environ.get("API_BASE", "http://localhost:8000").rstrip("/")
 
 
 def main() -> int:
@@ -33,7 +34,8 @@ def main() -> int:
         record_run("live_contracts", "error", "node를 PATH에서 찾지 못함", 0)
         return 1
     p = subprocess.run([node, "scripts/check-live-contracts.mjs"], cwd=PROJECT / "frontend",
-                       capture_output=True, text=True, timeout=1800)
+                       capture_output=True, text=True, timeout=1800,
+                       env={**os.environ, "API_BASE": BASE})
     out = (p.stdout or "") + (p.stderr or "")
     summary = next((ln for ln in out.splitlines() if ln.startswith("실제 응답 계약 검사")), out[-300:])
     fails = [ln for ln in out.splitlines() if ln.startswith("FAIL")]

@@ -50,6 +50,11 @@ def _brk(conn) -> list[tuple[str, float]]:
 
 def _recessions(conn) -> list[dict]:
     rows = conn.execute("SELECT snapshot_date, value FROM market_indicators WHERE indicator='regime_usrec' ORDER BY snapshot_date").fetchall()
+    return recessions_from_rows(rows)
+
+
+def recessions_from_rows(rows):
+    """Group explicit recession observations into the existing month-end bands."""
     out, start, prev = [], None, None
     for d, v in rows:
         if v >= 1 and start is None:
@@ -193,6 +198,16 @@ def get_regimes() -> dict:
         fetched = conn.execute("SELECT max(fetched_at) FROM us_prices WHERE stock_code=?", (INDEX,)).fetchone()[0]
     finally:
         conn.close()
+    return regimes_from_series(series, recessions, fetched)
+
+
+def regimes_from_series(series: list[tuple[str, float]], recessions: list[dict],
+                        fetched: str | None = None) -> dict:
+    """Existing regime calculation over an explicit chronological price snapshot.
+
+    Preserve historical confirmation dates, lags and provisional phases. The
+    caller must validate input quality and permission before publishing results.
+    """
     phases = phases_of(series)
     trend = trend_of(series)
     current = None
@@ -247,6 +262,12 @@ def get_brk(bench: str = "sp500tr", span: str = "all") -> dict:
         recessions = _recessions(conn)
     finally:
         conn.close()
+    return brk_from_series(brk, idx, spx, recessions, bench=bench, span=span)
+
+
+def brk_from_series(brk, idx, spx, recessions, *, bench='sp500tr', span='all') -> dict:
+    """Existing comparison math over explicit stored inputs; no DB or collector."""
+    meta = BENCHES[bench]
     bench_map = dict(idx)
     common = [(d, v, bench_map[d]) for d, v in brk if d in bench_map]
     base = {"bench": {"key": bench, **meta, "first_date": idx[0][0] if idx else None},

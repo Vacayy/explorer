@@ -245,7 +245,7 @@ def _briefing_evidence(items: list[dict]) -> list[dict]:
         conn.close()
 
 
-def _result(status: str, items: list[dict], error: str | None) -> dict:
+def _result(status: str, items: list[dict], error: str | None, *, include_evidence: bool = True) -> dict:
     _flagged = list(items)
     clusters = _clusters(_flagged) if _flagged else []
     if _flagged:
@@ -257,7 +257,7 @@ def _result(status: str, items: list[dict], error: str | None) -> dict:
         "items": _flagged,
         "clusters": clusters,
         "idiosyncratic": [m for m in _flagged if m.get("flags")],
-        "briefing": _briefing_evidence(_flagged),
+        "briefing": _briefing_evidence(_flagged) if include_evidence else [],
     }
 
 

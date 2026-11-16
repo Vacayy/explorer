@@ -17,6 +17,7 @@ def at(day: str, hhmm: str) -> datetime:
 
 class HealthTests(unittest.TestCase):
     def setUp(self):
+        self.enterContext(patch.object(health.sys, "platform", "darwin"))
         self.conn = sqlite3.connect(":memory:")
         self.conn.executescript("""
             CREATE TABLE market_indicators(snapshot_date TEXT, indicator TEXT, value REAL);

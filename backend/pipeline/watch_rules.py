@@ -16,6 +16,7 @@ from datetime import date
 from database import get_connection
 from pipeline.market_analysis.strategies import catalog, evaluate_strategy, history_requirement, normalize_condition
 from pipeline.ops import record_run
+from pipeline.group_ownership import legacy_groups_condition
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS stock_groups (
@@ -196,7 +197,8 @@ def refresh_us_prices(conn: sqlite3.Connection) -> list[str]:
     fetch_prices는 신선하면 건너뛴다. 실패한 티커를 돌려준다."""
     from pipeline.us_data import fetch_prices
     failed = []
-    for (code,) in conn.execute("SELECT DISTINCT stock_code FROM stock_group_members").fetchall():
+    for (code,) in conn.execute(f"SELECT DISTINCT m.stock_code FROM stock_group_members m "
+                               f"JOIN stock_groups g ON g.id=m.group_id WHERE {legacy_groups_condition(conn)}").fetchall():
         if market_of(conn, code) != "us":
             continue
         try:
@@ -211,7 +213,8 @@ def evaluate_all(as_of: str | None = None, force: bool = False) -> dict:
     conn = connect()
     try:
         failed = refresh_us_prices(conn)
-        groups = [r["id"] for r in conn.execute("SELECT id FROM stock_groups ORDER BY id").fetchall()]
+        groups = [r["id"] for r in conn.execute(
+            f"SELECT g.id FROM stock_groups g WHERE {legacy_groups_condition(conn)} ORDER BY g.id").fetchall()]
         summaries = [evaluate_group(conn, gid, as_of, force) for gid in groups]
         us_as_of = as_of or latest_trade_date(conn, "us")
     finally:

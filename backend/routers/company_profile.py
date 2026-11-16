@@ -2,7 +2,7 @@
 import re
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from pipeline import company_profile as cp
@@ -14,6 +14,31 @@ class ProfileRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     reason: str | None = Field(default=None, max_length=600)
     force: bool = False
+
+
+class OfficialReport(BaseModel):
+    rcept_no: str
+    report_nm: str
+    rcept_dt: str | None = None
+    url: str
+
+
+class ProfileRecord(cp.WebProfile):
+    id: int
+    stock_code: str
+    version: int
+    created_at: str
+    model: str | None = None
+    cost_usd: float | None = None
+    reason: str | None = None
+    source_count: int
+    official_report: OfficialReport | None = None
+
+
+class ProfileResponse(BaseModel):
+    profile: ProfileRecord | None
+    reuse_hours: int
+    market: Literal['kr', 'us']
 
 
 def _company(conn, code: str, market: str):
@@ -35,9 +60,16 @@ def _company(conn, code: str, market: str):
     return row["corp_name"], row["sector"]
 
 
-@router.get("/{code}")
-def get_profile(code: str, market: Literal["kr", "us"] = Query("kr")):
+@router.get("/{code}", response_model=ProfileResponse)
+def get_profile(code: str, request: Request, market: Literal["kr", "us"] = Query("kr")):
     code = code.upper() if market == "us" else code
+    if getattr(request.state, 'public_access', False):
+        from security.public_company_profile import stored_profile
+        try:
+            profile = stored_profile(code, market=market)
+        except LookupError:
+            raise HTTPException(404, 'Public company profile unavailable') from None
+        return {'profile': profile, 'reuse_hours': cp.REUSE_HOURS, 'market': market}
     conn = cp.connect()
     try:
         _company(conn, code, market)

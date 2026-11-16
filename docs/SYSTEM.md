@@ -6,7 +6,99 @@
 > 유지 규칙: 구조(테이블·파이프라인·라우터·IA·의존성)가 바뀌는 커밋은 본 문서 갱신을 포함한다 (CLAUDE.md Context Discipline).
 > (구 ARCHITECTURE.md·PLAN.md는 초기 대시보드 시절 문서 — docs/private/archive/로 이동, 본 문서가 현행)
 
+## 외부 컨콜 자료 표시 경계
+
+공개 컨콜 상세의 `content_status`는 `published` 또는 `source_only`다. 준비된 수집 원문과 기존 digest가 있으면 제공사와 관계없이 그대로 반환하고, 없으면 기업·회계분기·가격 상세는 유지하며 `source_only`로 응답한다. recent/company/follow의 `has_digest`도 준비된 digest에 맞춘다. `source_url`·`source_name`·`source_link_kind`로 제공사 링크와 개별 기사 링크를 구분한다. `call_momentum`은 저장된 점수·근거·기존 요약을 공개 사본에서 조회하며 생성이나 갱신을 실행하지 않는다. private 컨콜 조회·생성은 유지한다.
+
+공개 컨콜의 `public_transcript_sources`는 직접 대조한 개별 원문 URL만 준비하며 transcript ID와 티커·회계연도/분기·콜 날짜·제공사가 모두 일치해야 한다. Motley Fool HTTPS 공식 도메인/기사 경로와 분기 suffix를 검증하고, 준비되지 않거나 맞지 않는 링크는 기존 제공사 안내를 유지한다. 과거 사본의 링크 테이블 부재는 제공사 안내로 호환하며 조회 중 수집/DDL은 실행하지 않는다.
+
+## 공개 수집 자료
+
+공개 체험 채팅은 검증된 회원 세션이 있으면 회원 ID의 목적별 HMAC으로 계정별 호출 횟수를 묶는다. 익명은 서명된 브라우저 쿠키 기준이며 네트워크·전체 한도도 적용한다. 브라우저별 익명 제한은 계정별 제한과 다르고 금액 상한을 보장하지 않는다.
+
+공개 로그인에서 운영자는 기존 단일 소유 포트폴리오 화면과 API를 사용한다. 원장 변경은 운영자 세션의 Origin·CSRF 검사를 거치며 일반 회원은 기존 회원별 포트폴리오를 사용한다. 기존 데이터가 회원 간 자동 분리되거나 이관되지는 않는다.
+
+공개 모드의 피드와 문서 화면은 기존 `FeedPage`·`DocPage` 및 기존 피드·문서 조회 API를 사용한다. 운영자가 기존 수집 자료와 개인 기록의 공개 조회를 허용한 범위이며 읽음 처리·문서 생성·스터디 등 쓰기 API를 익명에게 허용하지 않는다. 실제 자료 범위는 배포에 연결한 DB 사본에 달려 있다.
+
+공개 문서의 기존 첨부는 별도 읽기 전용 media 마운트에서 GET·HEAD로 제공한다. 서버의 정적 파일 경로 검사를 거치며 쓰기 요청과 심볼릭 링크 추적은 허용하지 않는다.
+
+공개 자료 사본에 `public_collection_index`가 명시적으로 준비된 경우 공개 문서와 피드는 그 인덱스에 담긴 수집 자료만 읽는다. 원본 DB가 아니라 개인정보를 분리한 읽기 전용 사본과 첨부 디렉터리가 전제이며, 요청 중 인덱스 생성이나 AI 요약 생성을 수행하지 않는다. 기존에 저장된 `enrichments.summary`는 문서 응답에 포함되고 기존 피드의 요약/원문 보기 방식으로 표시한다. 인덱스가 없는 기존 배포는 기존 승인 방식으로 동작한다.
+
+공개 유튜브 문서는 읽기 전용 `public_youtube_reading`의 저장 상태와 자막을 사용해 기존 AI 정리본·원본 자막·짧은 요약 탭을 표시한다. 공개 요청은 정리본을 생성하지 않으며 작업 토큰과 오류는 반환하지 않는다.
+
+공개 한국 섹터 상세는 준비된 읽기 전용 `public_sector_details`와 `public_peer_runtime`의 저장 스냅샷으로 기존 개요·Peer 그룹·이 산업의 데이터·종목 탭을 제공한다. 자료·내러티브는 공개 사본에 있는 항목만 연결하고 개인 팔로우 및 AI 실행은 연결하지 않는다. 섹터에 연결된 메가 내러티브는 `public_sector_mega`의 저장 본문을 조회한다.
+
+공개 `/value-chain`은 준비된 읽기 전용 `public_value_chain_snapshot`에서 기존 지도·한국 확인·전파·흐름·기대치·대만 연결 조회를 제공한다. 원본 조회 결과를 별도 사본에 저장하므로 원본 DB, 수집 및 재계산을 공개 요청에서 실행하지 않는다. `kr` 필터는 준비된 연결과 확인 대상에 적용한다. 기존 보고서는 `public_chain_reports`에서 읽고, 새 보고서 생성은 공개 화면에 마운트하지 않는다.
+
+## 공개 미국 기업 상세의 저장 수치 조회
+
+공개 `/us/:ticker`는 기존 기업 헤더·시세 차트·실적 카드·재무 탭·손익 흐름·발표 이력을 사용한다. `security.public_us_dossier`는 공개 미국 기업 registry에 속한 티커만 같은 readonly snapshot의 `us_fundamentals`(준비된 수치 JSON·수집 시각), OHLCV, `us_quarterly`, `us_segments`에서 읽는다. 기존 `/api/spine/us/{ticker}`와 손익/분기 API, `/api/spine/feed/company-prices?market=us`의 공개 분기이며 get_fundamentals의 TTL 수집·갱신을 호출하지 않는다. 주가 응답은 `CompanyPriceResponse`로 소수점 OHLC를 보존한다. `income_flow`는 호출자 소유 연결을 받을 수 있으며 기존 분기/TTM·사업부 계산을 재사용한다. 자료 없는 기업은 재무 스냅샷 없음으로 표시한다. 개인 Watch/Save/수집/기술분석 실행은 마운트하지 않는다. 기업 설명·증거·Lens·월드모델의 공개 연결은 별도 후속이며 전체 기능 수용이나 원천 재배포 권리 승인을 뜻하지 않는다.
+
+## 기존 피드 화면 재사용
+
+`FeedFrame`/`FeedHeaderView`, `ChannelReaderFrame`/`ChannelEntry`, `DocumentCardView`는 private/public 피드가 공유하는 기존 레이아웃·헤더·2열/모바일 틀·소스 행·카드다. 공개 `/feed`는 `PublicFeedPage`에서 `/api/public/feed`의 승인 소스 디렉터리와 서버 채널/종류/페이지 필터를 연결한다. URL의 channel/channel_type/channel_q/reader_topic/reader_page/reader_until/reader_open과 문서 return_to를 유지한다. 개인 읽음·관리·스터디·주제추천 hook은 마운트하지 않는다. 공개 문서 검색은 기존 승인 검색으로 연결하며 원래 DocumentSearch 전체 UI와 홈 구성 연결은 후속이다.
+
+`PublishedDocument.channel`은 해당 문서의 출처 식별/명칭/종류를 승인 fingerprint에 포함한다. PublicationStore의 명시 initialize는 v1/v2→v3로 `publications.feed_metadata`를 추가하며 GET은 DDL을 실행하지 않는다. 기존 승인에 새 채널 정보를 자동 부여하지 않으며 새 preview/approve가 필요하다. 승인 transaction에 원문 없는 채널/제목/게시일 metadata를 저장하므로 디렉터리는 전체 원문/첨부를 읽지 않고, 선택한20개 문서만 현재 승인 fingerprint와 공유128MiB 읽기 예산으로 검증한다. 디렉터리 이름·건수는 승인 revision 기준이다. 원문이나 출처가 이후 변경되면 새 내용은 노출하지 않고 문서 검증에서 제외하며 승인 철회는 디렉터리에서도 제외한다. 주제 URL은 승인 제목 검색이며 전체 본문 검색은 기존 문서 검색 API를 사용한다. `PublishedDocumentCard`는 재검증 중/실패/철회/오프라인에서 캐시 본문을 숨긴다. 실제 공개 배포에는 v3 사전 준비와 해당 배포 revision의 복원/schema 검사 갱신이 필요하다.
+
+## 저장된 한국 브리핑 조회 분리
+
+`market_today.read_snapshot(conn, day, slot)`는 준비된 연결에서 기존 회차·본문·출처·내러티브 링크·날짜 탐색 응답을 읽는다. 연결 소유/스키마 준비/수집/모델 호출은 수행하지 않는다. private `read`는 기존 초기화 후 같은 함수를 사용한다. `security.public_market_today`가 공개 GET에 이 함수를 연결한다. 명시 준비된 market_today 컬럼만 readonly authorizer로 읽고 내러티브 조회를 끈다. 본문·회차·날짜 탐색은 유지하며 출처 링크는 현재 승인 문서 metadata로 재구성하고 그 외 출처/refs와 비공개 내러티브 링크를 제외한다. 집계는 해당 저장 브리핑의 생성 시점 기준이다. 공개 `/api/spine/indices`, `/indices/breadth`, `/macro`도 같은 저장 시장 데이터 readonly 연결을 사용한다. 지수 `read_indices(conn)`와 매크로 `read_numeric_macro(conn)`는 기존 수치 계산을 재사용하며 public 분기는 background 수집·lazy snapshot·신호 산문 캐시·credential 확인을 실행하지 않는다. 공개 HomePage/HomeKrPage/HomeUsPage는 원래 컴포넌트를 사용하며 한국 브리핑·지수·시장 폭·수치 context 외 다른 블록의 공개 조회 연결은 아직 진행 중이다. 한국 시장 카드도 기존 DayNav를 공유하고 날짜 변경과 회차 초기화를 한 URL 갱신으로 처리한다.
+
+## 기업 근거의 공통 기간 계산
+
+`pipeline.company_evidence.evidence_response`는 호출자가 선택한 근거 행의 기간·장 마감 시각·출처·페이지·30일 흐름을 계산한다. 입력 행을 수정하지 않으며 DB나 수집기를 직접 호출하지 않는다. 기존 private `company_evidence`는 개인 엔티티 연결/공시 조회와 페이지 출처명 resolver를 유지한다. 이 분리는 승인 문서 입력을 연결하기 위한 준비이며 공개 근거 API 허용이나 데이터 배포를 뜻하지 않는다.
+
+공개 GET `/api/spine/feed/company-evidence?market=us`는 public US registry와 `public_company_evidence(ticker,doc_id,fingerprint)`의 명시 준비 연결을 사용한다. 각 문서는 PublicDocuments의 현재 승인/원문 fingerprint 및 연결 준비 시 fingerprint가 모두 일치해야 한다. 이 집합에 대해서만 기존 기간·출처·검색·페이지·coverage/flow를 계산한다. 철회/변경 자료는 본문과 집계에서 제외하고 재승인만으로 기업 연결을 새 revision에 승계하지 않는다. 개인 엔티티·팔로우·공시 조회나 요약 POST는 허용하지 않는다. 공개 미국 자료 탭은 기존 CompanyMentions의 기간/흐름/출처와 CompanyEvidence의 검색/페이지를 재사용한다. 가격 선택 구간에도 같은 기간 조건을 적용한다. 공개 요청은 AI 요약을 마운트하지 않으며 재검증 중/실패/오프라인에서 캐시 본문과 통계를 숨긴다. 공개 문서 return_to는 허용된 기업 경로의 기간/검색 문맥을 보존한다. 실제 데이터 준비 및 배포 수용은 별도다.
+
+## 공개 기업 개요 저장 조회
+
+`GET /api/spine/company-profile/{code}?market=us`의 public 분기는 공개 미국 기업 registry와 같은 readonly snapshot의 `public_company_profiles(ticker,payload_json)`만 조회한다. 준비된 보고서의 사업 설명·인용·출처 metadata·gaps·작성시각을 유지하며 model/cost/reason은 null, 원문 발췌는 빈 값이어야 한다. 출처 URL과 인용 ID·기업 식별을 검증하고 개인 입력이나 알려진 제한 제공사 입력이 있는 준비본을 거부한다. 개인 company_profiles 테이블이나 수집/모델 호출로 폴백하지 않는다. 등록 기업의 미준비 보고서는 profile=null, 등록 밖/아직 미연결 시장은404다. POST 조사 기능은 공개 허용 목록에 없다.
+
+공개 `/us/:ticker` 개요는 기존 CompanyOverview의 본문·모바일 시트를 `PublicCompanyOverviewCard`에서 재사용한다. GET만 마운트하며 작성시각·원문 미확인 출처·기존 gaps를 표시한다. private의 조사/갱신 기능은 유지한다. 저장 보고서는 현재 사실의 재검증이나 기업 전체 범위의 완전성을 보장하지 않는다. 근거 탭·Lens·worldmodel 연결은 별도다.
+
+## 초기 조회 전용 공개 모드
+
+`EXPLORER_ACCESS_MODE=public`, `EXPLORER_PUBLIC_READ_ONLY=1`, `EXPLORER_AUTH_ENABLED=0`의 명시 조합은 OAuth·회원·채팅 활성화 전 조회 배포용이다. startup은 origin/공개 앱·publication·macro 저장소를 검증하며 OAuth/채팅 저장소나 키를 읽지 않는다. 회원·운영자·trial 및 session 외 인증 경로는 boundary에서503으로 닫고, 쿠키나 identity header로 우회할 수 없다. `/api/auth/session`은 no-store 익명 응답과 `login_available=false`, `chat_available=false`를 반환한다. 프론트는 준비 중을 표시하며 chat hook을 마운트하지 않는다. 읽기 전용을 명시하지 않은 인증 활성 모드의 설정/저장소 오류는 기존503·startup 실패로 유지한다. private 인증 흐름은 그대로다. 이 모드는 회원/채팅 구현 완료나 활성화를 뜻하지 않으며, 실제 활성화에는 해당 저장소 준비와 기존 인증 검증이 필요하다.
+
+## 공개 API 시작·종료 경계
+
+`EXPLORER_ACCESS_MODE=public`도 전체 main 라우터를 유지하지만 init_db·Telegram bot·analysis/discovery worker·개인 observe 기록/flush를 시작하지 않는다. `security.public_startup`은 명시 준비된 앱/identity/login/publication/quota/macro와 설정을 readonly로 확인하고 미준비 시 listen 전에 실패한다. 전체 복원 무결성·스키마·소유권 gate는 별도 배포 절차이며 이 가벼운 검사가 대신하지 않는다. IPC socket 부재는 채팅 요청503으로 남겨 조회 API 시작과 분리한다. private의 기존 초기화·worker 동작은 유지한다.
+
+## 프론트엔드 의존성 보안 보완 (2026-11-14)
+
+- package-lock의 선언된 호환 범위 안에서 의존성을 갱신했다. axios·react-router-dom·Vite 등의 수정 버전을 포함하며 A2UI/AG-UI의 직접 고정 버전은 유지한다.
+- `@a2ui/markdown-it`이 고정한 DOMPurify3.4.11은 해당 패키지에 한정한 npm override로3.4.17을 사용한다. 근거: GHSA-cg2g-xh64-v4q7 및 같은 수정 버전의 sanitizer 보완. A2UI의 현재 호출은 문자열 기본 sanitize이며, 해당 critical advisory의 특수 DOM/shadow-root 설정이 이 앱에서 재현됐다는 뜻은 아니다.
+- A2UI Markdown의 정상 서식·안전 링크 보존과 위험 HTML/JavaScript 링크 비실행을 회귀 검사한다. Zod3 의존 체인은 메이저 호환성 검토가 필요하므로 Zod4 강제 치환하지 않는다. audit 경고 개수는 배포 환경에서 재현된 취약점 개수와 구분한다.
+
+## 공개 수출입 조회 준비
+
+`GET /api/public/trade`는 `security.public_trade`의 readonly/query_only/컬럼 허용 snapshot으로 고정11개 공개 HS 카탈로그의 최근 최대240개월 저장 수치만 읽는다. 개인 trade_follow·CSV·beneficiaries·관심그룹과 수집기를 호출하지 않는다. `trade_metrics.table_from_inputs`는 기존 개인 테이블 계산과 공개 입력이 공유하는 순수 계산이며 개인 조회 경로의 의미는 유지한다. 공개 projection은 누락 비교월을 신규·재개로 표시하지 않고 결측 기여도를 null로 유지한다. 그룹/선택 품목 소계는 관측수·전체수·partial을 함께 제공한다. 공개 `/follow/trade`는 URL의 수출입/월/2·5년/그룹/검색/품목 상태로 저장 추이·MA12·증감률·무역수지를 표시하며 개인 관리와 관련종목 모델 호출은 제외한다. 운영 배포·원천 정기갱신·실제 외부 연결은 별도다.
+
+## 공개 매크로 수치 준비
+
+`security.public_macro`는 `EXPLORER_PUBLIC_MACRO_DB`의 직접원천 schema/계열receipt 검증된 고정 지표만 readonly/query_only snapshot으로 읽고 `pipeline.macro.numeric_macro` 순수 계산을 재사용한다. `/api/spine/macro/public`은 `PublicMacroResponse`의 수치·관측일·5관측 비교일·원출처/입력일·coverage만 반환한다. 기존 GET의 lazy수집과 signal/개인체크/환경설정은 연결하지 않는다. 직접Board/NYFed취득을 작은독립저장본으로 준비하고 `/home/macro`는 지표별관측일/5관측비교/혼합입력날짜/출처를 표시한다. Yahoo원천검토·정기갱신·매크로국면/리스크/해설 연결은 후속이며 운영공개를 뜻하지 않는다.
+
+국면 계산은 `regimes.regimes_from_series`로 명시한 종가/침체 snapshot을 받을 수 있고, `era.quantitative_temperature`는 개인 체크를 읽지 않는 기존 정량 items 계산이다. 기존 개인 진입점이 이 함수를 재사용하며 기존 결과를 유지한다. 이 분리는 공개 API/자료권리 승인이나 운영 연결을 뜻하지 않는다. `risk.get_risk`의 전역 DB fallback·sync metadata 및 개인 shared cache는 공개 진입에서 제외해야 한다. 상세는 market-regimes spec의 공개 정량 경계에 기록한다.
+
+## 회원 문서 저장 준비
+
+`security.member_saved.initialize_member_saved`의 명시 초기화로 별도 `member_saved_documents`(owner_user_id/doc_id/saved_fingerprint/note/created_at, owner+doc UNIQUE)를 만든다. 기존 saved_items와 개인 레거시 저장은 승계하지 않는다. `/api/member/saved` GET/POST 및 항목 PATCH/DELETE는 인증 principal 소유 참조만 다루고 기존 PublicDocuments 승인/fingerprint 검증으로 현재 제목·서버내부링크를 재조회한다. 문서 본문·제목·URL을 저장하지 않으며 철회/변경 시 title/url=null,available=false와 본인 메모만 유지한다. 다른 내용이 새로 승인되면 status=changed로 구분하고 현재공개본 링크만 따로 제공하며 저장 fingerprint는 중복 POST로 덮어쓰지 않는다. 목록은20개/페이지, owner200개, 공유128MiB 검증 예산이며 장애/예산초과는503이다. GET DDL0, 메모/해제는 publication 저장소가 불가해도 owner참조관리만 수행할 수 있다. 공용 `/feed/saved`와 공개문서 저장버튼은 회원별 query key/CSRF/계정전환 초기화를 사용하며 legacy useSaved/usage를 호출하지 않는다. 실제 운영 초기화·배포와 다른 저장 종류의 회원화는 후속이다.
+
+## 회원 운용 원칙 소유권 준비
+
+명시적 `initialize_ownership`는 기존 회원 포트폴리오 group에 연결된 `member_portfolio_principles` 테이블/인덱스를 준비한다. `/api/member/portfolio/principles` GET/POST 및 항목 PUT/PATCH/DELETE는 `MemberPrinciples`가 인증 사용자 소유 group 안에서만 처리한다. 기존 개인용 원칙 테이블·전역 scheduler/LLM과 분리하고 기존 규칙 validate/describe만 재사용한다. 원칙 state GET은 동일 readonly snapshot의 본인 원장과 기존 순수 violations로 평가하며 규칙별 evaluated/partial/unavailable/not_applicable을 반환한다. 취득가 대체 시세로 비중을 판정하지 않는다. 고점 복합규칙은 시장·편입 전252개 저장관측·유한 양수·평가 종가일치를 검증한 본인 보유만 기존 계산기에 전달한다. 로더가 제거하는 NULL/비양수/비수치 원자료도 먼저 검사해 평가에서 제외한다. 저장되지 않은 거래일의 완전성은 보장하지 않으며 역사적 평가·공통노출은 미검증으로 명시한다. 회원 `/portfolio/principles` 화면은 원문/직접 확인한 규칙·참고목록 CRUD와 평가 상태를 제공한다. 규칙 metadata GET은 기존 RULES 정의를 제공하고 계정별 query key 및 화면 remount로 분리한다. 문장 자동 해석·나머지 평가입력·회원 알림은 후속이며 운영 schema/데이터 이관을 뜻하지 않는다.
+
+## 공용 저장 재무 조회
+
+`GET /api/financials/{stock_code}`는 공용 모드에서 `security.public_financials`의 컬럼 제한 readonly snapshot으로 회사 매핑과 재무 계산을 수행한다. 쿼리 옵션과 관계없이 외부 수집을 하지 않으며 기존 계산기를 연결 주입으로 재사용한다. 수집 POST·income-flow는 공개 정책에 포함하지 않는다. 공유 응답은 `models.financials.FinancialResponse`로 검증한다. 공용 `/financials` 기업 검색에서 `/analyze/:stockCode/financials`로 이동하며 회사명/코드 검색·기본 metadata도 같은 readonly 허용 컬럼 경계를 사용한다. 기존 FinancialsPage 표/차트를 재사용하고 개인 NextQuestions는 마운트하지 않는다. 재무 조건은 URL에 보존한다.
+
+## 공용 한국 산업 지도
+
+공용 한국 산업 지도는 `sector_rs.sector_map_from_connection`에 readonly 연결을 전달해 전역 DB/결과 캐시를 우회하고 요청별 snapshot 메모로 계산한다. `security.public_industry.kr_industry_map`은 공유 업종 분류를 유지하되 출력 그룹은 benchmark SEED18개로 제한하며 설명도 같은 코드 metadata를 사용한다. DB의 benchmark 자유 메모/정정 reason 및 개인 문서/Peer runtime을 읽지 않는다. public `/industry`는 기존 한국/미국 전환·지도/표/순위/카드와 섹터/ETF 검색을 연결하며 Peer 검색 요청을 마운트하지 않는다. 한국 시장 상세 `/api/spine/industry/{sector}/market`는 같은 readonly snapshot으로 기존 구성종목 RS/비중·벤치마크 시계열을 연결한다. `group_members_from_connection`을 추출해 숨은 전역 연결을 제거하고 개인 detail cache/문서/내러티브/팔로우/Peer를 호출하지 않는다. 공개 `/industry/:sector`는 기존 시계열·RS·구성종목 표를 재사용하고 `/analyze/:stockCode/summary`의 저장 OHLCV/분기 재무와 재무제표로 연결한다. 지도 검색·보기/섹터 기간/기업 시세 기간을 URL 복귀 문맥에 보존한다. 기업 시세 `/api/companies/{stock_code}/prices`는 readonly 허용 컬럼으로 최신1500개 저장 관측만 반환한다. Peer/승인 해설·원문·개인 기능 연결은 후속이다. 구성종목 ret_1m/ret_12m은 각각30/365일 전 저장 시세로 비교하며 RS의91/7일 기준과 구분한다.
+
 ## 문서 안내
+
+예약된 실제 응답 계약 검사(`scripts/check_live_contracts.py`)는 `API_BASE`로 API 주소를 선택하며, Python 사전 health 검사와 Node 계약 검사에 같은 정규화된 주소를 전달한다. 기본값은 기존 MacBook용 `http://localhost:8000`이다. API와 worker가 분리된 Docker 환경에서는 worker가 접근 가능한 사설 API 주소와 네트워크를 명시해야 한다.
 
 설계 원칙은 PHILOSOPHY(비공개 문서), 주요 기능의 요청·처리·저장 흐름과 기술 선택은 [TECH_DECISIONS](TECH_DECISIONS.md), 세부 계약은 [기능별 스펙](specs/README.md)에 있다. 이 문서는 전체 시스템 현황과 운영 항목을 관리한다. 2026-09-12 문서 대조에서 승인 범위·사용자 기록 소유권·스터디 웹 탐색·조회 정책의 적용 범위를 바로잡았다. 과거 운영 측정치는 측정 당시 기록이며 현재 값을 뜻하지 않는다.
 
@@ -169,6 +261,7 @@
 - 지수 스트립은 S&P500·나스닥·코스피·코스닥·항셍·니케이225·대만증시 순. `pipeline/indices`에 ^TWII/Asia-Taipei 세션 추가, 기존 index_* 저장소 재사용. 16px 값·20px 추이로 압축.
 - 시장 탭은 상태만: 시장 국면·미국장·국장 거래대금·Risk 모니터링(전체 폭). **D-208**: 읽을거리(주목 주제·언급 모멘텀·AI 생성물·내러티브·종목 요약·리포트)는 피드로 — Explorer 생성물 소스(내러티브·리포트·파급 분석)와 리더 상단 주제 칩(주목 주제·부상 종목, `reader_topic`). 인과 그래프 업데이트(옛 `/knowledge` 변화·검증 지식)는 2026-11-05 개편 4g에서 `/knowledge`와 함께 뺐다가 D-308로 Thesis › 그래프(`/knowledge/ontology`) 그래프 아래 접힌 블록으로 되살렸다(`explore/GraphActivitySection`, 펼칠 때만 호출, docs/specs/world-model.md).
 - 'AI가 최근 만든 것'(`GET /api/spine/home/ai-activity`, `home/AiActivityFeed`·`hooks/useAiActivity`)은 화면이 없어져(4a) 7단계에서 API까지 지웠다. D-325(2026-11-06)로 상단 바 아이콘(`layout/AiOutputs`)으로 되살렸다. 원천은 피드 Explorer 묶음과 같은 `GET /api/spine/feed/timeline?scope=system`(최신 20건, `useExplorerOutputs`)과, 유튜브 AI 정리본까지 담도록 되살린 `GET /api/spine/home/ai-activity`(지난 7일 30건, `useAiActivity`) 두 개를 `lib/aiOutputs.mergeAiOutputs`가 합친다 — 종류·주제·생성 시각이 같으면 타임라인 쪽 하나만, 최신순.
+- 공개 `GET /api/spine/kr/movers`는 `security.public_kr_movers`의 readonly/query_only/컬럼 제한 연결로 저장 순위·업종·거래대금만 읽고 기존 클러스터·급등락 계산을 재사용한다. force 수집은403이며 별도 개인 문서 연결은 호출하지 않는다. 승인 문서 근거 연결은 아직 후속으로, 공개 briefing은 빈 배열이다. 개인 진입의 근거 조회는 유지한다.
 - `kr_movers._briefing_evidence`: 상위 5종목의 스냅샷 당일까지 3일 발행 자료를 entity_links로 연결, 각 최대 2건. 기업명이 포함된 저장 요약/원문 발췌와 문서 링크, 우선주 본주 포함·근거 없음 표시. GET은 저장분 조회이며 LLM 호출 없음. 기존 수집 날짜 정확도의 제약을 유지하고 스냅샷 기준으로 표시.
 - 현행 계약과 출처: `specs/home-feed.md`. 검증: `logs/home-order/`.
 
@@ -982,3 +1075,105 @@ Peer 번들은 SQLite가 아니라 별도 수집 파일에서 오므로 보충 �
 | 연결됨(합성 별칭 1건 확인 후 정리) | 별칭 승인 소급 링크(POST `/keywords/{id}/approve`, `pipeline.postgres_keyword_backfill`): API가 `retrieval_jobs`(keyword_backfill)에 넣고 기다린다(최대 300초, 레거시 응답 `retro_linked_docs`). 계산 워커(EXPLORER_ONESHOT=1, 무거운 게시 작업 허용)가 투영 사본에서 레거시 승인(상태 + `_retro_link`)을 그대로 실행하고, 링크가 바뀐 문서를 `publish_revisions`로, 별칭 행을 override로 한 PG 트랜잭션에 게시한다. 새로 수집된 문서의 개정은 기존 규칙대로 unsupported로 보존한다. 승인 취소(되돌리기)는 레거시에도 없다 |
 | 연결됨(모의 + 실제 0호출) | 컨콜 프록시 추출(POST `/transcript/proxies/extract`, `extract_all_numeric_native`): 레거시 의미 그대로(시드 → 활성 프록시마다 최근 40건, 관측·판정한 쌍은 건너뜀, 전체 40스캔 → 그래프 투영). 후보 선택은 메모리에서 한다(전사 메타·문서 ID·판정 쌍을 한 번씩 읽음). 질문별 추출도 같은 선택을 써서 질문 2 기준 113초→0.7초. 지금은 모든 대상 쌍이 판정돼 있어 실제 누름은 호출 0 |
 | AI 대화 도구(19개 모두 연결) | get_study는 네이티브 스터디 표(study_project_members·study_sessions·study_annotations, 열은 레거시와 같음)를 투영 파일에만 싣고(`NATIVE_FILE_ONLY`, 연결마다 재파생하지 않음, PG 기본 키 그대로) 워커에서 레거시를 그대로 실행한다. 나머지 16개 읽기 도구는 계산 워커의 `chat_tool`로 레거시를 그대로 실행한다. get_quote는 저장 종가만 쓰고 제목에 '실시간 시세 아님'을 표시한다. 개인 기록 도구(get_portfolio·get_saved)는 소유자 원장에서 투영된 행을 읽으므로, 공개 노출 전 소유자 게이트 미완 항목에 대화 도구도 포함된다 |
+## Linux 예약 작업 상태 관측 (2026-11-14)
+
+`pipeline.health.scheduler_item`은 Linux에서 공유 `logs/scheduler-health.json`의90초 이내 UTC heartbeat·running·39jobs를 읽고 macOS에서는 launchctl 종료 코드를 읽는다. 조회 불가/미등록은 정상으로 표시하지 않는다. API는 다른 컨테이너 PID를 검사하지 않으며 worker 자체 healthcheck와 결과 데이터 신선도 점검을 병행한다. API 응답 필드 변경 없음. [운영 건강 계약](specs/ops-health.md).
+
+## 회원 인증 기반 (구현 중, 명시적 설정 전 비활성)
+
+`backend/security/identity_store.py`는 명시적 별도 SQLite에 identity/users/hashed sessions를 관리한다. `google_identity.py`는 공식 google-auth2.62.2 검증 후 서버 nonce/authorized-party를 확인한다. import 시 DB 생성 없음, 기존 API·운영 DB 변경 없음. 세션 HTTP/CSRF/Google callback은 routers/auth.py에서 등록하되 설정 전503으로 비활성이다. 기존 개인 데이터 소유권은 아직 연결 전이며 이 모듈만으로 외부 공개를 허용하지 않는다. [회원 접근 계약](specs/member-access.md).
+
+`security.trial_quota`는 별도 SQLite에서 익명 actor/network digest와 예약 상태만 저장한다. actor 누적·UTC 일간 network/전체·진행 슬롯을 한 write transaction으로 제한한다. 실행 전만 환불하며 실행 중 예약은 시간 경과/프로세스 재시작으로 자동 해제하지 않는다. `trial_identity`가 서명 쿠키·용도별 HMAC·명시적 프록시 CIDR/IPv6 /64 식별을 준비하고, `trial_chat`이 예약/근거 준비/dispatcher 호출/완료 확인/근거 재검증을 연결한다. 실행 전만 환불하며 IPC write 시도 이후 취소/연결 실패는 예약을 보존하며 명확한 전송 전 실패만 환불한다. remaining/state 조회는 표시/내부 확인용이고 실행 승인에 대체하지 않는다. HTTP 연결은 아래 준비 경로를 제공하며 실제 CLI dispatcher/장애 정리는 아직 미연결이다. [사용량 예약 계약](specs/member-access.md#익명-체험-사용량-예약-계약).
+
+`security.login_transactions`는 별도0600 SQLite에5분 로그인 state/binding hash와 nonce/PKCE를 관리한다. `security.login_flow`와 `routers/auth`는 browser-bound 일회용 callback과 세션교체/Origin+CSRF logout을 제공한다. 인증 설정키와 응답 계약은 member-access.md 참조. 콜백 access-log query 제거, no-store/no-referrer 응답을 적용하며 프록시의 동일 보호가 필요하다. 프론트 auth API/types와 생성 계약을 동기화했고 로그인 UI 및 기존 업무 API 권한은 미연결이다.
+
+`security.access_boundary`는 `EXPLORER_ACCESS_MODE=public`에서 ASGI 진입 경계를 설치한다(default private은 기존 비공개 실행). 유효 route+method 허용 목록, 미분류 API/정적 파일/WS 차단, 기존 세션 기반 member/operator principal, 쓰기 Origin/CSRF, no-store·고정 오류를 제공한다. 현재 허용은 health/auth 네 경로와 한국·미국 시장 개요·산업 지도 및 승인 문서/첨부이며 개인 업무 API는 아직 소유권 검증 전이라 열지 않는다. 포함 router prefix와 실제 앱 등록 목록을 합성 ASGI에서 검증했다. 이 설정 자체는 공개 배포·전체 화면/회원 기능 완료가 아니며 실제 공개 구성의 모드 사전검사가 별도로 필요하다. 세부 계약은 [회원 접근 계약](specs/member-access.md#공개-요청-진입-경계).
+
+`security.public_market`은 공개 시장 개요 요청에만 readonly SQLite 연결과 네 시장 테이블의 열/집계 함수 허용 목록을 제공한다. 개인 테이블·extra_json·쓰기·ATTACH/확장 로딩을 차단하며 기존 `MarketOverview` 응답/MarketHero 경로를 유지한다. 익명 kr/us 실제 합성 ASGI 응답과 개인 canary 비포함·DB 불변을 검증했고 운영 DB/이미지는 변경하지 않았다.
+
+프론트 `VITE_ACCESS_MODE=public`은 `MemberAccessProvider`/`AccountControl`로 세션 상태·Google 로그인·로그아웃을 연결한다. 확인된 계정/역할 변경과 로그아웃 성공 시 요청·개인 캐시/browser state를 제거하고 전체 이동한다. 첫 공용 연결은 기존 셸의 kr/us MarketHero이며, `PublicContent`와 공개 모드 조건부 마운트가 미연결 개인 페이지/전역 자동 조회·채팅·telemetry 호출을 막는다. 기존 private UI는 유지한다. 281프론트검사/TypeScript 및 합성 응답을 사용한 실제 Chrome 화면·개인 API 자동호출0·로그아웃 정리를 확인했다. 이는 임시 첫 경로이며 기존 대부분 화면/검색/모바일/원문첨부/회원·채팅 전체 범위는 후속 연결 대상이다.
+
+Vite는 `_explorer/build.json`에 실제 번들과 동일한 access mode/API base를 기록하고 public에서 cross-origin/기본 localhost API base를 거부한다. API 공개 경계의 `X-Explorer-Access-Mode: public` 표식은 차단 응답에도 적용해 배포 검사가 구형 private 앱의 우연한404를 성공으로 오인하지 않게 한다. 이 표식과 빌드 검증은 실제 공개 기능·Google 로그인 수용을 대신하지 않는다.
+
+공용 미국 산업 지도(`/industry?market=us`)는 기존 ETF 지도·순위·검색·필터를 재사용한다. `security.public_industry`가 sector_benchmark_prices의 ticker/trade_date/close만 readonly로 읽고, `us_map(include_coverage=False)`는 팔로우 조회를 생략한다. map 응답의 coverage만 nullable(null=개인 집계 제외), private 지도/상세는 기존 정수 계약을 유지한다. 공개 UI는 개인 커버리지 표시·정렬을 제외하고 직접 rank=cov URL도 허용 정렬로 처리한다. 국내 지도는 아래 공용 연결을 사용하며 국내 섹터 상세는 후속이다. API 계약을 재생성했다.
+
+공용 미국 섹터 상세(`/industry/us/:ticker`)는 `GET /api/spine/industry/us/{ticker}/market`과 `UsSectorMarketResponse`를 사용한다. `us_sector_market`은 ETF 가격/RS/시계열·같은 상위 섹터 비교만 계산하며 개인 필드가 없다. 기존 `us_sector_detail`은 그 시장 결과에 개인 조회를 별도로 결합해 private 계약을 유지한다. 공개 `PublicUsSectorPage`/`useUsSectorMarket`은 전용 경로만 호출하고 기존 가격 머리/차트/RS 표현을 재사용한다. 지도→상세→상위/형제→지도 이동과 기간 선택을 제공하며 개인 탭은 마운트하지 않는다. 승인 문서/첨부는 아래 전용 경로로 제공하며 섹터에서의 문서 탐색 및 회원 관심종목 연결은 미완이다.
+
+
+공용 한국 산업 지도는 `security.public_industry.kr_industry_map`의 readonly 요청별 연결과 코드의18개 benchmark 이름/설명을 사용한다. 공유 회사·업종 정정 분류는 유지하되 개인 테이블/자유형 정정 설명/Peer 실행본은 읽지 않는다. 기존 지도·카드·ETF 검색·한미 전환을 재사용한다. 국내 상세/종목 검색은 후속이다.
+
+`security.publication_store`는 명시적으로 초기화한 별도0600 SQLite(`EXPLORER_PUBLICATION_DB`)에 publication_metadata(v2/cursor_key), publications(doc_id/fingerprint/version/status/rights_basis/approved_by/at/revoked_by/at)를 둔다. 기존 업무 DB init_db와 분리하여 요청/import 자동 생성 및 원본 수정이 없다. `security.public_documents`는 raw_documents의 공개 투영과 실제 첨부 바이트를 해시로 묶어 현재 승인과 매번 대조한다. `routers/public_documents`는 공용 문서/첨부 GET과 운영자 preview/첨부 preview/approve/revoke를 제공하며 private 모드에서는 비활성이다. 원문 content_hash만으로 승인하지 않고 metadata/media 변경도 재검토를 요구한다. 전체 개정 이력 저장소가 아닌 현재 결정 저장소다.
+
+`security.public_evidence`는 체험 채팅의 메모리 문맥과 반환 전 인용 검증을 담당한다. 명시 문서 최대4개 또는 공개 문자열 검색 최대3페이지에서 승인 snapshot만 선택하며 목록과 본문 재조회에128MiB 읽기 예산을 공유한다. 모델용 JSON은24KiB/문서 발췌4096bytes 제한이며 잘림·검색 미완은partial이다. 답변 전체를 버퍼링한 뒤 별도128MiB 예산으로 인용하지 않은 문맥까지 재검증하고, 변경/철회 시 전체 답변을 폐기한다. 모델 citation ID는 서버의 `/doc/{id}`·제목으로만 매핑한다. 개인 RAG/대화 로그/DB 쓰기는 없으며 HTTP·quota·실제 CLI 연결은 후속이다.
+
+공개 `/doc/:docId`는 `PublicDocumentPage`/`usePublishedDocument`를 사용한다. 승인된 보관 본문과 PNG/JPEG/WebP/GIF/PDF 첨부만 제공하고 기존 개인 DocPage/연관자료 API는 마운트하지 않는다. Markdown의 임의 이미지·내부 파일 링크는 실행하지 않으며 PDF는 다운로드다. 404/실패/재검증 중에는 이전 본문을 숨긴다. 운영자 자료 선정 화면·검색/인용 연결·실제 자료 승인과 별도 DB의 운영 백업/배포는 미완이다. 자세한 경로·용량·검증 한계는 [회원 접근 계약](specs/member-access.md#승인-문서본문첨부와-철회)을 따른다.
+
+`security.member_portfolio.initialize_ownership`는 명시적인 별도 준비 작업으로 stock_groups.owner_id와 owner별 portfolio unique partial index를 추가한다(운영 미적용). 기존 NULL 소유는 배정 없이 보존하며 private `portfolio.group_id`는 NULL 소유만 선택한다. `MemberPortfolio`는 서버 principal을 받아 readonly snapshot 조회 또는 BEGIN IMMEDIATE 쓰기에서 소유 그룹을 선택한다. 기존 portfolio 계산에 gid를 명시 전달하고 자동 입금·거래·members의 commit을 외부 트랜잭션으로 묶는다. GET은 그룹 생성 없이 빈 공간을 반환한다. `routers/member_portfolio`/`models/member_portfolio`가 `/api/member/portfolio`의 summary/history/transactions/companies와 거래 추가·삭제를 제공한다. 역할/세션/CSRF는 기존 공개 경계가 적용한다.
+
+프론트 `MemberPortfolioPage`/`useMemberPortfolio`는 공개 `/portfolio`에서 회원별 query key와 CSRF 쓰기를 사용한다. 기존 TransactionDialog 입력을 주입 가능한 TransactionFormDialog로 재사용하며 MemberCompanyPicker는 회원용 최소 회사 검색만 호출한다. summary/history/거래의 비율·가격과 추가/삭제를 제공하고401/403에서는 모든 이전 개인 섹션을 숨긴다. 원칙·논지·알림·개인 파생 결과는 아직 회원 연결 전이다. 기존 전체그룹 reader인 kr_company_data/world_reads/watch_rules는 아래 legacy 범위로 분리했다. 실제 운영자 매핑과 전체 worker/backup/preflight 검증은 **회원 쓰기 운영 활성화의 선행조건**이다. 상세 검증과 범위는 회원 접근 계약 마지막 절을 따른다.
+
+
+`pipeline.group_ownership.legacy_groups_condition`은 ownership 컬럼 도입 여부를 매번 확인해 기존 스키마 또는 NULL-owner 범위를 선택한다. kr_company_data.targets의 보유/관심 tier(연결 script의 개인 컨센서스 포함), world_reads의 개인 서사/체크포인트 보유집합, watch_rules의 일괄 평가와 선행 미국 시세 수집에 적용한다. 공유 시장 수집은 유지한다. 합성 legacy 결과와 회원 추가 후 개인 집합·평가·job 요약·provider 호출 동일성을 관련47검사로 검증했다. 회원 watch 묶음·원칙/논지/알림 전체와 실제39개 job 수용을 대체하지 않는다.
+
+
+기업 요약의 회사명 검색은 `/feed`로 연결되며 `company_return`에 내부 기업 요약 경로와 시세/섹터/지도 조건을 보존한다. 문서 `return_to`는 내부 `/feed`만 검증·재구성해 검색/cursor/기업 복귀를 유지한다. 이는 승인 제목·본문 문자열 검색이며 기업 관계 추출이나 추천이 아니다.
+
+공개 `/feed`는 `PublicDocumentListPage`/`usePublishedDocuments`에서 승인 문서 목록·제목/본문 검색·이어보기·본문 이동을 제공한다. GET `/api/public/documents`는 승인 후보를 현재 본문/첨부 fingerprint로 검증한 뒤 검색·plain-text 미리보기를 만들며 마지막에 승인도 재조회한다. 후보100/읽기128MiB 제한과 암호화 cursor로 빈 중간 구간도 이어갈 수 있고 전체 비공개 수는 반환하지 않는다. publication metadata v2의 Fernet 키는 명시 준비·영속백업 대상이며 요청 자동생성 없음. 실제 승인/외부공개·공용인용/RAG는 미완이다.
+
+
+익명 체험 HTTP 준비: `routers/trial_chat`/`models/trial_chat`는 GET `/api/public/chat/session` 및 POST `/api/public/chat`를 별도 trial 정책으로 등록한다. POST parsing 전96KiB 제한, 서명 쿠키/Origin/CSRF/네트워크 식별과 quota를 적용하며 오류에 입력을 재출력하지 않는다. `trial_service`는 별도0600 키/IPC capability·quota DB·HTTPS origin·명시 일간/동시 한도·신뢰 프록시를 환경에서 읽고 자동 초기화하지 않는다. `public_completion`은 크기/시간 제한된 Unix socket v1 protocol, 응답 예약id/인용 검증, 재시도 없는 고정 오류를 제공한다. 실제 dispatcher와 CLI 완료·장애 복구는 아직 미연결이며 설정 전503이다. 환경키/프로토콜은 [HTTP 계약](specs/member-access.md#익명-채팅-http-계약-구현-중) 참조.
+
+프론트 `useTrialChat`/`types/trialChat`는 계약 검증 API client를 사용하되 query/mutation cache나 브라우저 저장소 없이 대화·세션을 hook 메모리에만 둔다. 최근4개 메시지를 보내고 계정 scope/reset/unmount에서 abort+generation 검증으로 늦은 응답을 버린다. 실패 시 횟수를 재조회하고 POST를 자동 재시도하지 않는다. 두 채팅 경로는 서버 access-log query 제거 및 프론트 console/telemetry 제외 대상이다. 실제 화면 마운트·브라우저 동작/공급자 비저장은 후속 검증이다.
+
+
+공개 `/chat`은 익명·일반 회원에게 `PublicTrialChatPage`와 메모리 전용 `useTrialChat`를 제공하고, 운영자에게는 기존 `ChatPage`를 제공한다. 기존 대화 조회·제목 수정·질문·대상 검색은 서버에서 운영자만 허용하며 쓰기에는 세션 CSRF와 Origin 검증이 필요하다. 기존 대화의 직접 조회·제목 수정·스트림·후속 질문·인용에도 목록과 같은 소유자 필터를 적용한다. 이 연결은 일반 회원 대화나 실제 OAuth 배포 완료를 뜻하지 않는다.
+
+공개 모드의 기존 `/study`와 스터디 프로젝트·주석·질문 API도 운영자에게만 허용한다. 기존 화면을 그대로 사용하며 각 변경 요청에 현재 운영자 세션의 CSRF 토큰을 전달한다. 일반 회원의 독립 스터디 공간은 이 레거시 경로와 별도이며 아직 이 연결로 제공되지 않는다.
+
+체험 채팅은 공개 문서 목록/원문 버튼에서 진입하고, `/chat?doc=<id>`는 현재 공개 조회에 성공한 뒤 선택한다. 최대4개 문서 선택이 필수이며 질문 자연어를 검색어로 재사용하지 않는다. 자료 검색/cursor는 URL, 질문 draft/선택/대화는 component 메모리다. 계정 scope 변경 시 key remount로 draft/선택을 비우고 hook은 이전 응답을 폐기한다. 답변은 plain text, `/doc/<positive id>` 인용만 링크다. 소진·부분 근거·조회/실행 오류·로딩/빈 상태를 구분하며 초기화/로그인이 체험 횟수를 복원한다고 표시하지 않는다. 기존 private ChatPage는 유지한다.
+
+화면 검증은 실제 ASGI 합성자료 승인/list/read 및 PublicEvidence를 거친 합성 completion 응답으로 수행했다. Chrome에서 명시 문서+자연어 질문3회/소진, 인용 표시, 질문 마크업 비실행, reload 대화 제거, 다른 페이지 후 seed 없는 재진입 선택 제거, local/sessionStorage·console canary 부재,390px 가로 overflow 부재를 확인했다. `?doc`로 재진입하면 URL 의도대로 문서를 새로 검증해 선택하므로 이 동작은 저장된 대화 복원이 아니다. 실제 공급자/dispatcher/공개 배포 검증을 대신하지 않는다.
+
+
+공개 미국장 브리핑: `security.public_us_briefing`은 `us_briefings` 본문/생성시각 및 `us_movers` 수치 열만 readonly로 읽는다. 기존 정규화·업종 집계·개별 움직임 계산을 재사용하며 private coverage/narrative/job/log/수집을 호출하지 않는다. `/api/spine/us/briefing`와 `/list`는 같은 기존 응답 모델을 유지하고 public force=true는403이다. 본문 출처는 승인 문서만 재구성하며 수집 진단·모델명은 공개하지 않는다. 원래 홈/미국장 카드의 `usdate` URL 선택으로 저장된 날짜를 함께 조회한다. 과거 종목 스냅샷이 없는 날도 저장 본문을 표시하며 부분 상태를 유지한다.
+
+
+공개 홈 국면·리스크: `market_regime.read_regime(conn)`, `risk.read_risk(conn, now, span, keys)`, `credit_spreads.read_table/read_history`로 기존 수치 계산을 호출자 소유 연결에서 재사용한다. private 진입점은 기존 연결/스키마/수집 설정을 유지한다. 공개 `/api/spine/market-regime`, `/risk`, `/credit`, `/credit/history`는 readonly 시장 관측·회사채·국채 열만 읽으며 lazy 수집, DDL, credit provider import를 실행하지 않는다. Risk 품질·신호 판정에는 저장 성공/실패를 반영하되 상세 수집 오류를 일반 문구로 바꾸고 시도 시각은 제외한다. 개인 포트폴리오 risk/checks와는 별도다.
+
+
+공개 예측시장: `kalshi.read_latest(conn, include_pins=False)`는 기존 확률·변화 기준·스파크 계산을 재사용하고 개인 pin 테이블을 읽지 않으며 최근 거래량/이벤트 키로 정렬한다. private latest는 기존 스키마 준비와 추적 순서를 유지한다. 상세 `detail(..., conn=..., stored_only=True)`는 저장 event cache와 봉만 읽고 cache TTL/외부 수집/DDL/핀을 호출하지 않는다. `security.public_predictions`가 readonly 열 경계를 제공한다. 공개 카드·상세는 기존 모델/컴포넌트이며 추적 버튼은 제외된다. 저장 상세가 없으면404이며 전체 상세 준비는 별도 배포 데이터 작업이다.
+
+
+공개 내러티브 읽기: `security.public_narratives`는 topic 종류의 저장 본문·목록·버전·인과 고리·결정적 diff와 world/changes만 읽는다. 목록은 기존 테마 비중 계산, 변경은 기존 버전 고리 비교를 재사용한다. readonly 허용 열에서 개인 질문·보유·관찰확인·피드백 메모·승격 지식은 제외한다. graph/diff 직접 ID 조회도 topic 조건을 검사한다. 공개 인과 고리는 승인 원문 연결 전까지 unverified로 표시한다. public diff의 summarize 파라미터는 생성을 일으키지 않는다. 기존 NarrativePage/History의 본문·요약·인과 구조·버전·복귀를 재사용하고 자동 compute/개인 질문/저장/대화/갱신 동작을 차단한다. BigPicture·Premises·MarketTodayTimeline·RelatedNarratives·저장 MER/Scenario·승인 원문근거는 개인 기능으로 확정한 것이 아니라 후속 공개 읽기 미연결 범위다. 현재 구현으로 전체 내러티브 완료를 뜻하지 않는다.
+
+공개 국내 실적 시즌은 `EXPLORER_PUBLIC_KR_SEASON_DB`로 지정한 별도 준비 사본에서 `security.public_kr_season`의 readonly 공시·기업·종가와 명시 준비된 `public_kr_company_sectors(stock_code,sector)`·`public_kr_season_coverage(season,backfilled)`를 사용한다. 업종 분류는 기존 effective_sectors의 결과, coverage는 준비 시점의 시즌별 수집 완료 여부를 담는다. GET에서 schema 생성·private cache/관심 목록 조회는 없다. `kr_season.read_overview`는 기존 시즌/반응/업종/일정 계산을 caller-owned snapshot과 coverage 입력으로 재사용하며 개인 overview는 기존 backfilled 의미를 유지한다. 원래 KrSeasonView를 공개 시즌 경로에 사용하고 개인 종목 필터/hooks만 분리한다. 미국 실적 시즌·컨콜 공개 연결은 후속이다.
+
+공개 추세 순위/근거 차트(`GET /api/spine/trend-leaders`, `/{code}/chart`)는 `security.public_trend`가 동일 `EXPLORER_PUBLIC_KR_SEASON_DB` 시장 사본의 고가·저가·거래량·수집시각을 포함한 가격과 준비된 업종만 읽는다. `trend_leaders.read_compute/read_chart`는 기존 순위·ADX·신고가·매물대·이동평균 계산을 caller-owned 연결에서 재사용하며 공개 경로는 개인 전역 캐시/별도 DB 연결을 사용하지 않는다. 기존 private compute의 캐시는 유지하며 공개 쪽은 준비 파일 경로·inode·크기·수정시각으로 구분한 단일 사본 캐시를 사용한다(사본은 실행 중 불변, 갱신은 원자 교체). 원래 TrendCard/근거 대화상자를 그대로 사용한다.
+
+공개 개인 투자 열기(`GET /api/spine/retail`, `/history`, `/snapshots`)는 시장 전체 통계이며 사용자 개인 기록이 아니다. `security.public_retail`의 readonly/query_only/컬럼 제한 연결과 `retail_heat.read_series/read_summary/read_history/read_snapshots`로 기존 국면·백분위·이력 계산을 재사용한다. 공개 GET은 DDL·수집·KRX 계정 환경 조회를 실행하지 않으며 krx_configured는 false, 공개 화면에는 운영 계정 설정 안내를 노출하지 않는다. 원래 RetailHeatPage와 기간 선택·과열 구간·도움말을 재사용한다. 개인/수집 진입의 schema 초기화와 계정 판단은 기존 wrapper에 유지한다.
+
+공개 기업활동(`GET /api/spine/actions`, `/rights`)은 `security.public_actions`가 KR 시장 준비 사본의 공시/증자 필드·종가·명시 `public_actions_metadata(as_of)`만 읽는다. 마지막 성공 스캔 시각만 준비 시점에 투영하며 GET은 job_runs/개인묶음을 읽지 않는다. `read_actions/read_rights`는 기존 정정 필터·한줄 설명·발행가/증자비율 계산을 재사용한다. 공개 my_group=null, 목록은 접수일 순이며 기존 ActionsList/RightsProTable의 전체·유무증 Pro/방식 필터를 유지하고 내 그룹만 제외한다. 공시 원문은 기존 DART 링크를 유지한다.
+
+공개 홈 수출입 요약은 기존 `/api/spine/trade/highlights`에서 `stored_highlights`로 공개 고정 카탈로그를 조회하며 개인 trade_follow를 읽지 않는다. `highlights_from_table`는 기존 기여도/이례성 정렬을 재사용한다. 응답에 scope/observed_count/total_count/partial을 더하고 공개 총액·그룹은 관측 소계, 관측이 없으면 null이다. 기존 TradeCard는 공개 카탈로그 소계임과 관측 품목 수·누락을 표시하고 기존 공개 상세로 연결한다. 전체 무역총액·모든 시장품목 커버리지를 뜻하지 않는다. 개인 하이라이트는 기존 팔로우 범위를 유지한다.
+
+미국 실적 시즌의 `earnings_chain.read_season_overview`는 호출자가 제공하는 기업 범위·핵심 종목 기준·갱신 시각과 DB 연결로 기존 수익률/일정/집계를 계산한다. 기존 개인 `season_overview`는 core_map의 재계산·개인 기준을 유지하는 wrapper다. 이 분리는 공개 GET에서 개인 핵심 기준·lazy DB 쓰기를 우회하기 위한 준비이며 미국 시즌 공개 라우트/데이터 사본/화면 연결 완료를 뜻하지 않는다.
+
+`security.public_us_season`은 `EXPLORER_PUBLIC_US_SEASON_DB`의 명시 준비 사본과 `public_us_companies(ticker,company_name,sector,market_cap)`만 사용한다. 핵심 종목은 이 공개 기업 범위의 시가총액·데이터센터 분류로 재계산하고 개인 팔로우/고정/보유/언급수와 운영 job 시각을 읽지 않는다. 오늘 변경된 reaction/theme/expectation/transcript 목록도 동일 기업·업종 범위로 제한한다. 원본 정성 설명은 개인 note/memo·이전 기대/반응이 입력일 수 있으므로 이 사본의 reaction/expectation/theme에는 공개 출처가 확인된 결과만 준비해야 한다. 공개 `GET /api/spine/transcript/season`은 이 readonly 연결을 사용하고 잘못된 시즌 키는422다. 실제 사본 준비·배포는 별도이며 원래 시즌 상세·모멘텀·최근 컨콜의 전체 화면 연결은 후속이다.
+
+공개 미국 실적 시즌 화면은 기존 SeasonView/SectorView와 캘린더·반응 보드·후보 선택·시즌 이력을 재사용한다. `read_sector_detail`은 호출자 기업/core/연결을 사용하며 private wrapper는 기존 개인 기준을 유지한다. `/season/sector/{key}`는 SectorDetail 응답 모델, `/momentum`은 명시 공개 회사명을 받는 기존 by_season/candidates 계산, `/recent`는 준비된 회사명·결산월과 컨콜 metadata를 사용한다. 후보/지속/이력/발표 집계와 `public_us_coverage(ticker,has_release,extracted_docs,failed_docs)`는 같은 공개 기업 범위다. 공개 모멘텀 사본은 실적 보도자료·컨콜 추출과 수치 근거에서 나온 저장 판정만 포함하며 private follow·원문/자격증명·운영 작업 로그는 조회하지 않는다. 최근 콜은 digest 본문 준비 전 has_digest=false다. 공개 UI는 개인 기대/반응 생성·WatchAdd hooks를 마운트하지 않고 자동 갱신/SEC 설정 안내를 저장 자료 기준으로 바꾼다. 개별 컨콜·기업 상세와 정성 해설·근거 원문 연결은 별도 후속이며 이 연결로 전체 미국 화면 완료를 뜻하지 않는다.
+
+컨콜 전체/개별 상세 공개 모드 연결은 원래 TranscriptPage의 기업 레일·분기 전환·desktop/mobile·fold 원문/저장 요약을 재사용한다. 공개 `/follow`는 개인 팔로우가 아니라 준비된 공용 기업 registry이고 `/company/{ticker}`·`/detail/{id}`는 `public_transcript_text(transcript_id,body,digest)`에 준비된 자료만 읽는다. 분기/일정은 `public_us_calendar`와 저장 컨콜 metadata, 목표가는 별도 투영 `us_pt_changes`를 사용한다. `read_chain_detail`/`read_upcoming_detail`은 caller-owned 입력으로 기존 가격·거래량·목표가·분기수익률을 계산하고 공개 입력에는 개인 문서 언급/기대 해설을 넣지 않는다. private wrapper는 기존 개인 자료 조회를 유지한다. 공개 UI는 수집·고정·일정 갱신·digest POST·CallReaction hooks를 마운트하지 않고 개인 언급 그래프를 표시하지 않는다. 원문·요약의 데이터 경로 검증은 제공처별 재배포 허가를 뜻하지 않으며 외부 배포 사본에는 허용된 소스/텍스트만 준비해야 한다. 로컬 기능 검증용 사본은 외부 공개 승인과 분리한다.
+
+## 공개 매크로 리스크 타일
+
+PublicMacroPage는 기존 RiskTiles와 useRiskTiles의 readonly `/api/spine/risk?range=5y&keys=...`를 재사용한다. 금리/신용/심리 수치·20일변화·장기위치·6개월추이·결측/지연표시를 유지하고 아직 없는 overlay 링크만 showOverlay=false로 숨긴다. 별도 macro 조회와 독립된 오류경계이며 국면 자동수집·사용자 정성체크·LLM은 마운트하지 않는다.
+
+## 공개 국면 이력 조회 준비
+
+`security.public_regimes`는 준비된 public US snapshot의 고정5개 지수/BRK 종가 및 `public_regime_recessions(snapshot_date,value)`만 읽는다. 날짜·양수유한가격·0/1침체값을 검증하고 기존 regimes_from_series/brk_from_series/recessions_from_rows 계산을 재사용한다. 공개 GET `/api/spine/regimes`와 `/brk`는 해당 reader만 사용하며 state/checks/commentary/collect는 허용하지 않는다. 이 구조는 API 준비이며 실제 원자료 공개 근거·snapshot·화면·배포 수용을 대신하지 않는다. 개인 get_regimes/get_brk와 수집 경로는 유지한다.
+
+## 공개 국내 기업 개요
+
+company-profile GET의 market=kr는 public KR snapshot companies의 정확한6자리 종목과 같은 snapshot의 public_company_profiles만 읽는다. 미국과 같은 ProfileRecord·출처/인용/개인metadata 검증을 공유하고 DART official_report는 HTTPS 공식호스트만 허용한다. PublicCompanySummary는 기존 PublicCompanyOverviewCard를 사용하며 최신 저장본문·작성시각·출처·gaps를 유지하고 생성/갱신을 마운트하지 않는다. 준비없는 등록기업은null,등록밖은404. 개인reason입력 보고서는 준비 단계에서 제외하며 필드삭제만으로 공개하지 않는다.
+
+공개 매크로는 기존 `PageLayout`과 `MacroLiquidity`의 공통 `MacroIndicatorRows`를 사용해 금리·달러/유동성/신용·위험선호/원자재 행과 모바일 핵심 지표 구성을 유지한다. `macro_view=full`에서 전체 그룹으로 전환하며 공개 관측일·출처·비교 기준·순유동성 계산 설명은 기존 Collapsible에 보존한다. private 데이터 hook/신호 산문은 마운트하지 않고 공개 수치 GET과 RiskTiles만 연결한다. 국면·Now·History·BRK의 나머지 공개 연결은 별도다.

@@ -115,6 +115,23 @@ def ask_question(body: AskRequest, background: BackgroundTasks):
     if not q:
         raise HTTPException(400, "질문이 비어 있습니다")
 
+    if body.conversation_id is not None or (body.quote and body.quote.message_id is not None):
+        from database import get_connection
+        from routers.spine_conversations import require_owned_conversation
+        conn = get_connection()
+        try:
+            if body.conversation_id is not None:
+                require_owned_conversation(conn, body.conversation_id)
+            if body.quote and body.quote.message_id is not None:
+                message = conn.execute(
+                    "SELECT conversation_id FROM chat_messages WHERE id=?", (body.quote.message_id,)
+                ).fetchone()
+                if message is None:
+                    raise HTTPException(404, "대화를 찾을 수 없습니다")
+                require_owned_conversation(conn, message['conversation_id'])
+        finally:
+            conn.close()
+
     if body.document_ids:
         from pipeline.expectation_evidence import get_document
         if any(doc_id < 1 or get_document(doc_id) is None for doc_id in body.document_ids):

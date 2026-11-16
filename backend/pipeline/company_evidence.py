@@ -52,15 +52,6 @@ def publication(value, zone):
 
 def company_evidence(conn, company, *, start=None, end=None, cutoff='end', after=False,
                      source='', q='', page=1, size=20, market='kr', now=None):
-    zone = ZoneInfo('Asia/Seoul' if market == 'kr' else 'America/New_York')
-    now = now or datetime.now(timezone.utc)
-    start_day = date.fromisoformat(start) if start else None
-    end_day = date.fromisoformat(end) if end else None
-    if start_day and end_day and start_day > end_day:
-        raise ValueError('시작일은 종료일보다 늦을 수 없습니다.')
-    closing = time(15, 30) if market == 'kr' else time(16)
-    boundary = (datetime.combine(end_day, closing, zone) if cutoff == 'close' else
-                datetime.combine(end_day + timedelta(days=1), time(), zone)) if end_day else None
     # An indexed ID candidate set avoids scanning every document; IN also deduplicates links.
     select = '''
         SELECT rd.id, rd.source_type, rd.source_id, rd.title, rd.url, rd.published_at,
@@ -90,6 +81,33 @@ def company_evidence(conn, company, *, start=None, end=None, cutoff='end', after
                                url=r['dart_url'] or f'https://dart.fss.or.kr/dsaf001/main.do?rcpNo={r["rcp_no"]}',
                                published_at=r['rcept_dt'], excerpt='', relation='기업 직접 공시',
                                matched=q.strip().lower() in (r['report_nm'] or '').lower()))
+    return evidence_response(candidates, start=start, end=end, cutoff=cutoff, after=after,
+                             source=source, page=page, size=size, market=market, now=now,
+                             publisher_names=lambda items: _publisher_names(conn, items))
+
+
+def _publisher_names(conn, items):
+    from pipeline.sources import source_names
+    return source_names(conn, [dict(r, id=r['doc_id']) for r in items if r['doc_id'] is not None])
+
+
+def evidence_response(candidates, *, start=None, end=None, cutoff='end', after=False,
+                      source='', page=1, size=20, market='kr', now=None, publisher_names=None):
+    """Apply the existing time/filter/page contract to explicitly selected evidence.
+
+    Callers supply search matches and publisher labels. No database or collector
+    is accessed unless the private caller supplies its publisher resolver.
+    """
+    candidates = [dict(row) for row in candidates]
+    zone = ZoneInfo('Asia/Seoul' if market == 'kr' else 'America/New_York')
+    now = now or datetime.now(timezone.utc)
+    start_day = date.fromisoformat(start) if start else None
+    end_day = date.fromisoformat(end) if end else None
+    if start_day and end_day and start_day > end_day:
+        raise ValueError('시작일은 종료일보다 늦을 수 없습니다.')
+    closing = time(15, 30) if market == 'kr' else time(16)
+    boundary = (datetime.combine(end_day, closing, zone) if cutoff == 'close' else
+                datetime.combine(end_day + timedelta(days=1), time(), zone)) if end_day else None
     available, result, unknown, uncertain = {}, [], 0, 0
     today = now.astimezone(zone).date()
     flow_start = today - timedelta(days=FLOW_DAYS - 1)
@@ -136,14 +154,12 @@ def company_evidence(conn, company, *, start=None, end=None, cutoff='end', after
     result.sort(key=lambda r: (r['status'] != 'within', -r['_sort'], r['id']))
     total = len(result)
     items = result[(page-1)*size:page*size]
-    # Resolve human publisher names only for the returned page.
-    from pipeline.sources import source_names
-    named = source_names(conn, [dict(r, id=r['doc_id']) for r in items if r['doc_id'] is not None])
+    named = publisher_names(items) if publisher_names else {}
     for r in items:
         fallback = r['source_id'] or r['source_type']
         if fallback.startswith(('http://', 'https://')):
             fallback = urlsplit(fallback).hostname or r['source_type']
-        r['publisher'] = (named.get(r['doc_id']) or {}).get('name') or fallback
+        r['publisher'] = (named.get(r['doc_id']) or {}).get('name') or r.get('publisher') or fallback
         r.pop('_sort', None)
         r.pop('source_id', None)
     return dict(items=items, total=total, page=page, size=size, has_more=page*size < total,

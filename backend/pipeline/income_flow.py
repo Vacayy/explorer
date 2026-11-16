@@ -531,9 +531,10 @@ def _us_prev_y(label: str) -> str:
     return f"{int(y)-1:04d}-{m}"
 
 
-def _us_lookup(ticker: str) -> dict[str, dict[str, float]]:
+def _us_lookup(ticker: str, *, conn=None) -> dict[str, dict[str, float]]:
     """{metric: {q: value}}. us_quarterly에서 SEC companyfacts로 들어온 라인만."""
-    conn = get_connection()
+    owned = conn is None
+    conn = conn if conn is not None else get_connection()
     try:
         rows = conn.execute(
             "SELECT metric, q, value FROM us_quarterly WHERE ticker=? AND metric IN "
@@ -541,7 +542,8 @@ def _us_lookup(ticker: str) -> dict[str, dict[str, float]]:
             (ticker, *US_METRICS),
         ).fetchall()
     finally:
-        conn.close()
+        if owned:
+            conn.close()
     out: dict[str, dict[str, float]] = {m: {} for m in US_METRICS}
     for r in rows:
         out[r["metric"]][r["q"]] = r["value"]
@@ -553,7 +555,7 @@ def _mv(lookup: dict, metric: str, q: str) -> float | None:
     return float(v) if v is not None else None
 
 
-def build_us_income_flow(lookup: dict, period: str, mode: str = "q", ticker: str | None = None) -> IncomeFlowResponse | None:
+def build_us_income_flow(lookup: dict, period: str, mode: str = "q", ticker: str | None = None, *, segments_reader=None) -> IncomeFlowResponse | None:
     """us_quarterly 라인을 Sankey 응답으로. 매출이 없으면 None."""
     prev_q = _us_prev_q(period)
     prev_y = _us_prev_y(period)
@@ -675,7 +677,7 @@ def build_us_income_flow(lookup: dict, period: str, mode: str = "q", ticker: str
                        ni_qoq_pct, op_qoq_pct)
 
     # 세그먼트 — us_segments(EX-99.1 LLM 추출)에 이번 분기가 있으면 채운다. 없으면 비움.
-    segments = _us_segments_for(ticker, period, prev_y, prev_q, revenue) if ticker else []
+    segments = (segments_reader or _us_segments_for)(ticker, period, prev_y, prev_q, revenue) if ticker else []
     if not segments and ticker:
         notes.append("사업부 매출은 이 분기 EX-99.1 추출 결과가 아직 없습니다")
     if mode == "ttm":
@@ -689,9 +691,10 @@ def build_us_income_flow(lookup: dict, period: str, mode: str = "q", ticker: str
     )
 
 
-def _us_segments_for(ticker: str, period: str, prev_y: str, prev_q: str, revenue: float | None) -> list[FlowSegment]:
+def _us_segments_for(ticker: str, period: str, prev_y: str, prev_q: str, revenue: float | None, *, conn=None) -> list[FlowSegment]:
     """us_segments 에서 티커·이번 분기 세그먼트 + 전년동기·전분기로 YoY/QoQ. 매출 비중도 붙인다."""
-    conn = get_connection()
+    owned = conn is None
+    conn = conn if conn is not None else get_connection()
     try:
         rows_cur = conn.execute(
             "SELECT segment_name, revenue FROM us_segments WHERE ticker=? AND q=?", (ticker, period)).fetchall()
@@ -700,7 +703,8 @@ def _us_segments_for(ticker: str, period: str, prev_y: str, prev_q: str, revenue
         rows_q = conn.execute(
             "SELECT segment_name, revenue FROM us_segments WHERE ticker=? AND q=?", (ticker, prev_q)).fetchall()
     finally:
-        conn.close()
+        if owned:
+            conn.close()
     cur = {r["segment_name"]: float(r["revenue"]) for r in rows_cur if r["revenue"] is not None}
     yr = {r["segment_name"]: float(r["revenue"]) for r in rows_y if r["revenue"] is not None}
     qr = {r["segment_name"]: float(r["revenue"]) for r in rows_q if r["revenue"] is not None}
@@ -731,8 +735,8 @@ def _ttm_us_lookup(lookup: dict, target_period: str) -> dict:
     return out
 
 
-def us_income_flow(ticker: str, q: str | None = None, mode: str = "q") -> IncomeFlowResponse | None:
-    lookup = _us_lookup(ticker)
+def us_income_flow(ticker: str, q: str | None = None, mode: str = "q", *, conn=None) -> IncomeFlowResponse | None:
+    lookup = _us_lookup(ticker, conn=conn)
     if not any(lookup.get(m) for m in US_METRICS):
         return None
     period = q or max(lookup["revenue"].keys()) if lookup.get("revenue") else None
@@ -740,11 +744,12 @@ def us_income_flow(ticker: str, q: str | None = None, mode: str = "q") -> Income
         return None
     if mode == "ttm":
         lookup = _ttm_us_lookup(lookup, period)
-    return build_us_income_flow(lookup, period, mode=mode, ticker=ticker)
+    return build_us_income_flow(lookup, period, mode=mode, ticker=ticker,
+                                segments_reader=lambda *args: _us_segments_for(*args, conn=conn))
 
 
-def us_income_flow_quarters(ticker: str) -> IncomeFlowQuarters:
-    lookup = _us_lookup(ticker)
+def us_income_flow_quarters(ticker: str, *, conn=None) -> IncomeFlowQuarters:
+    lookup = _us_lookup(ticker, conn=conn)
     rev = lookup.get("revenue", {})
     items: list[QuarterItem] = []
     for p in sorted(rev.keys(), reverse=True):

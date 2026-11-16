@@ -139,12 +139,16 @@ def _period_label(year: int, reprt_code: str) -> str:
 
 
 def _build_financial_response(
-    corp_code: str, sj_div: str, period: str, start_year: int, current_year: int, fs_div: str
+    corp_code: str, sj_div: str, period: str, start_year: int, current_year: int, fs_div: str,
+    *, connection=None,
 ) -> dict:
-    conn = get_connection()
+    conn = connection if connection is not None else get_connection()
 
     sj_values = SJ_DIV_QUERY.get(sj_div, (sj_div,))
     placeholders = ",".join("?" for _ in sj_values)
+
+    # Include warmup quarters so the first requested TTM is a full year.
+    calculation_start = start_year - 1 if period == "trailing" else start_year
 
     # Always fetch all report codes for quarterly decomposition
     rows = conn.execute(
@@ -155,9 +159,10 @@ def _build_financial_response(
           AND bsns_year >= ? AND bsns_year <= ?
         ORDER BY ord, account_nm, bsns_year, reprt_code
         """,
-        (corp_code, fs_div, *sj_values, start_year, current_year),
+        (corp_code, fs_div, *sj_values, calculation_start, current_year),
     ).fetchall()
-    conn.close()
+    if connection is None:
+        conn.close()
 
     if not rows:
         return {"periods": [], "rows": [], "key_metrics": {}, "sj_div": sj_div, "fs_div": fs_div, "period_type": period}
@@ -179,7 +184,7 @@ def _build_financial_response(
     accounts_decomposed: dict[str, dict] = {}
     for account_nm, acct in accounts_raw.items():
         accounts_decomposed[account_nm] = {"ord": acct["ord"], "data": {}}
-        for year in range(start_year, current_year + 1):
+        for year in range(calculation_start, current_year + 1):
             q1_val = acct["data"].get((year, REPRT_Q1))
             h1_val = acct["data"].get((year, REPRT_H1))
             q3_val = acct["data"].get((year, REPRT_Q3))
@@ -229,10 +234,27 @@ def _build_financial_response(
             for rc in REPRT_CODES_QUARTERLY:
                 period_keys.append((y, rc))
 
+    if period == "trailing" and sj_div != "BS":
+        # Sum consecutive calendar quarters, never the last four available values.
+        trailing = {}
+        for account_nm, acct in accounts_decomposed.items():
+            data = {}
+            for year in range(calculation_start, current_year + 1):
+                for quarter, code in enumerate(REPRT_CODES_QUARTERLY):
+                    ordinal = year * 4 + quarter
+                    keys = [divmod(ordinal - offset, 4) for offset in range(4)]
+                    values = [acct["data"].get((y, REPRT_CODES_QUARTERLY[q])) for y, q in keys]
+                    data[(year, code)] = sum(values) if all(v is not None for v in values) else None
+            trailing[account_nm] = {"ord": acct["ord"], "data": data}
+        accounts = trailing
+
     # Filter to periods with data
     period_keys = [pk for pk in period_keys if any(
         acct["data"].get(pk) is not None for acct in accounts.values()
     )]
+
+    if not period_keys:
+        return {"periods": [], "rows": [], "key_metrics": {}, "sj_div": sj_div, "fs_div": fs_div, "period_type": period}
 
     periods = [_period_label(y, rc) for y, rc in period_keys]
 
@@ -247,27 +269,14 @@ def _build_financial_response(
             values.append(str(v) if v is not None else None)
 
         yoy: list[float | None] = []
-        if period == "annual":
-            for i, pk in enumerate(period_keys):
-                if i == 0:
-                    yoy.append(None)
-                    continue
-                cur = acct_data["data"].get(pk)
-                prev = acct_data["data"].get(period_keys[i - 1])
-                if cur is not None and prev is not None and prev != 0:
-                    yoy.append(round((cur - prev) / abs(prev) * 100, 1))
-                else:
-                    yoy.append(None)
-        else:
-            # Quarterly YoY: compare same quarter previous year
-            for _i, (y, rc) in enumerate(period_keys):
-                prev_key = (y - 1, rc)
-                cur = acct_data["data"].get((y, rc))
-                prev = acct_data["data"].get(prev_key)
-                if cur is not None and prev is not None and prev != 0:
-                    yoy.append(round((cur - prev) / abs(prev) * 100, 1))
-                else:
-                    yoy.append(None)
+        # Annual, quarterly and TTM all compare the same calendar period last year.
+        for y, rc in period_keys:
+            cur = acct_data["data"].get((y, rc))
+            prev = acct_data["data"].get((y - 1, rc))
+            if cur is not None and prev is not None and prev != 0:
+                yoy.append(round((cur - prev) / abs(prev) * 100, 1))
+            else:
+                yoy.append(None)
 
         result_rows.append({
             "account_nm": account_nm,
@@ -318,7 +327,7 @@ def _subtract(a: int | None, b: int | None) -> int | None:
     if a is None:
         return None
     if b is None:
-        return a  # If prior cumulative is missing, assume it's the standalone value
+        return None  # Missing cumulative baseline cannot establish a standalone quarter.
     return a - b
 
 

@@ -1,11 +1,12 @@
 """포트폴리오 원장 스키마 (docs/specs/portfolio-ledger.md, D-212). 응답 모델에는 원화 금액·수량 필드를 두지 않는다."""
 from typing import Literal
+from datetime import date
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class TransactionCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, allow_inf_nan=False)
     trade_date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     kind: Literal["buy", "sell", "deposit", "withdraw"]
     stock_code: str | None = Field(default=None, pattern=r"^[0-9A-Z]{6}$")
@@ -17,6 +18,7 @@ class TransactionCreate(BaseModel):
 
     @model_validator(mode="after")
     def amount_or_all(self):
+        date.fromisoformat(self.trade_date)
         if self.sell_all and self.kind != "sell":
             raise ValueError("전량은 매도에서만 고를 수 있습니다.")
         if not self.sell_all and self.amount is None:

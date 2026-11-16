@@ -43,19 +43,7 @@ WATCHLIST_CSV = Path(os.getenv("TRADE_WATCHLIST_CSV",
                                str(Path(__file__).resolve().parent.parent.parent / "scripts" / "trade_watchlist.local.csv")))
 
 # 기본 팔로우 시드(2026-07-24, 6단위 검증) — 개인 워치리스트 CSV가 없을 때의 최소 세트.
-DEFAULT_FOLLOWS = [
-    ("854232", "메모리반도체(D램·낸드·HBM)", "반도체"),
-    ("854231", "시스템반도체(프로세서·컨트롤러)", "반도체"),
-    ("851713", "스마트폰", "IT"),
-    ("8524", "디스플레이(평판 모듈)", "IT"),
-    ("850760", "전기차용 리튬이온전지", "2차전지"),
-    ("8703", "승용자동차", "자동차"),
-    ("8708", "자동차부품", "자동차"),
-    ("2710", "석유제품", "에너지"),
-    ("39", "플라스틱·합성수지", "소재"),
-    ("72", "철강", "소재"),
-    ("89", "선박", "기계"),
-]
+from pipeline.trade_catalog import DEFAULT_FOLLOWS
 
 
 class CustomsError(RuntimeError):

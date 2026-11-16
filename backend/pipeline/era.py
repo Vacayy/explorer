@@ -267,7 +267,12 @@ def _temp(key, label, value, unit, state, basis, source):
     return {"key": key, "label": label, "value": value, "unit": unit, "state": state, "basis": basis, "source": source}
 
 
-def layer_temperature(conn) -> dict:
+def quantitative_temperature(conn) -> list[dict]:
+    """Compute the existing numeric items without consulting personal checks.
+
+    The caller supplies its snapshot and source policy. This helper grants no
+    publication rights and deliberately does not declare a combined verdict.
+    """
     items = []
     cpi = _yoy(_series(conn, "era_cpi"))
     dff = _series(conn, "era_dff")
@@ -314,6 +319,11 @@ def layer_temperature(conn) -> dict:
             yrs_since = (date.fromisoformat(spx[-1][0]) - date.fromisoformat(ph[-1]["end"])).days / 365.25
             items.append(_temp("memory", "마지막 장기 약세장(1년 이상) 이후", round(yrs_since, 1), "년", "hot" if yrs_since > 10 else "normal",
                                f"마지막 장기 약세장 {ph[-1]['start'][:7]}~{ph[-1]['end'][:7]}. 10년 넘으면 기억이 짧아짐(뜨거움)", "S&P500 국면"))
+    return items
+
+
+def layer_temperature(conn) -> dict:
+    items = quantitative_temperature(conn)
     checks = {r["key"]: {"state": r["state"], "note": r["note"], "updated_at": r["updated_at"]}
               for r in conn.execute("SELECT key, state, note, updated_at FROM era_checks")}
     judged = [{"key": k, "label": label, **checks.get(k, {"state": None, "note": None, "updated_at": None})} for k, label in CHECK_KEYS.items()]

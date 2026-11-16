@@ -51,6 +51,17 @@ def _owner_filter() -> tuple[str, list]:
     return "(c.channel='web' OR c.chat_id IS NULL OR c.chat_id=?)", [owner]
 
 
+def require_owned_conversation(conn, conversation_id: int) -> None:
+    """Apply the same owner boundary used by the conversation list to ID paths."""
+    owner_sql, owner_params = _owner_filter()
+    row = conn.execute(
+        f"SELECT 1 FROM conversations c WHERE c.id=? AND {owner_sql}",
+        (conversation_id, *owner_params),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(404, "대화를 찾을 수 없습니다")
+
+
 @router.get("", response_model=list[ConversationItem])
 def list_conversations(stock: str | None = Query(None, description="종목코드 — 앵커 또는 질문 링크 기준"),
                        limit: int = Query(20, ge=1, le=100)):
@@ -84,6 +95,11 @@ def list_conversations(stock: str | None = Query(None, description="종목코드
 @router.get("/{conversation_id}", response_model=ConversationDetail)
 def get_conversation(conversation_id: int):
     conn = get_connection()
+    try:
+        require_owned_conversation(conn, conversation_id)
+    except Exception:
+        conn.close()
+        raise
     conv = conn.execute("SELECT id, title, channel, state_json FROM conversations WHERE id=?",
                         (conversation_id,)).fetchone()
     if not conv:
@@ -160,7 +176,12 @@ def rename_conversation(conversation_id: int, body: TitlePatch):
         raise HTTPException(400, "제목이 비어 있습니다")
     conn = get_connection()
     try:
-        cur = conn.execute("UPDATE conversations SET title=? WHERE id=?", (title, conversation_id))
+        owner_sql, owner_params = _owner_filter()
+        cur = conn.execute(
+            f"UPDATE conversations SET title=? WHERE id IN "
+            f"(SELECT c.id FROM conversations c WHERE c.id=? AND {owner_sql})",
+            (title, conversation_id, *owner_params),
+        )
         if not cur.rowcount:
             raise HTTPException(404, "대화를 찾을 수 없습니다")
         conn.commit()
@@ -182,6 +203,11 @@ async def stream_conversation(conversation_id: int):
     가속기일 뿐 진실원천은 DB: 생성 중인 스트림이 없으면 404 → FE는 폴링으로 복귀.
     LLM 토큰 비용은 폴링과 같다(같은 출력을 조각으로 받을 뿐). 연결 1개/생성 1건.
     """
+    conn = get_connection()
+    try:
+        require_owned_conversation(conn, conversation_id)
+    finally:
+        conn.close()
     from pipeline.chat import get_stream
     st = get_stream(conversation_id)
     if st is None:

@@ -134,7 +134,7 @@ def premises_from_briefing(briefing: str | None) -> dict:
     return out
 
 
-def narrative_changes(conn, days: int = 7, limit: int = 20) -> dict:
+def narrative_changes(conn, days: int = 7, limit: int = 20, *, public: bool = False) -> dict:
     """최근 days일에 새 버전이 나온 주제 — 바뀐 것 한 줄(저장분) + 직전 버전 대비 추가·삭제 고리(결정적).
     change_summary는 생성 때 저장된 1~2문장, 없는 옛 버전은 드리프트 첫 문장을 결정적으로 줄여 쓴다."""
     rows = conn.execute("""
@@ -149,7 +149,7 @@ def narrative_changes(conn, days: int = 7, limit: int = 20) -> dict:
         ORDER BY n.created_at DESC LIMIT ?""", (f"-{days} days", f"-{days} days", limit)).fetchall()
     items = []
     for r in rows:
-        d = _version_diff(conn, r["id"])
+        d = _version_diff(conn, r["id"], public=public)
         ok = d["status"] == "ok"
         added = d.get("added_edges", []) if ok else []
         removed = d.get("removed_edges", []) if ok else []
@@ -188,12 +188,14 @@ def contested(conn, limit: int = 10) -> dict:
 
 def _member_companies(conn) -> list[dict]:
     """종목 묶음(보유·관심) 종목 → 회사 엔티티. 묶음 종류를 함께 들고 간다."""
-    rows = conn.execute("""
+    from pipeline.group_ownership import legacy_groups_condition
+    rows = conn.execute(f"""
         SELECT m.stock_code, g.kind, e.id entity_id, e.name
         FROM stock_group_members m JOIN stock_groups g ON g.id=m.group_id
         LEFT JOIN entities e ON e.id = COALESCE(
             (SELECT id FROM entities WHERE type='company' AND aliases=m.stock_code ORDER BY id LIMIT 1),
-            (SELECT entity_id FROM transcript_follow WHERE ticker=m.stock_code))""").fetchall()
+            (SELECT entity_id FROM transcript_follow WHERE ticker=m.stock_code))
+        WHERE {legacy_groups_condition(conn)}""").fetchall()
     by_code: dict[str, dict] = {}
     for r in rows:
         s = by_code.setdefault(r["stock_code"], {"stock_code": r["stock_code"], "name": r["name"],

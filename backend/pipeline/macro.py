@@ -256,10 +256,23 @@ def _read_signal(as_of: str | None) -> dict | None:
 def get_macro(with_signal: bool = True) -> dict:
     """매크로·유동성 지표 그룹 + 스파크라인 + 신호등 산문. LLM 0(읽기). market_indicators 순수 읽기."""
     conn = get_connection()
+    try:
+        data = read_numeric_macro(conn)
+    finally:
+        conn.close()
+    return {**data, "signal": _read_signal(data["as_of"]) if with_signal else None,
+            "fred_enabled": bool(os.getenv("FRED_API_KEY"))}
+
+
+def read_numeric_macro(conn) -> dict:
+    """Original numeric context from stored series; no credentials or signal cache."""
     raw = {name: _series(conn, f"macro_{name}") for name in [*YF, *FRED]}
     raw.update({name: _series(conn, indicator_canon.CANONICAL[name]) for name in CANON_RATES})
-    conn.close()
+    return numeric_macro(raw)
 
+
+def numeric_macro(raw: dict) -> dict:
+    """Pure existing numeric projection, independent of DB, credentials and signal cache."""
     series_of = dict(raw)
     series_of["net_liq"] = _net_liquidity_series(raw)   # 파생 (십억$)
 
@@ -286,6 +299,4 @@ def get_macro(with_signal: bool = True) -> dict:
 
     as_of = max((s[-1][0] for s in series_of.values() if s), default=None)
     return {"as_of": as_of, "items": items, "degraded": degraded,
-            "interpretation": _interpret(items) if items else None,   # 결정적 폴백/LLM 입력
-            "signal": _read_signal(as_of) if with_signal else None,    # 신호등 산문(sonnet)
-            "fred_enabled": bool(os.getenv("FRED_API_KEY"))}
+            "interpretation": _interpret(items) if items else None}

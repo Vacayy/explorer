@@ -227,10 +227,11 @@ def market_days(conn, lo: str, hi: str) -> list[str]:
         (lo, hi, MARKET_DAY_MIN))]
 
 
-def _company_map(conn) -> tuple[dict, dict]:
+def _company_map(conn, sector_of=None) -> tuple[dict, dict]:
     """corp_code → {stock_code, name, group}, group → [stock_code]"""
     from pipeline.sector_overrides import effective_sectors
-    sector_of = effective_sectors(conn)   # 원천 + 업종 정정 (D-313)
+    if sector_of is None:
+        sector_of = effective_sectors(conn)   # 원천 + 업종 정정 (D-313)
     comp, members = {}, {}
     for r in conn.execute("SELECT corp_code, corp_name, stock_code FROM companies WHERE stock_code IS NOT NULL AND stock_code != ''"):
         g = sector_of.get(r[2])
@@ -282,23 +283,28 @@ def announcements(conn, season_rows: dict[str, dict], comp: dict, members: dict,
 
 def overview(season: str | None = None, today: date | None = None) -> dict:
     """GET /api/spine/transcript/season/kr — 시즌 선택(지난 시즌 포함)·KPI·오늘 바뀐 것·캘린더·발표 목록·업종별 집계·아직 발표 전."""
+    conn = get_connection()
+    try:
+        return read_overview(conn, season, today, is_backfilled=backfilled)
+    finally:
+        conn.close()
+
+
+def read_overview(conn, season: str | None = None, today: date | None = None, *, is_backfilled, sector_of=None) -> dict:
+    """Caller-owned snapshot with explicit coverage; no second connection or collection."""
     today = today or kst_today()
     cur = season_of(today.isoformat())["key"]
     key = season or cur
     s = season_by_key(key)
-    conn = get_connection()
-    try:
-        seasons = by_season(prelim_rows(conn))
-        periodic = periodic_by_season(periodic_rows(conn))
-        comp, members = _company_map(conn)
-        lo = (date.fromisoformat(s["start"]) - timedelta(days=14)).isoformat()
-        hi = (date.fromisoformat(s["end"]) + timedelta(days=14)).isoformat()
-        days = market_days(conn, lo, min(hi, today.isoformat()))
-        anns, caps = announcements(conn, season_rows(seasons.get(key, {}), periodic.get(key, {}), comp), comp, members, days)
-        sweep = sweep_from(conn)
-        disc_as_of = conn.execute("SELECT max(rcept_dt) FROM disclosures").fetchone()[0]
-    finally:
-        conn.close()
+    seasons = by_season(prelim_rows(conn))
+    periodic = periodic_by_season(periodic_rows(conn))
+    comp, members = _company_map(conn, sector_of)
+    lo = (date.fromisoformat(s["start"]) - timedelta(days=14)).isoformat()
+    hi = (date.fromisoformat(s["end"]) + timedelta(days=14)).isoformat()
+    days = market_days(conn, lo, min(hi, today.isoformat()))
+    anns, caps = announcements(conn, season_rows(seasons.get(key, {}), periodic.get(key, {}), comp), comp, members, days)
+    sweep = sweep_from(conn)
+    disc_as_of = conn.execute("SELECT max(rcept_dt) FROM disclosures").fetchone()[0]
 
     is_current = key == cur
     prev = seasons.get(prev_key(key), {})
@@ -333,7 +339,7 @@ def overview(season: str | None = None, today: date | None = None) -> dict:
         keys = [key] + keys
 
     def partial_of(k: str) -> bool:
-        return bool(sweep and season_by_key(k)["start"] < sweep and not backfilled(k))
+        return bool(sweep and season_by_key(k)["start"] < sweep and not is_backfilled(k))
     return {
         "season": {"key": key, "label": s["label"], "start": s["start"], "is_current": is_current},
         "seasons": [{"key": k, "label": season_by_key(k)["label"], "count": len(seasons.get(k, {})), "is_current": k == cur,

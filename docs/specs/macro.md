@@ -39,3 +39,25 @@ Loading(skeleton) / Error(ErrorState+재시도) / Partial(일부 지표 degraded
 Home 기본 금리·신용·VIX·공포탐욕 표시는 [Risk 계약](home-feed.md#risk-모니터링-구현-계약-2026-09-28)을 따른다. 기존 MacroLiquidity 상세와 매크로 해설 입력은 유지한다. Risk·매크로·요약 띠 모두 10Y/2Y를 같은 FRED DGS10/DGS2 정본에서 읽는다(2026-10-16). 상단 MarketContext 요약 띠는 달러원·엔원·미국 2Y·10Y·WTI·금·BTC와 MoM을 표시한다(D-210).
 
 Risk 금리·신용은 기본 10년이며 `risk_macro_range`에서 3개월~전체로 전환한다. FRED 장기 백필은 기존 market_indicators에 보존하고 최초 백필 이후 최근 400일만 갱신한다. HY/BBB/AAA OAS의 최근 3년 제공 제한과 Aaa/Baa−10Y의 정의 차이는 카드·설명 팝오버에서 안내한다.
+
+## 공개 저장 수치 준비
+
+공개 `/api/spine/macro/public`은 기존 numeric_macro 계산을 재사용하되 readonly snapshot의 고정 지표만 읽는다. 기존 GET의 빈자료 lazy snapshot과 별도이며 수집·쓰기·signal/era 체크/개인 pricing·provider를 호출하지 않는다. 관측 열은 market_indicators의 indicator/snapshot_date/value만 허용하며 meta/schema와 source_receipts는 출처 검증에만 읽는다. 응답에 key/label/value/단위/관측일/최대40개 시계열·5관측 전 비교일·원출처/계열 URL/원천 관측일을 담는다. 5관측은 5거래일을 뜻하지 않는다. NULL·비유한·비수치 저장값이 있는 계열은 invalid로 제외하고 결측/공개원천 검토중과 구분한다. 환경변수·API키 설정 상태 및 미승인 산문은 노출하지 않는다.
+
+공개 자료는 기존 FRED 취득 DB를 재표기하지 않고 Board H.15/H.4.1/H.6 및 NYFed에서 직접 취득한다. 원자료의 공개 여부와 취득 서비스의 이용 조건을 구분한다. [FRED 조건](https://fred.stlouisfed.org/legal/terms/) 때문에 원출처의 Public Domain 태그만으로 기존 FRED API·CSV 저장본의 공개를 승인하지 않았다. [Board](https://www.federalreserve.gov/disclaimer.htm)·[NYFed](https://www.newyorkfed.org/privacy/termsofuse)의 직접 자료에 출처와 필요한 귀속을 붙이고, Yahoo 계열은 source_review_pending으로 제외한다. 순유동성의 누락 입력을0으로 대체하지 않는다.
+
+공개 UI의 수치 연결 준비는 매크로 전체완료가 아니다. 국면/리스크/사용자 정성체크/승인해설과 모든 원천 연결이 남는다. 운영 수집기/기존 개인 모드는 유지하며 이번 구현으로 실제 공개·원자료 삭제·운영출처전환을 수행하지 않는다.
+
+### 직접 원천 저장본
+
+공개 reader는 `EXPLORER_PUBLIC_MACRO_DB`로 명시한 별도 SQLite만 읽으며 운영 DB를 fallback으로 읽지 않는다. schema marker `public_macro_direct_v1` 및 각 계열 source_receipts의 원천 URL·series_id·SHA256를 검증한다. 스냅샷이 미설정이면503이며 합성 테스트에서도 임시 별도 DB를 명시한다. 직접취득은 Board의 H15/H41/H6 ZIP XML에서 RIFLGFCY02_N.B/RIFLGFCY10_N.B, RESPPMA_N.WW/RESPPLLDT_XAW_N.WW, M2.M만 선택한다. NYFed reverse repo API에서 Overnight/Treasury 거래의 accepted USD금액을 날짜별 합산해십억USD로 정규화한다. 초기 운영 검증의 원자료 다운로드는 bounded size·타임아웃·고정URL로 수행했다. importer 자체는 네트워크를 호출하지 않으며 ZIP을 디스크에 풀지 않고 streaming XML로 필요한 관측만 추출한다. 최신400관측/계열의 작은 독립 저장본만 유지한다. 기존 원본을 덮어쓰거나 FRED저장행의 라벨을 바꾸지 않는다.
+
+공개 순유동성은 기존WALCL−TGA−RRP 계산을 재사용한다. WALCL수요일잔액과TGA주평균·RRP일별은 혼합주기이며 날짜사이직전값유지를 명시한다. 원입력별마지막관측일/5관측비교일·기간을표시한다. 이 파생값은 Explorer 참고계산이며 원기관공식지표나보증이아니다. NYFed 원출처링크·저작권/조건귀속을화면에보존한다. 별도 정기갱신·운영배포연결은 아직 수행하지 않는다.
+
+
+`pipeline.public_macro_import`는 고정 계열과 단위·주기 속성을 검증하고 기존 파일을 덮어쓰지 않는 원자적 새 파일 발행을 제공한다. fed_bs/tga는 백만USD 원단위를 보존하며 기존 계산기가 십억USD로 변환한다. RRP만 USD→십억USD를 import에서 적용한다. 실패 시 기존 정상 저장본은 그대로이며 reader는 한 요청의 단일 readonly 트랜잭션을 사용한다. 자동 다운로드·정기갱신·활성 경로 교체는 아직 연결되지 않았다.
+
+공개 매크로 화면은 기존 RiskTiles의 금리/신용/심리10개 타일·20일변화·장기위치·6개월 추이선을 공유한다. 기존 readonly public risk GET의5년 범위를 사용하며 수집/개인 체크/LLM 경로를 호출하지 않는다. 미연결 overlay 목적지 링크만 숨기고, 결측·지연 상태는 기존 타일 계약을 유지한다. 매크로 수치 조회 실패와 리스크 조회 실패는 독립적으로 표시한다.
+
+
+공개 표시부는 `MacroIndicatorRows`로 private와 동일한 그룹 순서·행/스파크·핵심 6개 키 구성을 공유한다. 준비되지 않은 지표는 채우지 않으며 모바일 전체 보기(`macro_view=full`)로 모든 준비 지표에 접근한다. 공개 원천·관측일·관측 개수 기준 변화율·혼합 주기 순유동성 주의사항을 각 행에서 펼쳐 볼 수 있다. 공개 `PageLayout`의 앵커는 연결된 macro/risk에만 제공한다. 이는 나머지 국면·해설·시장 상태의 완료를 뜻하지 않는다.

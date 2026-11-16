@@ -256,47 +256,55 @@ CATEGORY_KO = {c: ko for c, ko, _ in CATEGORIES}
 
 
 def latest() -> dict:
-    """마지막 수집분(캐러셀 순서). 없으면 items 빈 목록. LLM·외부 호출 0."""
+    """Last collected carousel with operator pins in private mode."""
     conn = get_connection()
     try:
         conn.executescript(SCHEMA)
-        row = conn.execute("SELECT MAX(fetched_at) f FROM kalshi_events").fetchone()
-        at = row["f"] if row else None
-        if not at:
-            return {"fetched_at": None, "base_at": None, "items": []}
-        # 변화 기준 — CHANGE_AFTER_H 이상 지난 마지막 수집분(Kalshi previous_price는 거래가 없던 결과에서 0으로 와 쓰지 않는다)
-        base_at = conn.execute("SELECT MAX(fetched_at) f FROM kalshi_events WHERE fetched_at <= datetime(?, ?)",
-                               (at, f"-{CHANGE_AFTER_H} hours")).fetchone()["f"]
-        base: dict[tuple[str, str], float] = {}
-        if base_at:
-            for b in conn.execute("SELECT event_ticker, outcomes_json FROM kalshi_events WHERE fetched_at=?", (base_at,)):
-                for o in json.loads(b["outcomes_json"]):
-                    base[(b["event_ticker"], o["label"])] = o["price"]
-        pins = {r["event_ticker"] for r in conn.execute("SELECT event_ticker FROM kalshi_pins")}
-        rows = conn.execute("SELECT * FROM kalshi_events WHERE fetched_at=? ORDER BY rank", (at,)).fetchall()
-        # 마지막 수집 뒤에 추적을 켰고 그 묶음에 없는 이벤트 — 가장 최근 행을 앞에 붙인다(다음 수집부터는 따로 받는다)
-        have = {r["event_ticker"] for r in rows}
-        extra = [conn.execute("SELECT * FROM kalshi_events WHERE event_ticker=? ORDER BY fetched_at DESC LIMIT 1", (t,)).fetchone()
-                 for t in pins - have]
-        rows = [r for r in extra if r] + list(rows)
-        items = []
-        for r in rows:
-            outs = json.loads(r["outcomes_json"])
-            top = outs[0].get("ticker") if outs else None
-            spark = [[d, v] for d, v in conn.execute(
-                "SELECT day, price FROM kalshi_candles WHERE market_ticker=? ORDER BY day DESC LIMIT ?", (top, SPARK_DAYS))][::-1] if top else []
-            items.append({"event_ticker": r["event_ticker"], "series_ticker": r["series_ticker"], "category": r["category"],
-                          "pinned": r["event_ticker"] in pins, "spark": spark,
-                          "category_label": CATEGORY_KO.get(r["category"], r["category"]), "title": r["title"],
-                          "subtitle": r["subtitle"], "recent_volume": r["recent_volume"], "close_ts": r["close_ts"],
-                          "url": f"https://kalshi.com/markets/{r['series_ticker'].lower()}",
-                          "outcomes": [{**o, "change": (round(o["price"] - base[(r["event_ticker"], o["label"])], 1)
-                                                       if (r["event_ticker"], o["label"]) in base else None)}
-                                       for o in outs]})
-        items.sort(key=lambda x: not x["pinned"])       # 추적 이벤트 맨 앞(나머지 순서 유지)
-        return {"fetched_at": at, "base_at": base_at, "items": items}
+        return read_latest(conn)
     finally:
         conn.close()
+
+
+def read_latest(conn, *, include_pins=True) -> dict:
+    """Stored carousel through caller-owned connection, no schema or collection."""
+    row = conn.execute("SELECT MAX(fetched_at) f FROM kalshi_events").fetchone()
+    at = row["f"] if row else None
+    if not at:
+        return {"fetched_at": None, "base_at": None, "items": []}
+    # 변화 기준 — CHANGE_AFTER_H 이상 지난 마지막 수집분(Kalshi previous_price는 거래가 없던 결과에서 0으로 와 쓰지 않는다)
+    base_at = conn.execute("SELECT MAX(fetched_at) f FROM kalshi_events WHERE fetched_at <= datetime(?, ?)",
+                           (at, f"-{CHANGE_AFTER_H} hours")).fetchone()["f"]
+    base: dict[tuple[str, str], float] = {}
+    if base_at:
+        for b in conn.execute("SELECT event_ticker, outcomes_json FROM kalshi_events WHERE fetched_at=?", (base_at,)):
+            for o in json.loads(b["outcomes_json"]):
+                base[(b["event_ticker"], o["label"])] = o["price"]
+    pins = {r["event_ticker"] for r in conn.execute("SELECT event_ticker FROM kalshi_pins")} if include_pins else set()
+    rows = conn.execute("SELECT fetched_at, rank, category, series_ticker, event_ticker, title, subtitle, recent_volume, close_ts, outcomes_json FROM kalshi_events WHERE fetched_at=? ORDER BY rank", (at,)).fetchall()
+    # 마지막 수집 뒤에 추적을 켰고 그 묶음에 없는 이벤트 — 가장 최근 행을 앞에 붙인다(다음 수집부터는 따로 받는다)
+    have = {r["event_ticker"] for r in rows}
+    extra = [conn.execute("SELECT fetched_at, rank, category, series_ticker, event_ticker, title, subtitle, recent_volume, close_ts, outcomes_json FROM kalshi_events WHERE event_ticker=? ORDER BY fetched_at DESC LIMIT 1", (t,)).fetchone()
+             for t in pins - have]
+    rows = [r for r in extra if r] + list(rows)
+    items = []
+    for r in rows:
+        outs = json.loads(r["outcomes_json"])
+        top = outs[0].get("ticker") if outs else None
+        spark = [[d, v] for d, v in conn.execute(
+            "SELECT day, price FROM kalshi_candles WHERE market_ticker=? ORDER BY day DESC LIMIT ?", (top, SPARK_DAYS))][::-1] if top else []
+        items.append({"event_ticker": r["event_ticker"], "series_ticker": r["series_ticker"], "category": r["category"],
+                      "pinned": r["event_ticker"] in pins, "spark": spark,
+                      "category_label": CATEGORY_KO.get(r["category"], r["category"]), "title": r["title"],
+                      "subtitle": r["subtitle"], "recent_volume": r["recent_volume"], "close_ts": r["close_ts"],
+                      "url": f"https://kalshi.com/markets/{r['series_ticker'].lower()}",
+                      "outcomes": [{**o, "change": (round(o["price"] - base[(r["event_ticker"], o["label"])], 1)
+                                                   if (r["event_ticker"], o["label"]) in base else None)}
+                                   for o in outs]})
+    if not include_pins:
+        items.sort(key=lambda x: (-(x["recent_volume"] or 0), x["event_ticker"]))
+    else:
+        items.sort(key=lambda x: not x["pinned"])       # 추적 이벤트 맨 앞(나머지 순서 유지)
+    return {"fetched_at": at, "base_at": base_at, "items": items}
 
 
 def _strike(o: dict) -> tuple:
@@ -323,17 +331,21 @@ def set_pin(event_ticker: str, series_ticker: str, on: bool) -> bool:
         conn.close()
 
 
-def detail(event_ticker: str, range_: str = "3m", event=None, candles=None) -> dict:
+def detail(event_ticker: str, range_: str = "3m", event=None, candles=None, *, conn=None, stored_only=False) -> dict:
     """상세 창 — 결과 전부(확률·24시간 거래·상태)·규칙·결과별 일봉(상위 DETAIL_LINES개). 외부 호출은 cache_service TTL 안에서 한 번."""
     from services.cache_service import is_cached, set_cache
     event, candles = event or fetch_event, candles or fetch_candles
     days = RANGE_DAYS.get(range_, 92)
-    conn = get_connection()
+    owns_connection = conn is None
+    conn = get_connection() if owns_connection else conn
     try:
-        conn.executescript(SCHEMA)
+        if not stored_only:
+            conn.executescript(SCHEMA)
         key = f"kalshi:event:{event_ticker}"
         row = conn.execute("SELECT body_json, fetched_at FROM kalshi_event_cache WHERE event_ticker=?", (event_ticker,)).fetchone()
-        if row and is_cached(key):
+        if stored_only and not row:
+            raise LookupError("Stored event detail unavailable")
+        if row and (stored_only or is_cached(key)):
             ev, fetched = json.loads(row["body_json"]), row["fetched_at"]
         else:
             ev = event(event_ticker)
@@ -352,7 +364,7 @@ def detail(event_ticker: str, range_: str = "3m", event=None, candles=None) -> d
         series = []
         for o in lines:
             ckey = f"kalshi:candles:{o['ticker']}:{range_}"
-            if not is_cached(ckey):
+            if not stored_only and not is_cached(ckey):
                 conn.executemany("INSERT OR REPLACE INTO kalshi_candles (market_ticker, day, price) VALUES (?,?,?)",
                                  [(o["ticker"], d, v) for d, v in candles(ev.get("series_ticker") or "", o["ticker"], days)])
                 conn.commit()
@@ -362,7 +374,7 @@ def detail(event_ticker: str, range_: str = "3m", event=None, candles=None) -> d
                 (o["ticker"], f"-{days} days"))]
             series.append({"ticker": o["ticker"], "label": o["label"], "points": pts})
         top = next((m for m in markets if m.get("ticker") == (lines[0]["ticker"] if lines else None)), markets[0] if markets else {})
-        pinned = conn.execute("SELECT 1 FROM kalshi_pins WHERE event_ticker=?", (event_ticker,)).fetchone() is not None
+        pinned = False if stored_only else conn.execute("SELECT 1 FROM kalshi_pins WHERE event_ticker=?", (event_ticker,)).fetchone() is not None
         closes = sorted(m["close_time"] for m in markets if m.get("close_time"))
         return {"event_ticker": event_ticker, "series_ticker": ev.get("series_ticker") or "", "category": ev.get("category") or "",
                 "category_label": CATEGORY_KO.get(ev.get("category") or "", ev.get("category") or ""),
@@ -373,4 +385,5 @@ def detail(event_ticker: str, range_: str = "3m", event=None, candles=None) -> d
                 "outcomes": sorted(outs, key=lambda o: -o["price"]) if ev.get("mutually_exclusive") else sorted(outs, key=_strike),
                 "series": series}
     finally:
-        conn.close()
+        if owns_connection:
+            conn.close()

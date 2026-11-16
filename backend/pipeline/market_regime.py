@@ -225,8 +225,15 @@ def get_regime() -> dict:
     반등해도 EMA가 우하향이면 '보류' — 반등이 속임수일 수 있으니 EMA 눕기 대기.
     """
     conn = get_connection()
+    try:
+        return read_regime(conn)
+    finally:
+        conn.close()
+
+
+def read_regime(conn) -> dict:
+    """Stored market posture with caller-owned connection; no collection."""
     ser = {ind: _series(conn, indicator_canon.CANONICAL.get(ind, ind)) for ind in (*RAW_INDICATORS, "kospi_vol")}
-    conn.close()
 
     degraded = [ind for ind in RAW_INDICATORS if not ser[ind]]
     as_of = max((s[-1][0] for s in ser.values() if s), default=None)

@@ -3,7 +3,7 @@
 헤더(yfinance 시세·밸류) + 해소된 entity + 최근 컨콜 메타만. 렌즈는 기존 `/stock/{ticker}/lens?market=us`,
 컨콜 상세·내러티브·피드는 각 전용 엔드포인트를 FE가 entity_id/ticker로 재사용.
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 import json
 import re
@@ -18,17 +18,26 @@ router = APIRouter(prefix="/api/spine/us", tags=["spine"])
 
 
 @router.get("/{ticker}/income-flow/quarters", response_model=IncomeFlowQuarters)
-def us_income_flow_quarters_endpoint(ticker: str):
+def us_income_flow_quarters_endpoint(request: Request, ticker: str):
+    if getattr(request.state, 'public_access', False):
+        from security.public_us_dossier import stored_income_quarters
+        from routers.spine_transcript import _public_read
+        return _public_read(lambda: stored_income_quarters(ticker))
     return us_income_flow_quarters(ticker.upper())
 
 
 @router.get("/{ticker}/income-flow", response_model=IncomeFlowResponse)
 def us_income_flow_endpoint(
+    request: Request,
     ticker: str,
     q: str | None = Query(None, pattern=r"^\d{4}-(03|06|09|12)$"),
     mode: str = Query("q", pattern="^(q|ttm)$"),
 ):
     """미국 분기 손익 흐름(Sankey) — ia-redesign §4.13. q는 달력 분기 끝 'YYYY-MM'. mode=ttm은 최근 4분기 합."""
+    if getattr(request.state, 'public_access', False):
+        from security.public_us_dossier import stored_income
+        from routers.spine_transcript import _public_read
+        return _public_read(lambda: stored_income(ticker, q, mode))
     result = us_income_flow(ticker.upper(), q, mode)
     if result is None:
         raise HTTPException(404, detail="분기 손익 자료가 없습니다")
@@ -87,12 +96,15 @@ def us_movers(force: bool = False):
 
 
 @router.get("/briefing/list", response_model=list[UsBriefingListItem])
-def us_briefing_list(limit: int = 30):
+def us_briefing_list(request: Request, limit: int = Query(30, ge=1, le=100)):
     """저장된 미국장 브리핑 목록(최신순) — 과거 조회 진입점 (D-112).
 
     종합 산문은 영구 보존이라 여기 다 남지만, 근거 스냅샷은 RETAIN_DAYS 뒤 사라진다
     (그 경우 상세가 status='partial'로 응답).
     """
+    if getattr(request.state, "public_access", False):
+        from security.public_us_briefing import briefing_dates
+        return briefing_dates(limit)
     from pipeline.us_briefing import list_briefings
     return [UsBriefingListItem(**x) for x in list_briefings(limit=limit)]
 
@@ -105,12 +117,18 @@ def us_briefing_sources():
 
 
 @router.get("/briefing", response_model=UsBriefing)
-def us_briefing(force: bool = False, trade_date: str | None = None):
+def us_briefing(request: Request, force: bool = False, trade_date: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$")):
     """어젯밤 미국장 브리핑 — 4섹션 종합(지수·요인·이슈·흐름, docs/specs/us-briefing.md).
 
     force=false: 최신 스냅샷 순수 읽기 · force=true: 재수집+재종합(D-100 버튼 주도).
     trade_date: 과거 브리핑 읽기 전용 조회 (재수집·재종합 없음, D-112).
     """
+    if getattr(request.state, "public_access", False):
+        if force:
+            raise HTTPException(403, "공개 조회에서는 브리핑을 생성할 수 없습니다.")
+        from security.public_us_briefing import stored_briefing
+        from routers.public_documents import perform
+        return perform(lambda: stored_briefing(trade_date))
     from pipeline.us_briefing import build_briefing
     return UsBriefing(**build_briefing(force=force, trade_date=trade_date))
 
@@ -199,7 +217,11 @@ def us_worldmodel(ticker: str):
 
 
 @router.get("/{ticker}", response_model=UsDossier)
-def us_dossier(ticker: str):
+def us_dossier(request: Request, ticker: str):
+    if getattr(request.state, 'public_access', False):
+        from security.public_us_dossier import stored_dossier
+        from routers.spine_transcript import _public_read
+        return _public_read(lambda: stored_dossier(ticker))
     from pipeline.us_data import get_fundamentals, resolve_us
     conn = get_connection()
     eid, name = resolve_us(conn, ticker)

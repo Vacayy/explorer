@@ -3,7 +3,7 @@
 화두 → 내러티브 연결(ia-redesign §9): 회차 items의 `narratives`, 내러티브 상세 타임라인, 내러티브 후보(승인·무시).
 전부 결정적 — LLM을 부르지 않는다. 승인은 다음 내러티브 갱신 때 첫 버전을 만들도록 등록만 한다.
 """
-from fastapi import APIRouter, HTTPException, Path, Query
+from fastapi import APIRouter, HTTPException, Path, Query, Request
 
 from database import get_connection
 from models.market_today import CandidateAction, MarketToday, NarrativeCandidates, NarrativeMarketToday
@@ -12,9 +12,13 @@ router = APIRouter(tags=["spine"])
 
 
 @router.get("/api/spine/market-today", response_model=MarketToday)
-def market_today(date: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+def market_today(request: Request, date: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
                  slot: str | None = Query(None, pattern=r"^(0810|0930|1130|1500|1600|1000|1300|1540)$")):
     """그날(없으면 최근) 회차 목록과 선택(없으면 최신) 회차의 화두·출처·연결 내러티브. LLM 0."""
+    if getattr(request.state, 'public_access', False):
+        from security.public_market_today import public_market_today
+        from routers.public_documents import perform
+        return perform(lambda: public_market_today(date, slot))
     from pipeline.market_today import read
     return read(date, slot)
 
