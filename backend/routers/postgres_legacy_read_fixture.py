@@ -195,6 +195,7 @@ def install(app, projection, *, database_host):
     for name in ('services.krx_service', 'services.dart_service'):
         service = _importlib.import_module(name)
         service.is_cached = (lambda key, original=service.is_cached: True if _offline.get() else original(key))
+    _install_offline_fetches(projection.factory)
     patterns = [re.compile('^' + re.sub(r'\\{[^}]+\\}', '[^/]+', re.escape(path)) + '$')
                 for path in READ_ROUTES | {route.path for route in router.routes}]
 
@@ -207,3 +208,31 @@ def install(app, projection, *, database_host):
             return await call_next(request)
         finally:
             _offline.reset(token)
+
+
+def _install_offline_fetches(factory):
+    """Fetches a legacy computation makes on the way (US daily prices, target-price changes, yfinance estimates):
+    offline, the saved rows answer and each skipped fetch is kept as a not-run collection request (the candidate
+    does not collect). yfinance goes through curl_cffi, below the socket guard, so it is refused explicitly."""
+    import yfinance
+    from psycopg.types.json import Jsonb
+    from pipeline import earnings_chain, us_data
+
+    def skipped(kind, **params):
+        with factory() as pg:
+            if not pg.execute("SELECT 1 FROM collector_requests WHERE kind=%s AND params=%s AND status='not_run' "
+                              "AND requested_at > now() - interval '1 day'", (kind, Jsonb(params))).fetchone():
+                pg.execute("INSERT INTO collector_requests(kind,params,origin) VALUES (%s,%s,'candidate')", (kind, Jsonb(params)))
+        return 0
+
+    fetch_prices, refresh_pt, ticker = us_data.fetch_prices, earnings_chain.refresh_pt, yfinance.Ticker
+    us_data.fetch_prices = lambda symbol, period='2y', force=False: (
+        skipped('us_prices', ticker=symbol.upper()) if _offline.get() else fetch_prices(symbol, period, force))
+    earnings_chain.refresh_pt = lambda conn, symbol, max_age_hours=20: (
+        skipped('us_pt_changes', ticker=symbol) if _offline.get() else refresh_pt(conn, symbol, max_age_hours))
+
+    def offline_ticker(*args, **kwargs):
+        if _offline.get():
+            raise RuntimeError('external request blocked: yfinance')
+        return ticker(*args, **kwargs)
+    yfinance.Ticker = offline_ticker
