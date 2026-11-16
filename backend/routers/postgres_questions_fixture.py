@@ -1,7 +1,7 @@
 """Read existing question-tracker data from a disposable PG fixture."""
 import json
 from uuid import UUID
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from psycopg.rows import dict_row
 from pipeline.postgres_graph_fixture import _guard
 from routers.spine_questions import AskRequest
@@ -21,22 +21,45 @@ def create_router(connect, *, run_llm=None, search=None):
             return row
 
     @router.post('', status_code=201)
-    def create(body: AskRequest):
+    def create(body: AskRequest, request: Request):
         from pipeline.postgres_question_orchestration_fixture import create_question_native, QuestionRunUnresolved, QuestionModelUncertain
         if not body.text.strip():
             raise HTTPException(400, '질문이 비어 있습니다')
         if run_llm is None or search is None:
             raise HTTPException(503, '질문 생성이 준비되지 않았습니다')
+        # Optional lower limits are for a deliberate local fixture test only.
+        # Normal requests keep the original scan limit.
+        test_limit = request.headers.get('x-explorer-fixture-model-limit')
+        if test_limit is not None and (not test_limit.isdigit() or not 1 <= int(test_limit) <= 4):
+            raise HTTPException(400, '시험 호출 제한이 올바르지 않습니다')
+        calls = 0
+        budget_hit = False
+        def model(prompt, *, task):
+            nonlocal calls, budget_hit
+            if test_limit is not None and calls >= int(test_limit):
+                budget_hit = True
+                raise RuntimeError('fixture model call limit reached')
+            calls += 1
+            return run_llm(prompt, task=task)
         try:
-            result = create_question_native(connect, body.text, run_llm=run_llm, search=search,
+            result = create_question_native(connect, body.text, run_llm=model, search=search,
                 created_by=body.created_by if body.created_by in ('user', 'thesis') else 'user',
-                narrative_id=body.narrative_id, source_doc_id=body.source_doc_id)
+                narrative_id=body.narrative_id, source_doc_id=body.source_doc_id,
+                numeric_limit=1 if test_limit is not None else 40)
         except QuestionRunUnresolved as exc:
             raise HTTPException(409, {'message': str(exc), 'run_id': exc.run_id}) from exc
         except QuestionModelUncertain as exc:
             raise HTTPException(503, {'message': str(exc), 'run_id': exc.run_id}) from exc
         except ValueError as exc:
             raise HTTPException(503, '질문 분해 결과를 확인하지 못했습니다') from exc
+        if budget_hit:
+            from psycopg.types.json import Jsonb
+            result['status'] = 'partial'
+            result['steps']['model_limit'] = {'status': 'partial'}
+            with connect() as conn:
+                _guard(conn)
+                conn.execute("UPDATE question_creation_runs SET status='partial',steps=%s WHERE id=%s",
+                             (Jsonb(result['steps']), UUID(result['run_id'])))
         tree = detail(result['question_id'])
         if result['status'] != 'completed':
             tree['processing'] = {'status': result['status'], 'run_id': result['run_id'], 'steps': result['steps']}
