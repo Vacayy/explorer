@@ -3,8 +3,8 @@
 Requires the existing development auth/router modules and an explicitly
 provided identity service. It does not initialize accounts or start a server.
 """
-from fastapi import FastAPI, HTTPException, Request
-from pipeline.postgres_portfolio_fixture import FixturePortfolioMarket, MemberPortfolioFixture
+from fastapi import Depends, FastAPI, HTTPException, Request
+from pipeline.postgres_portfolio_fixture import FixturePortfolioMarket, MemberPortfolioFixture, MemberPrinciplesFixture
 
 
 def create_app(factory, *, identity_service):
@@ -37,10 +37,16 @@ def create_app(factory, *, identity_service):
     app.include_router(routes.router)
     app.dependency_overrides[auth.get_service]=lambda:identity_service
     app.dependency_overrides[routes.member_service]=service
-    # Principle endpoints need an independent owned store; leave them closed.
+    def principles(portfolio=Depends(service)):
+        return MemberPrinciplesFixture(portfolio)
+    app.dependency_overrides[routes.principle_service]=principles
+    # Rule evaluation and catalogue are not yet backed by this fixture.
     allowed={('GET','/api/auth/session'),('GET','/api/member/portfolio'),('GET','/api/member/portfolio/history'),
              ('GET','/api/member/portfolio/transactions'),('GET','/api/member/portfolio/companies'),
-             ('POST','/api/member/portfolio/transactions'),('DELETE','/api/member/portfolio/transactions/{tx_id}')}
+             ('POST','/api/member/portfolio/transactions'),('DELETE','/api/member/portfolio/transactions/{tx_id}'),
+             ('GET','/api/member/portfolio/principles'),('POST','/api/member/portfolio/principles'),
+             ('PUT','/api/member/portfolio/principles/{principle_id}'),('PATCH','/api/member/portfolio/principles/{principle_id}'),
+             ('DELETE','/api/member/portfolio/principles/{principle_id}')}
     policies={key:PUBLIC_ROUTE_POLICIES[key] for key in allowed}
     app.add_middleware(PublicAccessBoundary,routes=app.router.routes,policies=policies,
                        service_factory=lambda:identity_service)

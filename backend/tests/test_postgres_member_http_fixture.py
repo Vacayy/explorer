@@ -81,6 +81,15 @@ class MemberHTTPFixtureTests(unittest.TestCase):
                     self.assertEqual(summary.status_code,200)
                     self.assertEqual(summary.json()['holdings'][0]['return_pct'],20.0)
                     self.assertEqual(client.get('/api/member/portfolio',headers=headers(tokens[1])).json()['holdings'],[])
+                    principles='/api/member/portfolio/principles'
+                    created=client.post(principles,headers=headers(tokens[0]),json={'text':'합성 운용 원칙','notes':['합성 메모'],
+                        'rules':[{'type':'max_weight','params':{'pct':25}}]})
+                    self.assertEqual(created.status_code,201)
+                    principle_id=created.json()['id']
+                    self.assertEqual(len(client.get(principles,headers=headers(tokens[0])).json()),1)
+                    self.assertEqual(client.get(principles,headers=headers(tokens[1])).json(),[])
+                    self.assertEqual(client.delete(principles+'/'+str(principle_id),headers=headers(tokens[1])).status_code,404)
+                    self.assertEqual(client.get(principles+'/state',headers=headers(tokens[0])).status_code,404)
                     unavailable[0]=True
                     failure=client.get(path,headers=headers(tokens[0]))
                     self.assertEqual(failure.status_code,503)

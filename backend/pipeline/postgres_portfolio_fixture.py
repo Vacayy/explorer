@@ -29,6 +29,11 @@ def initialize(conn):
     conn.execute('''CREATE TABLE fixture_portfolio_legacy_mapping (
         legacy_group_id BIGINT PRIMARY KEY,
         account_id BIGINT UNIQUE NOT NULL REFERENCES fixture_portfolio_accounts(id))''')
+    conn.execute('''CREATE TABLE fixture_portfolio_principles (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        account_id BIGINT NOT NULL REFERENCES fixture_portfolio_accounts(id),
+        text TEXT NOT NULL,rules_json TEXT NOT NULL,notes_json TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'))''')
 
 
 def _account(conn, principal, *, create=False):
@@ -252,3 +257,45 @@ class MemberPortfolioFixture:
             return []
         return [{'stock_code':code,'corp_name':name} for code,name in sorted(self.names.items())
                 if query in code or query in name][:20]
+
+
+class MemberPrinciplesFixture:
+    """Use the existing member principle validation with an isolated owner."""
+    def __init__(self, portfolio):
+        self.portfolio=portfolio
+
+    def listing(self):
+        from security.member_principles import MemberPrinciples
+        with self.portfolio.connection() as conn:
+            account=_account(conn,self.portfolio.owner)
+            rows=conn.execute('SELECT id,text,rules_json,notes_json,created_at FROM fixture_portfolio_principles '
+                              'WHERE account_id=%s ORDER BY id',(account,)).fetchall()
+            return [MemberPrinciples.projection(dict(zip(('id','text','rules_json','notes_json','created_at'),row))) for row in rows]
+
+    def create(self, body):
+        from security.member_principles import MemberPrinciples, PrincipleLimit
+        values=MemberPrinciples.cleaned(body)
+        with self.portfolio.connection() as conn:
+            account=_account(conn,self.portfolio.owner,create=True)
+            if conn.execute('SELECT count(*) FROM fixture_portfolio_principles WHERE account_id=%s',(account,)).fetchone()[0]>=100:
+                raise PrincipleLimit()
+            return conn.execute('INSERT INTO fixture_portfolio_principles(account_id,text,rules_json,notes_json) '
+                                'VALUES (%s,%s,%s,%s) RETURNING id',(account,*values)).fetchone()[0]
+
+    def _change(self, ident, sql, params=()):
+        from security.member_principles import PrincipleUnavailable
+        with self.portfolio.connection() as conn:
+            account=_account(conn,self.portfolio.owner)
+            if account is None or not conn.execute(sql,(*params,ident,account)).rowcount:
+                raise PrincipleUnavailable()
+
+    def replace(self, ident, body):
+        from security.member_principles import MemberPrinciples
+        self._change(ident,'UPDATE fixture_portfolio_principles SET text=%s,rules_json=%s,notes_json=%s WHERE id=%s AND account_id=%s',
+                     MemberPrinciples.cleaned(body))
+
+    def update_text(self, ident, text):
+        self._change(ident,'UPDATE fixture_portfolio_principles SET text=%s WHERE id=%s AND account_id=%s',(text,))
+
+    def delete(self, ident):
+        self._change(ident,'DELETE FROM fixture_portfolio_principles WHERE id=%s AND account_id=%s')
