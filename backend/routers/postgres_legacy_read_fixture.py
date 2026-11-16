@@ -36,7 +36,9 @@ READ_ROUTES = {'/api/spine/home', '/api/spine/home/ai-activity', '/api/spine/hom
                '/api/spine/narrative/{narrative_id}/causal', '/api/spine/narrative/{narrative_id}/chain',
                '/api/spine/narrative/{narrative_id}/diff', '/api/spine/narrative/{narrative_id}/grounding',
                '/api/spine/narrative/{narrative_id}/related', '/api/spine/narrative/mer', '/api/spine/narrative/scenario',
-               '/api/spine/narrative/versions', '/api/spine/world/checkpoint',
+               '/api/spine/narrative/versions', '/api/spine/narrative/version', '/api/spine/world/checkpoint',
+               # Earnings-call proxies list and the causal panel's beneficiary screen
+               '/api/spine/transcript/proxies', '/api/spine/beneficiary/screen',
                '/api/spine/narratives/{narrative_id}/market-today', '/api/spine/follows',
                # Company detail: saved prices, valuation, DART statements and disclosures
                '/api/financials/{stock_code}', '/api/financials/{stock_code}/income-flow',
@@ -147,11 +149,14 @@ def install(app, projection, *, database_host):
     import routers
     first_legacy = len(app.router.routes)
     names = [m.name for m in pkgutil.iter_modules(routers.__path__) if not m.name.startswith('postgres_')]
+    from fastapi import APIRouter as _APIRouter
     for name in names:
-        router = getattr(importlib.import_module(f'routers.{name}'), 'router', None)
-        for route in getattr(router, 'routes', ()):
-            if isinstance(route, APIRoute) and route.methods == {'GET'} and route.path in READ_ROUTES:
-                app.router.routes.append(route)
+        module = importlib.import_module(f'routers.{name}')
+        # Every router of the module (some keep a second one, e.g. spine_causal.beneficiary_router).
+        for router in [value for value in vars(module).values() if isinstance(value, _APIRouter)]:
+            for route in router.routes:
+                if isinstance(route, APIRoute) and route.methods == {'GET'} and route.path in READ_ROUTES:
+                    app.router.routes.append(route)
 
     from models.us import UsBriefing
     from pipeline.macro import get_macro
