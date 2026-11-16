@@ -163,3 +163,51 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
                 pg.execute("UPDATE legacy_snapshot_rows SET row_data=jsonb_set(row_data,'{summary}',to_jsonb('수정된 요약'::text)) WHERE table_name='enrichments' AND row_ordinal=90003")
             return SimpleNamespace(text='{"direction":"up"}')
         self.assertEqual(extract_sentiment(self.target,1,search=search,run_llm=model),{'extracted':0,'stale':1})
+
+    def test_transcript_numeric_scans_are_idempotent_and_preserve_no_result(self):
+        from types import SimpleNamespace
+        from psycopg.types.json import Jsonb
+        from pipeline.postgres_question_numeric_fixture import extract_numeric
+        with self.fixture.pg() as pg:
+            for table in ('raw_documents','transcripts'):
+                pg.execute('INSERT INTO legacy_snapshot_tables VALUES(%s,%s,%s,2) ON CONFLICT DO NOTHING',(table,Jsonb([]),'fixture'))
+            for i in (9,10):
+                pg.execute("INSERT INTO legacy_snapshot_rows VALUES('raw_documents',%s,%s)",(91000+i,Jsonb({'id':100+i,'markdown':'가상의 컨콜 본문'})))
+                pg.execute("INSERT INTO legacy_snapshot_rows VALUES('transcripts',%s,%s)",(91000+i,Jsonb({'id':i,'raw_doc_id':100+i,'ticker':'ABC','fiscal_year':2026,'fiscal_period':'Q1'})))
+            pg.execute("INSERT INTO snapshot_metadata(singleton,snapshot_at,source_observed_at,document_count,list_row_count,generation_id) VALUES(true,'fixture',now(),1,1,'00000000-0000-0000-0000-000000000001') ON CONFLICT(singleton) DO NOTHING")
+        with self.target() as pg:
+            fork_chat_preview(self.source,pg,self.fixture.schema);import_questions(self.q,pg)
+            pg.execute("UPDATE question_capture_rows SET row_data=jsonb_set(row_data,'{tickers}',to_jsonb('ABC'::text)) WHERE table_name='proxy_registry' AND row_data->>'id'='3'")
+        calls=[]
+        def model(prompt,**kw):
+            calls.append(kw['task'])
+            return SimpleNamespace(text='{"found":true,"value_num":12,"value_text":"12","direction":"up"}' if len(calls)==1 else '{"found":false}')
+        result=extract_numeric(self.target,1,run_llm=model)
+        self.assertEqual(result,{'extracted':1,'scanned':2,'stale':0,'graph_projection_required':True})
+        self.assertEqual(extract_numeric(self.target,1,run_llm=model)['scanned'],0)
+        self.assertEqual(len(calls),2)
+        detail=QuestionsFixture(self.target).proxy(3)
+        self.assertEqual(len(detail['observations']),2)
+        self.assertTrue(any(o['value_num']==12 for o in detail['observations']))
+
+    def test_numeric_discards_changed_transcript_during_model_call(self):
+        from types import SimpleNamespace
+        from psycopg.types.json import Jsonb
+        from pipeline.postgres_question_numeric_fixture import extract_numeric
+        with self.fixture.pg() as pg:
+            for table in ('raw_documents','transcripts'):
+                pg.execute('INSERT INTO legacy_snapshot_tables VALUES(%s,%s,%s,1) ON CONFLICT DO NOTHING',(table,Jsonb([]),'fixture'))
+            pg.execute("INSERT INTO legacy_snapshot_rows VALUES('raw_documents',91001,%s)",(Jsonb({'id':109,'markdown':'원래 본문'}),))
+            pg.execute("INSERT INTO legacy_snapshot_rows VALUES('transcripts',91001,%s)",(Jsonb({'id':9,'raw_doc_id':109,'ticker':'ABC','fiscal_year':2026,'fiscal_period':'Q1'}),))
+            pg.execute("INSERT INTO snapshot_metadata(singleton,snapshot_at,source_observed_at,document_count,list_row_count,generation_id) VALUES(true,'fixture',now(),1,1,'00000000-0000-0000-0000-000000000001') ON CONFLICT(singleton) DO NOTHING")
+        with self.target() as pg:
+            fork_chat_preview(self.source,pg,self.fixture.schema);import_questions(self.q,pg)
+            pg.execute("UPDATE question_capture_rows SET row_data=jsonb_set(row_data,'{tickers}',to_jsonb('ABC'::text)) WHERE table_name='proxy_registry' AND row_data->>'id'='3'")
+        def model(prompt,**kw):
+            with self.fixture.pg() as pg:
+                pg.execute("UPDATE legacy_snapshot_rows SET row_data=jsonb_set(row_data,'{markdown}',to_jsonb('변경 본문'::text)) WHERE table_name='raw_documents' AND row_ordinal=91001")
+            return SimpleNamespace(text='{"found":true,"value_num":12}')
+        result=extract_numeric(self.target,1,run_llm=model)
+        self.assertEqual(result['stale'],1)
+        self.assertEqual(result['extracted'],0)
+        self.assertEqual(len(QuestionsFixture(self.target).proxy(3)['observations']),1)
