@@ -105,3 +105,63 @@ class StudyFixtureTests(ChatPreviewForkTests):
             clip=client.post(f'/api/spine/study-projects/{pid}/clips',json={'title':'발췌','text':'직접 작성'})
             self.assertEqual(clip.status_code,200)
             self.assertEqual(len(client.get(f'/api/spine/study-projects/{pid}').json()['documents']),2)
+
+    def test_study_question_is_atomic_idempotent_and_saved_in_pg(self):
+        from unittest.mock import patch
+        from pipeline.postgres_conversations import PostgreSQLConversations
+        from pipeline.postgres_study_turn_fixture import StudyTurnsFixture
+        with self.target() as pg:
+            fork_chat_preview(self.source,pg,self.fixture.schema)
+            import_studies(self.source,pg)
+        store=PostgreSQLConversations(self.target)
+        turns=StudyTurnsFixture(self.target,store,tools=None)
+        app=FastAPI();app.include_router(create_router(StudyFixture(self.target),turns))
+        calls=[]
+        def answer(store,tools,cid,question,**kwargs):
+            calls.append(kwargs['study_context'])
+            store.append_assistant(cid,'시험 답변')
+            return {'answer':'시험 답변'}
+        body={'question':'선택한 부분 설명','annotations':[{'id':8,'revision':1}],'request_key':'fixture-key-1','research':'off'}
+        with patch('pipeline.postgres_study_turn_fixture.generate_answer',side_effect=answer):
+            with TestClient(app) as client:
+                response=client.post('/api/spine/studies/4/ask',json=body)
+                self.assertEqual(response.status_code,200)
+                result=response.json();self.assertTrue(result['created'])
+                again=client.post('/api/spine/studies/4/ask',json=body)
+                self.assertFalse(again.json()['created'])
+                detail=client.get('/api/spine/studies/4').json()
+                self.assertEqual(detail['turns'][0]['status'],'complete')
+                self.assertEqual(detail['turns'][0]['context']['annotations'][0]['exact'],'😀')
+                _, messages=store.detail(result['conversation_id'])
+                self.assertEqual([m['role'] for m in messages],['user','assistant'])
+                self.assertEqual(len(calls),1)
+                self.assertEqual(client.post('/api/spine/studies/4/ask',json={**body,'request_key':'fixture-key-2','annotations':[{'id':8,'revision':2}]}).status_code,409)
+
+    def test_project_question_saves_selected_source_with_answer(self):
+        from unittest.mock import patch
+        from pipeline.postgres_conversations import PostgreSQLConversations
+        from pipeline.postgres_study_turn_fixture import StudyTurnsFixture
+        from pipeline.postgres_study_projects_fixture import StudyProjectsFixture
+        from routers.postgres_study_projects_fixture import create_router as project_router
+        with self.target() as pg:
+            fork_chat_preview(self.source,pg,self.fixture.schema);import_studies(self.source,pg)
+        store=PostgreSQLConversations(self.target);turns=StudyTurnsFixture(self.target,store,tools=None)
+        app=FastAPI();app.include_router(project_router(StudyProjectsFixture(self.target),turns))
+        app.include_router(create_router(StudyFixture(self.target)))
+        seen=[]
+        def answer(store,tools,cid,question,**kwargs):
+            seen.append(kwargs['study_context']);store.append_assistant(cid,'프로젝트 시험 답변');return {'answer':'ok'}
+        with patch('pipeline.postgres_study_turn_fixture.generate_answer',side_effect=answer):
+            with TestClient(app) as client:
+                pid=client.post('/api/spine/study-projects',json={'title':'자료 묶음'}).json()['id']
+                sid=client.post(f'/api/spine/study-projects/{pid}/clips',json={'title':'한글 자료','text':'한글😀본문'}).json()['study_ids'][0]
+                aid=client.post(f'/api/spine/studies/{sid}/annotations',json={'kind':'highlight','start':2,'end':3,'exact':'😀'}).json()['id']
+                body={'question':'무슨 의미?','sources':[{'study_id':sid,'annotations':[{'id':aid,'revision':1}]}], 'request_key':'project-key-1','research':'off'}
+                response=client.post(f'/api/spine/study-projects/{pid}/ask',json=body)
+                self.assertEqual(response.status_code,200)
+                project=client.get(f'/api/spine/study-projects/{pid}').json()
+                self.assertEqual(project['turns'][0]['status'],'complete')
+                self.assertEqual(seen[0]['sources'][0]['study_id'],sid)
+                self.assertEqual(seen[0]['annotations'][0]['exact'],'😀')
+                self.assertFalse(client.post(f'/api/spine/study-projects/{pid}/ask',json=body).json()['created'])
+                self.assertEqual(len(seen),1)

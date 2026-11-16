@@ -1,9 +1,9 @@
 """Explicitly mounted project routes for private PG study trials."""
-from fastapi import APIRouter
-from routers.spine_study_projects import Create, Edit, Documents, Clip
+from fastapi import APIRouter, BackgroundTasks
+from routers.spine_study_projects import Create, Edit, Documents, Clip, Question
 
 
-def create_router(store):
+def create_router(store, turns=None):
     router = APIRouter(prefix='/api/spine/study-projects',tags=['study'])
     @router.get('')
     def listing(): return store.listing()
@@ -21,4 +21,11 @@ def create_router(store):
     def clip(pid: int, body: Clip): return store.add_clip(pid,body)
     @router.delete('/{pid}/documents/{sid}')
     def remove(pid: int,sid: int): return store.remove(pid,sid)
+    if turns is not None:
+        @router.post('/{pid}/ask')
+        def ask(pid: int, body: Question, background: BackgroundTasks):
+            result=turns.queue(pid,body,project=True)
+            if result['created']:
+                background.add_task(turns.execute,result['id'],project=True)
+            return result
     return router

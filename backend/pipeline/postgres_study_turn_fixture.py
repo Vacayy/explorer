@@ -1,0 +1,89 @@
+"""Transactional admission and completion for isolated study conversations."""
+import json
+from fastapi import HTTPException
+from psycopg.rows import dict_row
+from pipeline import study, study_projects, study_coach
+from pipeline.postgres_graph_fixture import _guard
+from pipeline.postgres_chat_generation import generate_answer
+
+NOW = "to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')"
+
+
+class _QuestionReader:
+    """Adapt the existing read-only study context builders to a PG cursor."""
+    def __init__(self, cursor): self.cursor = cursor
+    def execute(self, query, params=()):
+        # Only called by the fixed, internal context/prepare queries.
+        self.cursor.execute(query.replace('?', '%s'), params)
+        return self.cursor
+
+
+class StudyTurnsFixture:
+    def __init__(self, connect, chat_store, tools, *, owner_chat_id=None):
+        self.connect, self.chat_store, self.tools = connect, chat_store, tools
+        self.owner_chat_id = owner_chat_id
+
+    def queue(self, owner_id, body, *, project=False):
+        table, key, owner_table = (('study_project_turns','project_id','study_projects') if project
+                                    else ('study_turns','study_id','study_sessions'))
+        with self.connect() as c:
+            _guard(c)
+            with c.cursor(row_factory=dict_row) as cur:
+                cur.execute(f'SELECT * FROM {owner_table} WHERE id=%s FOR UPDATE', (owner_id,))
+                owner = cur.fetchone()
+                if not owner:
+                    raise HTTPException(404, '스터디를 찾을 수 없습니다')
+                cur.execute(f'SELECT id,conversation_id FROM {table} WHERE {key}=%s AND request_key=%s', (owner_id,body.request_key))
+                old = cur.fetchone()
+                if old:
+                    return {**old,'created':False}
+                if cur.execute(f"SELECT 1 FROM {table} WHERE {key}=%s AND status='pending'", (owner_id,)).fetchone():
+                    raise HTTPException(409,'이전 답변을 생성 중입니다. 완료 후 질문해 주세요.')
+                if not body.question.strip() and (project or body.action == 'question'):
+                    raise HTTPException(422,'질문을 입력해 주세요.')
+                reader = _QuestionReader(cur)
+                continuing = getattr(body,'context_mode','auto') == 'continue'
+                if project:
+                    context = {'project_id':owner_id,'study_id':None} if continuing else study_projects._context(reader,owner_id,body)
+                else:
+                    context = {'study_id':owner_id} if continuing else study._context(reader,owner,body)
+                context = study_coach.prepare(reader,table,key,owner_id,body,context)
+                question = body.question.strip() or '선택한 하이라이트의 핵심을 요약하고 서로 연결되는 내용을 설명해 주세요.'
+                cid = owner['conversation_id']
+                cur.execute('SELECT 1 FROM conversations WHERE id=%s', (cid,))
+                if cid is None or not cur.fetchone():
+                    label = ('스터디 프로젝트 · ' if project else '스터디 · ') + owner['title'][:80 if project else 90]
+                    cur.execute("INSERT INTO conversations(channel,title,state_json,chat_id) VALUES('web',%s,'{}',%s) RETURNING id", (label,self.owner_chat_id))
+                    cid = cur.fetchone()['id']
+                cur.execute('SELECT role FROM chat_messages WHERE conversation_id=%s ORDER BY id DESC LIMIT 1', (cid,))
+                last = cur.fetchone()
+                if last and last['role'] == 'user':
+                    raise HTTPException(409,'이 대화에 답변 생성 중인 질문이 있습니다.')
+                cur.execute("INSERT INTO chat_messages(conversation_id,role,content) VALUES(%s,'user',%s) RETURNING id", (cid,question))
+                mid = cur.fetchone()['id']
+                cur.execute(f'''INSERT INTO {table}({key},conversation_id,message_id,request_key,question,context_json,status,created_at)
+                    VALUES(%s,%s,%s,%s,%s,%s,'pending',{NOW}) RETURNING id''',
+                    (owner_id,cid,mid,body.request_key,question,json.dumps(context,ensure_ascii=False)))
+                tid=cur.fetchone()['id']
+                cur.execute(f'UPDATE {owner_table} SET conversation_id=%s,updated_at={NOW} WHERE id=%s',(cid,owner_id))
+                cur.execute(f'UPDATE conversations SET updated_at={NOW} WHERE id=%s',(cid,))
+                return {'id':tid,'conversation_id':cid,'created':True}
+
+    def execute(self, turn_id, *, project=False):
+        table = 'study_project_turns' if project else 'study_turns'
+        with self.connect() as c:
+            _guard(c)
+            with c.cursor(row_factory=dict_row) as cur:
+                lock_key = f'{table}:{turn_id}'
+                cur.execute('SELECT pg_try_advisory_xact_lock(hashtextextended(%s,0)) AS acquired', (lock_key,))
+                if not cur.fetchone()['acquired']:
+                    return
+                cur.execute(f'SELECT * FROM {table} WHERE id=%s',(turn_id,))
+                row=cur.fetchone()
+                if not row or row['status'] != 'pending':
+                    return
+                context=json.loads(row['context_json'])
+                result=generate_answer(self.chat_store,self.tools,row['conversation_id'],row['question'],
+                                       owner_chat_id=self.owner_chat_id,study_context=context)
+                cur.execute(f"UPDATE {table} SET status=%s,error=%s,context_json=%s,finished_at={NOW} WHERE id=%s AND status='pending'",
+                    ('error' if result.get('error') else 'complete',result.get('error'),json.dumps(context,ensure_ascii=False),turn_id))

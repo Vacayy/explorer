@@ -1,9 +1,9 @@
 """Explicitly mounted isolated study read/annotation routes only."""
-from fastapi import APIRouter
-from routers.spine_study import Annotation, EditAnnotation
+from fastapi import APIRouter, BackgroundTasks
+from routers.spine_study import Annotation, EditAnnotation, StudyQuestion
 
 
-def create_router(store):
+def create_router(store, turns=None):
     router = APIRouter(prefix='/api/spine/studies', tags=['study'])
 
     @router.get('')
@@ -21,5 +21,13 @@ def create_router(store):
     @router.patch('/{study_id}/annotations/{annotation_id}')
     def edit(study_id: int, annotation_id: int, body: EditAnnotation):
         return store.edit_annotation(study_id, annotation_id, body)
+
+    if turns is not None:
+        @router.post('/{study_id}/ask')
+        def ask(study_id: int, body: StudyQuestion, background: BackgroundTasks):
+            result = turns.queue(study_id,body)
+            if result['created']:
+                background.add_task(turns.execute,result['id'])
+            return result
 
     return router
