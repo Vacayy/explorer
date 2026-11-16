@@ -266,3 +266,25 @@ def review_knowledge(conn, knowledge_id, status, epistemic=None):
                  "epistemic_status=COALESCE(excluded.epistemic_status,owner_knowledge_reviews.epistemic_status),"
                  "decided_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')",
                  (knowledge_id, status, epistemic))
+
+
+def initialize_trade_follow(conn):
+    """The owner's trade-item follow requests; the collector keeps the catalog (names, groups, seeds)."""
+    _guard(conn)
+    with conn.transaction():
+        if conn.execute("SELECT to_regclass('owner_trade_follow')").fetchone()[0] is not None:
+            raise ValueError('Trade follow ledger already initialized')
+        owner_account(conn)
+        conn.execute('CREATE TABLE owner_trade_follow (account_id BIGINT NOT NULL REFERENCES fixture_portfolio_accounts(id),'
+                     'hs_code TEXT NOT NULL,item_name TEXT NOT NULL,group_label TEXT,active INTEGER NOT NULL,'
+                     "updated_at TEXT NOT NULL DEFAULT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'),"
+                     'PRIMARY KEY(account_id,hs_code))')
+
+
+def upsert_trade_follow(conn, hs_code, item_name, group_label, active):
+    conn.execute('INSERT INTO owner_trade_follow(account_id,hs_code,item_name,group_label,active) VALUES (%s,%s,%s,%s,%s) '
+                 'ON CONFLICT (account_id,hs_code) DO UPDATE SET active=excluded.active,'
+                 'item_name=COALESCE(excluded.item_name,owner_trade_follow.item_name),'
+                 'group_label=COALESCE(excluded.group_label,owner_trade_follow.group_label),'
+                 "updated_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')",
+                 (owner_account(conn), hs_code, item_name, group_label, active))

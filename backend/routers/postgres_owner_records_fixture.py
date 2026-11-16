@@ -1,5 +1,5 @@
 """Loopback-only owner follows, prediction pins, feed read marks, bookmarks, tracker conditions and
-call-follow pins/additions and knowledge review decisions on the PG ledger.
+call-follow pins/additions, knowledge review decisions and trade-item follows on the PG ledger.
 
 Same request/response shapes and errors as the legacy routes. The follow list
 and feed read marks read the ledger directly; legacy reads (prediction cards)
@@ -17,6 +17,7 @@ from routers.spine_feed import MarkAllReadRequest, MarkReadRequest
 from routers.spine_follows import FollowedEntity, FollowRequest
 from routers.spine_saved import NoteRequest, SavedItem, SaveRequest
 from routers.spine_tracker import Code
+from routers.spine_trade import FollowReq as TradeFollowReq
 from routers.spine_transcript import FollowReq, PinReq
 from models.tracker import TrackerCondition, TrackerConditionIn, TrackerConditionPatch
 
@@ -149,6 +150,12 @@ def create_router(factory, timeline):
         with connection() as conn:
             records.set_core_pin(conn, ticker, body.pinned)
         return {'ticker': ticker, 'pinned': body.pinned}
+
+    @router.post('/api/spine/trade/follow', status_code=201)
+    def upsert_trade_follow(body: TradeFollowReq):
+        with connection() as conn:
+            records.upsert_trade_follow(conn, body.hs_code, body.item_name or body.hs_code, body.group_label, 1 if body.active else 0)
+        return {'hs_code': body.hs_code, 'active': body.active}
 
     @router.post('/api/spine/knowledge/items/{knowledge_id}/approve')
     def approve_knowledge(knowledge_id: int):
