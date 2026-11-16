@@ -29,9 +29,12 @@ write_connection_var = ContextVar('legacy_write_connection', default=None)
 
 # PG-native ledgers that replaced a legacy table; legacy reads must see their rows.
 NATIVE = ('study_projects', 'questions', 'sub_questions', 'proxy_registry', 'proxy_observations')
+# PG-native ledgers shown only in the projection file (read by legacy reads in the worker, e.g. the chat's study
+# tool); too large to re-derive on every connection, so they show from the next build.
+NATIVE_FILE_ONLY = ('study_project_members', 'study_sessions', 'study_annotations')
 # Everything the projection reads that can change after the base load.
 VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'question_graph_overlay_rows',
-             'legacy_supplement_tables', 'legacy_supplement_rows', *NATIVE,
+             'legacy_supplement_tables', 'legacy_supplement_rows', *NATIVE, *NATIVE_FILE_ONLY,
              'fixture_portfolio_transactions', 'fixture_portfolio_members', 'fixture_portfolio_principles',
              'owner_follows', 'owner_kalshi_pins', 'owner_channel_reads',
              'owner_saved_items', 'owner_tracker_conditions', 'owner_legacy_rows',
@@ -103,13 +106,16 @@ def build_projection(factory, directory):
                 with pg.cursor(name=f'p{uuid.uuid4().hex}') as cursor:
                     cursor.execute('SELECT row_data FROM legacy_snapshot_rows WHERE table_name=%s ORDER BY row_ordinal', (name,))
                     root.executemany(insert, (tuple(row[0].get(column) for column in columns) for row in cursor))
-            for name in NATIVE:
+            for name in (*NATIVE, *NATIVE_FILE_ONLY):
                 # Same column names as the legacy table; SQLite keeps each value's own type.
                 columns = [row[0] for row in pg.execute('SELECT column_name FROM information_schema.columns WHERE '
                                                         'table_schema=current_schema() AND table_name=%s '
                                                         'ORDER BY ordinal_position', (name,))]
                 quoted = ','.join('"' + column + '"' for column in columns)
-                root.execute(f'CREATE TABLE "{name}" ({quoted}, PRIMARY KEY("id"))')
+                key = ','.join('"' + row[0] + '"' for row in pg.execute(
+                    'SELECT a.attname FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey) '
+                    'WHERE i.indrelid=to_regclass(%s) AND i.indisprimary ORDER BY array_position(i.indkey,a.attnum)', (name,)))
+                root.execute(f'CREATE TABLE "{name}" ({quoted}, PRIMARY KEY({key}))')
                 rows = pg.execute(f'SELECT {quoted} FROM {name}').fetchall()
                 root.executemany(f'INSERT INTO "{name}" ({quoted}) VALUES ({",".join("?" for _ in columns)})', rows)
             legacy_version = None

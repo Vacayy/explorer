@@ -29,3 +29,6 @@ docker run -d --name "$C" --user 10001:10001 --network explorer-refactor-preview
   -v "$DATA/review/refactor-single/vault-candidate/notes-injected:/app/vault/notes/injected" \
   -w /app --entrypoint python "$IMAGE" /app/scripts/refactor_single_path_preview.py
 docker network connect bridge "$C"
+# A compute-worker pass stays up 90s after its last job with the code it started with; end it so the next job
+# starts a pass with the code just deployed (the watcher itself only polls; an interrupted job stays queued).
+docker exec "${REFACTOR_WORKER_CONTAINER:-explorer-refactor-single-compute-worker}" pkill -TERM -f 'pipeline\.postgres_compute_worker$' 2>/dev/null || true
