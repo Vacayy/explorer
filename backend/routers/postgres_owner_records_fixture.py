@@ -16,6 +16,7 @@ from models.timeline import MarkAllReadResponse
 from pipeline.timeline import utc
 from pipeline import postgres_owner_records_fixture as records
 from routers.spine_feed import MarkAllReadRequest, MarkReadRequest
+from routers.spine_knowledge import InjectRequest, InjectResponse
 from routers.spine_follows import FollowedEntity, FollowRequest
 from routers.spine_saved import NoteRequest, SavedItem, SaveRequest
 from routers.spine_tracker import Code
@@ -332,6 +333,18 @@ def create_router(factory, timeline, projection=None):
         if projection is not None:
             falsify(knowledge_id)
         return {'id': knowledge_id, 'epistemic_status': epistemic}
+
+    @router.post('/api/spine/knowledge', response_model=InjectResponse, status_code=201)
+    def inject_knowledge(body: InjectRequest):
+        # The legacy injection on a private projection copy; the note goes to the candidate-only notes folder.
+        from pipeline.postgres_knowledge_inject import inject
+        if projection is None:
+            raise HTTPException(503, 'Knowledge injection unavailable')
+        try:
+            return InjectResponse(**inject(projection, factory, '/app/vault/notes/injected', body.content, body.epistemic,
+                                           body.rationale, body.source))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
 
     def falsify(knowledge_id):
         # As the legacy route: falsifiers from the moment knowledge becomes active (one model call, idempotent),

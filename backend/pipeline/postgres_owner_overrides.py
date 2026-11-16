@@ -17,10 +17,13 @@ from pipeline.postgres_graph_fixture import _guard
 OVERRIDES = {'feature_flags': 'name', 'era_checks': 'key', 'research_candidates': 'id',
              'agent_proposals': 'id', 'entity_keywords': 'id',
              'lens_readings': 'id', 'source_digests': 'id', 'models': 'id', 'narratives': 'id',
-             'knowledge_falsifiers': 'id'}
+             'knowledge_falsifiers': 'id', 'knowledge': 'id', 'knowledge_evidence': 'id',
+             # A composite key is 'a|b'; through the PG view such an override can only add rows.
+             'knowledge_entities': 'knowledge_id|entity_id'}
 # Computation outputs: copied into TEMP only for the computing request; reads see them from the
 # next projection build (the computing request answers with the result itself).
-COMPUTED = ('lens_readings', 'source_digests', 'models', 'narratives', 'knowledge_falsifiers')
+COMPUTED = ('lens_readings', 'source_digests', 'models', 'narratives', 'knowledge_falsifiers',
+            'knowledge_evidence', 'knowledge_entities')
 
 
 def initialize(conn):
@@ -59,13 +62,21 @@ def writable_ddl(ddl):
                   '', ddl, flags=re.I)
 
 
+def _columns(table):
+    return OVERRIDES[table].split('|')
+
+
+def _key(table, row):
+    return '|'.join(str(row[column]) for column in _columns(table))
+
+
 def rows(conn):
     """{table: {key: row}} of a SQLite connection's (TEMP) override tables."""
     out = {}
     temp = {row[0] for row in conn.execute("SELECT name FROM temp.sqlite_master WHERE type='table'")}
     for table, key in OVERRIDES.items():
         if table in temp:
-            out[table] = {str(row[key]): dict(row) for row in conn.execute(f'SELECT * FROM temp."{table}"')}
+            out[table] = {_key(table, row): dict(row) for row in conn.execute(f'SELECT * FROM temp."{table}"')}
     return out
 
 
@@ -94,8 +105,9 @@ def apply(conn, before, after, *, source=None):
             if old.get(key) != new.get(key):
                 row = new.get(key)
                 # Keep the visible row's place; a new row goes after the table's rows.
-                ordinal = conn.execute(f"SELECT row_ordinal FROM legacy_snapshot_rows WHERE table_name=%s "
-                                       f"AND row_data->>'{OVERRIDES[table]}'=%s", (table, key)).fetchone()
+                match = ' AND '.join(f"row_data->>'{column}'=%s" for column in _columns(table))
+                ordinal = conn.execute(f'SELECT row_ordinal FROM legacy_snapshot_rows WHERE table_name=%s AND {match}',
+                                       (table, *key.split('|'))).fetchone()
                 if ordinal is None:
                     ordinal = conn.execute('SELECT COALESCE(max(row_ordinal),0)+1 FROM legacy_snapshot_rows WHERE table_name=%s',
                                            (table,)).fetchone()
@@ -116,12 +128,13 @@ def derive(root, pg, *, skip=()):
     for table, key, row in pg.execute('SELECT table_name,key,row_data FROM owner_row_overrides ORDER BY updated_at'):
         if table in skip:
             continue
-        column = OVERRIDES[table]
+        match = ' AND '.join(f'"{column}"=?' for column in _columns(table))
+        values = key.split('|')
         if row is None:
-            root.execute(f'DELETE FROM "{table}" WHERE "{column}"=?', (key,))
+            root.execute(f'DELETE FROM "{table}" WHERE {match}', values)
             continue
         columns = [c[1] for c in root.execute(f'PRAGMA table_info("{table}")') if c[1] in row]
-        if root.execute(f'UPDATE "{table}" SET {",".join(f"{c}=?" for c in columns)} WHERE "{column}"=?',
-                        [row[c] for c in columns] + [key]).rowcount == 0:
+        if root.execute(f'UPDATE "{table}" SET {",".join(f"{c}=?" for c in columns)} WHERE {match}',
+                        [row[c] for c in columns] + values).rowcount == 0:
             root.execute(f'INSERT INTO "{table}" ({",".join(columns)}) VALUES ({",".join("?" * len(columns))})',
                          [row[c] for c in columns])
