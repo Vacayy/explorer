@@ -30,9 +30,11 @@ def create_router(factory, *, run_llm=None, search=None):
     router = APIRouter(prefix='/api/portfolio')
 
     def owner(conn, create=False):
-        from pipeline.postgres_principals import owner_account
+        from pipeline.postgres_principals import PrincipalRequired, owner_account
         try:
             return owner_account(conn, create=create)  # the request principal's ledger (the operator's without one)
+        except PrincipalRequired as exc:
+            raise HTTPException(401, 'Authentication required') from exc
         except LookupError as exc:
             raise HTTPException(503, 'Owner portfolio ledger unavailable') from exc
 
