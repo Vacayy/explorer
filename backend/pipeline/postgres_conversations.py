@@ -223,6 +223,20 @@ class PostgreSQLConversations:
             cur.execute('UPDATE conversations SET state_json=%s WHERE id=%s',
                         (json.dumps(state, ensure_ascii=False), conversation_id))
 
+    def record_model_call(self, job, model, engine, effort, result, duration_ms, error):
+        """Record model usage in the same PG store without saving prompts."""
+        from pipeline.ops import mask_secrets
+        usage = (result.usage if result else {}) or {}
+        safe_error = mask_secrets(str(error))[:500] if error is not None else None
+        with self.connect() as conn:
+            conn.execute('INSERT INTO chat_model_calls '
+                         '(job,model,engine,effort,input_tokens,cache_create_tokens,cache_read_tokens,'
+                         'output_tokens,thinking_tokens,cost_usd,duration_ms,ok,error) '
+                         'VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+                         (job or None, model, engine, effort, usage.get('input'), usage.get('cache_create'),
+                          usage.get('cache_read'), usage.get('output'), usage.get('thinking'),
+                          result.cost_usd if result else None, duration_ms, error is None, safe_error))
+
     def list(self, *, owner_chat_id=None, limit=20):
         with self.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SELECT c.id, c.title, c.channel, c.anchor_entity_id, c.updated_at, "

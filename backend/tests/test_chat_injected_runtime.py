@@ -1,6 +1,7 @@
 """An injected chat data backend must not silently read SQLite."""
 import unittest
 from unittest.mock import patch
+from types import SimpleNamespace
 
 from pipeline import chat
 from pipeline.chat_tools import ToolResult
@@ -45,3 +46,18 @@ class InjectedRuntimeTests(unittest.TestCase):
     def test_injected_runtime_requires_explicit_context(self):
         with self.assertRaises(ValueError):
             chat.run_turn('question', runtime=FakeRuntime())
+
+    def test_model_routing_uses_injected_recorder_and_fails_closed(self):
+        runtime = FakeRuntime()
+        calls = []
+        runtime.run_llm = lambda *args, **kwargs: (calls.append(kwargs['task']) or
+            SimpleNamespace(text='{"intent":"research","tools":[]}'))
+        turn = chat.Turn(question='q', conversation_id=1, ctx={}, runtime=runtime)
+        chat._route(turn, lambda _: None)
+        self.assertEqual(calls, ['chat.route'])
+
+        def failed(*args, **kwargs):
+            raise chat.llm.CallRecordingError('recording failed')
+        runtime.run_llm = failed
+        with self.assertRaises(chat.llm.CallRecordingError):
+            chat._route(turn, lambda _: None)

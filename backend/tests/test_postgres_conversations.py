@@ -5,8 +5,10 @@ from pathlib import Path
 import sqlite3
 import subprocess
 import sys
+from types import SimpleNamespace
 import unittest
 import uuid
+from unittest.mock import patch
 
 import psycopg
 from psycopg import sql
@@ -14,6 +16,8 @@ from psycopg import sql
 from pipeline.postgres_conversations import (ConversationImportConflict, ConversationNotFound,
                                              DocumentNotFound, PostgreSQLConversations,
                                              import_sqlite_conversations)
+from pipeline.postgres_chat_runtime import PostgreSQLChatRuntime
+from pipeline.chat_tools import ToolResult
 
 
 @unittest.skipUnless(os.getenv('REFACTOR_TEST_DISPOSABLE') == '1', 'disposable fixture required')
@@ -28,7 +32,7 @@ class PostgreSQLConversationTests(unittest.TestCase):
             conn.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(self.schema)))
         with self.connect() as conn:
             conn.execute('CREATE TABLE document_projection (id BIGINT PRIMARY KEY, detail_document JSONB NOT NULL)')
-            conn.execute('INSERT INTO document_projection VALUES (%s,%s::jsonb)', (7, json.dumps({'id': 7, 'title': 'Fixture document', 'source_type': 'fixture'})))
+            conn.execute('INSERT INTO document_projection VALUES (%s,%s::jsonb)', (7, json.dumps({'id': 7, 'title': 'Fixture document', 'source_type': 'fixture', 'content': 'Fixture body'})))
             conn.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/conversation_store.sql').read_text())
         self.store = PostgreSQLConversations(self.connect)
 
@@ -168,3 +172,39 @@ print('fresh_process_read_ok')'''
         self.assertEqual(ctx['state']['attached_doc_ids'], [7])
         self.assertEqual(ctx['state']['last_intent'], 'research')
         self.assertEqual([r['note'] for r in ctx['related']], ['same owner note'])
+
+    def test_model_usage_is_stored_without_prompt_and_masks_error_secrets(self):
+        result = SimpleNamespace(usage={'input': 12, 'output': 5}, cost_usd=0.1)
+        self.store.record_model_call('chat.answer', 'fixture', 'test', None, result, 123, None)
+        self.store.record_model_call('chat.route', 'fixture', 'test', None, None, 45, 'api_key=CANARY_SECRET')
+        with self.connect() as conn:
+            rows = conn.execute('SELECT job,input_tokens,output_tokens,ok,error FROM chat_model_calls ORDER BY id').fetchall()
+        self.assertEqual(rows[0][:4], ('chat.answer', 12, 5, True))
+        self.assertFalse(rows[1][3])
+        self.assertNotIn('CANARY_SECRET', rows[1][4])
+
+    def test_chat_runtime_uses_pg_document_and_injected_tools_and_recorder(self):
+        cid, _ = self.store.create_question('fixture', document_id=7)
+
+        class Tools:
+            def run_tool(self, call):
+                return ToolResult(call['name'], call['args'], [{'doc_id': 7}])
+            def gather_attached_refs(self, refs):
+                return [], []
+
+        runtime = PostgreSQLChatRuntime(self.store, cid, Tools())
+        evidence = runtime.attached_evidence([7])
+        self.assertIn('Fixture body', evidence[0]['text'])
+        self.assertEqual(runtime.run_tool({'name': 'search_docs', 'args': {}}).items[0]['doc_id'], 7)
+        with patch('pipeline.postgres_chat_runtime.llm.run', return_value='model result') as call:
+            self.assertEqual(runtime.run_llm('fixture prompt', task='chat.route'), 'model result')
+        self.assertEqual(call.call_args.kwargs['record_call'], self.store.record_model_call)
+
+    def test_chat_runtime_refuses_reused_unresolved_document_id(self):
+        source = self.make_source(document_id=7, source_has_document=False)
+        with self.connect() as target:
+            import_sqlite_conversations(source, target)
+        runtime = PostgreSQLChatRuntime(self.store, 12, object())
+        with self.assertRaises(LookupError):
+            runtime.attached_evidence([7])
+        source.close()

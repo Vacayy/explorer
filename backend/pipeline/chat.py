@@ -272,8 +272,11 @@ def _route(turn: Turn, status) -> None:
     t0 = time.time()
     route = None
     try:
-        res = llm.run(_router_user(turn), task='chat.route', system=_router_system())
+        runner = turn.runtime.run_llm if turn.runtime is not None else llm.run
+        res = runner(_router_user(turn), task='chat.route', system=_router_system())
         route = llm.extract_json(res.text)
+    except llm.CallRecordingError:
+        raise
     except Exception as e:  # noqa: BLE001 — 라우터 실패는 기본 경로로
         turn.tool_log.append({"name": "router", "error": f"{type(e).__name__}: {str(e)[:80]}"})
     turn.timings["route"] = int((time.time() - t0) * 1000)
@@ -363,8 +366,11 @@ def _review(turn: Turn, status) -> None:
     )
     user = f"질문: {turn.question}\n(독립형: {turn.standalone})\n\n지금까지 부른 도구:\n{called}\n\n모인 근거 {len(turn.evidence)}건:\n{digest}"
     try:
-        res = llm.run(user, task='chat.review', system=system)
+        runner = turn.runtime.run_llm if turn.runtime is not None else llm.run
+        res = runner(user, task='chat.review', system=system)
         data = llm.extract_json(res.text) or {}
+    except llm.CallRecordingError:
+        raise
     except Exception as e:  # noqa: BLE001 — 점검 실패는 그냥 종합으로
         turn.review = {"enough": True, "reason": f"점검 실패: {type(e).__name__}", "skipped": True}
         turn.timings["review"] = int((time.time() - t0) * 1000)
@@ -518,7 +524,8 @@ def _synthesize(turn: Turn, status, on_text) -> None:
         return
     status(f"근거 {len(turn.evidence)}건 · 종합 중")
     t0 = time.time()
-    res = llm.run(_synth_user(turn), task='chat.answer', system=_synth_system(turn), on_text=on_text)
+    runner = turn.runtime.run_llm if turn.runtime is not None else llm.run
+    res = runner(_synth_user(turn), task='chat.answer', system=_synth_system(turn), on_text=on_text)
     turn.timings["synth"] = int((time.time() - t0) * 1000)
     turn.model = res.label
     turn.usage = res.usage
