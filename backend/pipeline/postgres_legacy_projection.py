@@ -26,6 +26,9 @@ VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'questio
              'legacy_supplement_tables', 'legacy_supplement_rows', *NATIVE,
              'fixture_portfolio_transactions', 'fixture_portfolio_members', 'fixture_portfolio_principles',
              'owner_follows', 'owner_kalshi_pins')
+# Small owner-ledger tables re-derived per connection in TEMP shadows, so writes
+# show at once; the file keeps its own (possibly older) derived copy underneath.
+SHADOWED = ('portfolio_transactions', 'stock_group_members', 'portfolio_principles', 'follows', 'kalshi_pins')
 CHECK_SECONDS = 10
 log = logging.getLogger(__name__)
 
@@ -178,6 +181,17 @@ class LegacyProjection:
     def connect(self):
         conn = sqlite3.connect(f'file:{self.path()}?mode=ro', uri=True, check_same_thread=False)
         conn.row_factory = sqlite3.Row
+        try:
+            # TEMP names shadow main ones; the unchanged derivations then write only the shadows.
+            for table in SHADOWED:
+                conn.execute(f'CREATE TEMP TABLE "{table}" AS SELECT * FROM main."{table}"')
+            with self.factory() as pg:
+                pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                _derive_owner_portfolio(conn, pg)
+                _derive_owner_records(conn, pg)
+        except BaseException:
+            conn.close()
+            raise
         conn.execute('PRAGMA query_only=ON')
         return conn
 
