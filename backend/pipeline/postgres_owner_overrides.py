@@ -23,11 +23,11 @@ OVERRIDES = {'feature_flags': 'name', 'era_checks': 'key', 'research_candidates'
              'knowledge_falsifiers': 'id', 'knowledge': 'id', 'knowledge_evidence': 'id',
              # A composite key is 'a|b'; through the PG view such an override can only add rows.
              'knowledge_entities': 'knowledge_id|entity_id',
-             'scenarios': 'topic', 'reports': 'id', 'company_profiles': 'id'}
+             'scenarios': 'topic', 'reports': 'id', 'company_profiles': 'id', 'trade_beneficiaries': 'id'}
 # Computation outputs: copied into TEMP only for the computing request; reads see them from the
 # next projection build (the computing request answers with the result itself).
 COMPUTED = ('lens_readings', 'source_digests', 'models', 'narratives', 'knowledge_falsifiers',
-            'knowledge_evidence', 'knowledge_entities', 'scenarios', 'reports', 'company_profiles')
+            'knowledge_evidence', 'knowledge_entities', 'scenarios', 'reports', 'company_profiles', 'trade_beneficiaries')
 
 
 def initialize(conn):
