@@ -6,8 +6,8 @@ Instead of re-implementing them, this writes every `legacy_snapshot_tables` row
 single repeatable-read transaction, and hands legacy code read-only connections.
 A changed overlay triggers a background rebuild; readers keep the previous file
 until the new one is complete, so they never see a half-built projection.
-Bodies of documents older than BODY_DAYS are left empty (metadata stays): the
-connected legacy reads only use recent bodies and the latest memo.
+Document bodies are kept in full: `get_connection` is replaced process-wide, so
+any legacy reader in this process must see the same text as the PG reader.
 """
 import logging
 import os
@@ -25,7 +25,6 @@ NATIVE = ('study_projects',)
 VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'question_graph_overlay_rows',
              'legacy_supplement_tables', 'legacy_supplement_rows', *NATIVE)
 CHECK_SECONDS = 10
-BODY_DAYS = 45
 log = logging.getLogger(__name__)
 
 
@@ -74,8 +73,6 @@ class LegacyProjection:
                 pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
                 _guard(pg)
                 version = self._version(pg)
-                cutoff = pg.execute("SELECT to_char(timezone('utc',now()) - %s * interval '1 day','YYYY-MM-DD')",
-                                    (BODY_DAYS,)).fetchone()[0]
                 tables = pg.execute('SELECT table_name,columns,schema_sql FROM legacy_snapshot_tables ORDER BY table_name').fetchall()
                 for name, columns, ddl in tables:
                     root.execute(ddl)
@@ -86,14 +83,7 @@ class LegacyProjection:
                     insert = f'INSERT INTO "{name}" ({quoted}) VALUES ({",".join("?" for _ in columns)})'
                     with pg.cursor(name=f'p{uuid.uuid4().hex}') as cursor:
                         cursor.execute('SELECT row_data FROM legacy_snapshot_rows WHERE table_name=%s ORDER BY row_ordinal', (name,))
-                        if name == 'raw_documents':
-                            required = {row[1] for row in root.execute('PRAGMA table_info("raw_documents")') if row[3]}
-                            empty = {column: '' if column in required else None for column in ('raw_content', 'markdown')}
-                            rows = (row[0] if row[0].get('source_type') == 'memo' or (row[0].get('published_at') or '') >= cutoff
-                                    else {**row[0], **empty} for row in cursor)
-                        else:
-                            rows = (row[0] for row in cursor)
-                        root.executemany(insert, (tuple(data.get(column) for column in columns) for data in rows))
+                        root.executemany(insert, (tuple(row[0].get(column) for column in columns) for row in cursor))
                 from pipeline.study_projects import SCHEMA
                 root.executescript(SCHEMA)
                 for name in NATIVE:
