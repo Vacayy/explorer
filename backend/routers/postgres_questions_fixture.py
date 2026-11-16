@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request, Response
 from psycopg.rows import dict_row
 from pipeline.postgres_graph_fixture import _guard
-from routers.spine_questions import AskRequest
+from routers.spine_questions import AskRequest, FromDocRequest
 
 
 def create_router(connect, *, run_llm=None, search=None):
@@ -183,6 +183,33 @@ def create_router(connect, *, run_llm=None, search=None):
             digest = _hash({'q': question, 'subs': subs, 'grounding': grounding})
             return {'status': 'ok', 'body': cached['body'], 'created_at': cached['created_at'],
                     'stale': cached['inputs_hash'] != digest}
+    @router.post('/from-doc')
+    def from_doc(body: FromDocRequest):
+        # Legacy Q5 derivation: one model call over a document, nothing stored; in-process network blocked.
+        from pipeline.questions import derive_questions_from_doc
+        from routers.postgres_legacy_read_fixture import _offline
+        offline = _offline.set(True)
+        try:
+            result = derive_questions_from_doc(body.doc_id)
+        finally:
+            _offline.reset(offline)
+        if 'error' in result:
+            raise HTTPException(503, result['error'])
+        return result
+
+    @router.post('/{question_id}/rollup')
+    def rollup(question_id: int):
+        # The legacy re-judgement on the PG ledger: judgement fields only, dropped if inputs changed meanwhile.
+        from pipeline.postgres_question_rollup_fixture import rollup_question_native
+        if run_llm is None:
+            raise HTTPException(503, '판정 요약 모델이 준비되지 않았습니다')
+        result = rollup_question_native(connect, question_id, run_llm=run_llm)
+        if 'error' in result:
+            raise HTTPException(404, result['error'])
+        if result.get('status') == 'stale':
+            raise HTTPException(409, '판정 중 질문이나 관측이 바뀌었습니다. 다시 시도해 주세요.')
+        return {key: result[key] for key in ('lead_verdict', 'confirm_verdict', 'divergence', 'changed', 'edges_confirmed')}
+
     @router.delete('/{question_id}', status_code=204)
     def dismiss(question_id: int):
         with connect() as conn:
