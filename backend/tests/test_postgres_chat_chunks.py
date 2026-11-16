@@ -264,6 +264,10 @@ class PostgreSQLChatChunkTests(unittest.TestCase):
         turn = SimpleNamespace(answer='시험 답변', citations=[], gaps=[], model='fixture',
                                route={'intent': 'research', 'entities': []}, calls=[], route_log=lambda: {})
         with TestClient(app) as client, patch('pipeline.chat.run_turn', return_value=turn):
+            targets = client.get('/api/spine/chat/targets', params={'q': '두번째', 'kind': 'doc'})
+            self.assertEqual(targets.status_code, 200)
+            self.assertEqual(targets.json()['groups'][0]['items'][0]['ref'], str(second['id']))
+            self.assertEqual(client.get('/api/spine/chat/targets?kind=stock').status_code, 422)
             response = client.post('/api/spine/ask', json={'question': '시험 질문'})
             self.assertEqual(response.status_code, 200)
             cid = response.json()['conversation_id']

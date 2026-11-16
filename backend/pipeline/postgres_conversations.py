@@ -114,6 +114,22 @@ class PostgreSQLConversations:
     def __init__(self, connect):
         self.connect = connect
 
+    def search_document_targets(self, query, *, limit):
+        """Search the same immutable document projection used by the chat."""
+        from pipeline.chat_targets import SOURCE_LABEL
+        with self.connect() as conn:
+            from pipeline.postgres_graph_fixture import _guard
+            _guard(conn)
+            rows = conn.execute("""SELECT id,detail_document FROM document_projection
+                WHERE feed_visible AND COALESCE(detail_document->>'title','') <> ''
+                  AND strpos(lower(detail_document->>'title'), lower(%s)) > 0
+                ORDER BY detail_document->>'published_at' DESC NULLS LAST,id DESC LIMIT %s""",
+                (query, limit)).fetchall()
+        return [{'kind': 'doc', 'ref': str(ident), 'label': doc.get('title', '')[:200],
+                 'sub': SOURCE_LABEL.get(doc.get('source_type'), doc.get('source_type')),
+                 'date': (doc.get('published_at') or '')[:10] or None}
+                for ident, doc in rows]
+
     @staticmethod
     def _owned(cursor, conversation_id, owner_chat_id, *, lock=False):
         suffix = ' FOR UPDATE' if lock else ''

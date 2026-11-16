@@ -2,7 +2,8 @@
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from models.chat_targets import ChatTargetSearch, TargetKind
 from starlette.concurrency import run_in_threadpool
 from pipeline.postgres_conversations import ConversationNotFound, DocumentNotFound
 from pipeline.postgres_chat_generation import generate_answer
@@ -12,6 +13,14 @@ from routers.spine_conversations import ChatMessage, ConversationDetail, Convers
 
 def create_router(store, tools, *, owner_chat_id=None):
     router = APIRouter()
+
+    @router.get('/api/spine/chat/targets', response_model=ChatTargetSearch)
+    def targets(q: str = Query('', max_length=80), kind: TargetKind | None = None):
+        if kind not in (None, 'doc'):
+            raise HTTPException(422, '격리 시험에서는 자료 대상만 지원합니다')
+        query = q.strip()
+        items = store.search_document_targets(query, limit=20 if kind else 4)
+        return {'query': query, 'kind': kind, 'groups': [{'kind': 'doc', 'items': items}] if items else []}
 
     @router.post('/api/spine/ask', response_model=AskResponse)
     def ask(body: AskRequest, background: BackgroundTasks):
