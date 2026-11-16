@@ -313,3 +313,30 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
         with self.fixture.pg() as pg:
             row=pg.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entity_relations' AND row_data->>'id'='1'").fetchone()[0]
             self.assertIsNone(row['obs_confirmed_at'])
+
+    def test_small_graph_overlay_updates_candidate_without_mutating_base(self):
+        from types import SimpleNamespace
+        from psycopg.types.json import Jsonb
+        from pipeline.postgres_question_graph_overlay import install_graph_overlay
+        from pipeline.postgres_question_rollup_fixture import rollup_question
+        edge={'id':1,'narrative_id':7,'promoted_knowledge_id':9,'obs_confirmed_at':None,'obs_confirmed_qid':None}
+        evidence={'id':15,'narrative_id':7,'entity_relation_id':1}
+        with self.fixture.pg() as pg:
+            for name,row in (('entity_relations',edge),('narrative_edge_evidence',evidence)):
+                pg.execute('INSERT INTO legacy_snapshot_tables VALUES(%s,%s,%s,0) ON CONFLICT DO NOTHING',(name,Jsonb([]),'fixture'))
+                pg.execute('INSERT INTO legacy_snapshot_rows VALUES(%s,92001,%s)',(name,Jsonb(row)))
+                pg.execute('UPDATE legacy_snapshot_tables SET row_count=(SELECT count(*) FROM legacy_snapshot_rows WHERE table_name=%s) WHERE table_name=%s',(name,name))
+        with self.target() as pg:
+            fork_chat_preview(self.source,pg,self.fixture.schema)
+            copied=install_graph_overlay(pg,self.fixture.schema)
+            self.assertGreaterEqual(copied['relations'],1)
+            import_questions(self.q,pg)
+        result=rollup_question(self.target,1,run_llm=lambda *a,**k:SimpleNamespace(text='요약'))
+        self.assertEqual(result['status'],'ok');self.assertEqual(result['edges_confirmed'],1)
+        with self.target() as pg:
+            read=pg.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entity_relations' AND row_data->>'id'='1'").fetchone()[0]
+            ledger=pg.execute('SELECT source_row FROM question_graph_overlay_relations WHERE id=1').fetchone()[0]
+            self.assertEqual(read,ledger);self.assertEqual(read['obs_confirmed_qid'],1)
+        with self.fixture.pg() as pg:
+            base=pg.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entity_relations' AND row_data->>'id'='1'").fetchone()[0]
+            self.assertIsNone(base['obs_confirmed_qid'])

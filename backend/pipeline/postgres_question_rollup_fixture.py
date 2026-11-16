@@ -51,17 +51,24 @@ def rollup_question(connect,question_id,*,run_llm):
             WHERE table_name=ANY(%s) ORDER BY table_name,row_ordinal''',(list(INPUT_TABLES),)).fetchall()
         if current!=before:return {'status':'stale'}
         if graph['requested']:
-            required=('legacy_snapshot_rows','ingest_graph_state','ingest_graph_relations','ingest_narrative_ledger_state','ingest_narrative_evidence')
+            overlay=pg.execute("SELECT to_regclass('question_graph_overlay_state')").fetchone()[0] is not None
+            if overlay:
+                rows_table='question_graph_overlay_rows';relations_table='question_graph_overlay_relations';evidence_table='question_graph_overlay_evidence'
+                state_tables=('question_graph_overlay_state',)
+            else:
+                rows_table='legacy_snapshot_rows';relations_table='ingest_graph_relations';evidence_table='ingest_narrative_evidence'
+                state_tables=('ingest_graph_state','ingest_narrative_ledger_state')
+            required=(rows_table,relations_table,evidence_table,*state_tables)
             kinds=dict(pg.execute("SELECT c.relname,c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=current_schema() AND c.relname=ANY(%s)",(list(required),)).fetchall())
             if any(kinds.get(name) not in ('r','p') for name in required):
                 raise NotImplementedError('Writable shared graph ledger is not connected')
-            pg.execute('LOCK TABLE legacy_snapshot_rows IN SHARE ROW EXCLUSIVE MODE')
+            pg.execute('LOCK TABLE '+rows_table+' IN SHARE ROW EXCLUSIVE MODE')
             pg.execute('SELECT pg_advisory_xact_lock(%s)',(GRAPH_LOCK,))
-            if not pg.execute('SELECT 1 FROM ingest_graph_state').fetchone() or not pg.execute('SELECT 1 FROM ingest_narrative_ledger_state').fetchone():
+            if any(not pg.execute('SELECT 1 FROM '+table).fetchone() for table in state_tables):
                 raise NotImplementedError('Shared graph ledger is not initialized')
             narrative=str(graph['narrative_id'])
             captured=[r[2] for r in before if r[0]=='narrative_edge_evidence' and str(r[2].get('narrative_id'))==narrative]
-            ledger=[r[0] for r in pg.execute("SELECT source_row FROM ingest_narrative_evidence WHERE source_row->>'narrative_id'=%s ORDER BY id",(narrative,))]
+            ledger=[r[0] for r in pg.execute("SELECT source_row FROM "+evidence_table+" WHERE source_row->>'narrative_id'=%s ORDER BY id",(narrative,))]
             legacy=[r[0] for r in pg.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='narrative_edge_evidence' AND row_data->>'narrative_id'=%s ORDER BY (row_data->>'id')::bigint",(narrative,))]
             order=lambda rows:sorted(rows,key=lambda r:r['id'])
             if order(captured)!=order(ledger) or order(captured)!=order(legacy):return {'status':'stale'}
@@ -69,12 +76,12 @@ def rollup_question(connect,question_id,*,run_llm):
             if set(graph['edge_ids']) != {edge['id'] for edge in edges}:return {'status':'stale'}
             for edge in edges:
                 original=prior.get(edge['id'])
-                ledger_row=pg.execute('SELECT source_row FROM ingest_graph_relations WHERE id=%s FOR UPDATE',(edge['id'],)).fetchone()
-                legacy_rows=pg.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entity_relations' AND row_data->>'id'=%s FOR UPDATE",(str(edge['id']),)).fetchall()
+                ledger_row=pg.execute('SELECT source_row FROM '+relations_table+' WHERE id=%s FOR UPDATE',(edge['id'],)).fetchone()
+                legacy_rows=pg.execute("SELECT row_data FROM "+rows_table+" WHERE table_name='entity_relations' AND row_data->>'id'=%s FOR UPDATE",(str(edge['id']),)).fetchall()
                 if not original or not ledger_row or ledger_row[0]!=original or len(legacy_rows)!=1 or legacy_rows[0][0]!=original:return {'status':'stale'}
             for edge in edges:
-                pg.execute('UPDATE ingest_graph_relations SET source_row=%s WHERE id=%s',(Jsonb(edge),edge['id']))
-                pg.execute("UPDATE legacy_snapshot_rows SET row_data=%s WHERE table_name='entity_relations' AND row_data->>'id'=%s",(Jsonb(edge),str(edge['id'])))
+                pg.execute('UPDATE '+relations_table+' SET source_row=%s WHERE id=%s',(Jsonb(edge),edge['id']))
+                pg.execute("UPDATE "+rows_table+" SET row_data=%s WHERE table_name='entity_relations' AND row_data->>'id'=%s",(Jsonb(edge),str(edge['id'])))
                 pg.execute("UPDATE question_capture_rows SET row_data=%s WHERE table_name='entity_relations' AND row_data->>'id'=%s",(Jsonb(edge),str(edge['id'])))
         for table,rows in (('questions',[question]),('sub_questions',subs)):
             for row in rows:
