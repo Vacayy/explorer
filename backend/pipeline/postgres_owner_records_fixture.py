@@ -308,3 +308,28 @@ def decide_narrative(conn, tag, status, *, narrative_topic=None, mode=None, alia
                  'narrative_topic=excluded.narrative_topic,mode=excluded.mode,alias_tags=excluded.alias_tags,'
                  "dismissed_until=excluded.dismissed_until,decided_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')",
                  (tag, status, narrative_topic, mode, Jsonb(alias_tags) if alias_tags is not None else None, dismissed_until))
+
+
+SOURCE_TABLES = {'telegram': ('telegram_channels', 'channel_name'), 'blog': ('blog_sources', 'url'),
+                 'youtube': ('youtube_channels', 'channel_id')}
+
+
+def initialize_source_settings(conn):
+    """The operator's per-source switches (feed mute, collection); the collector keeps the source rows."""
+    _guard(conn)
+    with conn.transaction():
+        if conn.execute("SELECT to_regclass('owner_source_settings')").fetchone()[0] is not None:
+            raise ValueError('Source settings already initialized')
+        conn.execute("CREATE TABLE owner_source_settings (kind TEXT NOT NULL CHECK(kind IN ('telegram','blog','youtube')),"
+                     'key TEXT NOT NULL,is_active INTEGER,collect_enabled INTEGER,'
+                     "updated_at TEXT NOT NULL DEFAULT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'),"
+                     'PRIMARY KEY(kind,key))')
+
+
+def set_source(conn, kind, key, *, is_active=None, collect_enabled=None):
+    """Record one switch; the other keeps its earlier value (or the collected one)."""
+    conn.execute('INSERT INTO owner_source_settings(kind,key,is_active,collect_enabled) VALUES (%s,%s,%s,%s) '
+                 'ON CONFLICT (kind,key) DO UPDATE SET is_active=COALESCE(excluded.is_active,owner_source_settings.is_active),'
+                 'collect_enabled=COALESCE(excluded.collect_enabled,owner_source_settings.collect_enabled),'
+                 "updated_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')",
+                 (kind, key, is_active, collect_enabled))

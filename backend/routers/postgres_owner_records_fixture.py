@@ -1,5 +1,5 @@
 """Loopback-only owner follows, prediction pins, feed read marks, bookmarks, tracker conditions and
-call-follow pins/additions, knowledge review decisions, trade-item follows and narrative-candidate decisions on the PG ledger.
+call-follow pins/additions, knowledge review decisions, trade-item follows, narrative-candidate decisions and source switches on the PG ledger.
 
 Same request/response shapes and errors as the legacy routes. The follow list
 and feed read marks read the ledger directly; legacy reads (prediction cards)
@@ -20,6 +20,9 @@ from routers.spine_follows import FollowedEntity, FollowRequest
 from routers.spine_saved import NoteRequest, SavedItem, SaveRequest
 from routers.spine_tracker import Code
 from models.market_today import CandidateAction
+from routers.blog_feed import ToggleSourceRequest
+from routers.spine_sources import CollectToggle
+from routers.telegram_feed import ToggleChannelRequest
 from routers.spine_trade import FollowReq as TradeFollowReq
 from routers.spine_transcript import FollowReq, PinReq
 from models.tracker import TrackerCondition, TrackerConditionIn, TrackerConditionPatch
@@ -189,6 +192,54 @@ def create_router(factory, timeline):
         with connection() as conn:
             records.decide_narrative(conn, tag, 'dismissed', dismissed_until=until)
         return {'tag': tag, 'status': 'dismissed', 'mode': None, 'narrative_topic': None, 'dismissed_until': until}
+
+    def source_row(table, where, value):
+        import database
+        legacy = database.get_connection()  # the projection, with earlier switches applied
+        try:
+            row = legacy.execute(f'SELECT * FROM {table} WHERE {where}=?', (value,)).fetchone()
+            return dict(row) if row else None
+        finally:
+            legacy.close()
+
+    @router.put('/api/blog/sources/{source_id}/toggle')
+    def toggle_blog(source_id: int, body: ToggleSourceRequest):
+        row = source_row('blog_sources', 'id', source_id)
+        if not row:
+            raise HTTPException(404, '블로그 소스를 찾을 수 없습니다')
+        with connection() as conn:
+            records.set_source(conn, 'blog', row['url'], is_active=1 if body.is_active else 0)
+        row['is_active'] = 1 if body.is_active else 0  # same columns, same order as the legacy response
+        return {key: row[key] for key in ('id', 'url', 'platform', 'blog_name', 'is_active', 'last_fetched_at', 'added_at')}
+
+    @router.put('/api/telegram/channels/{channel_id}/toggle')
+    def toggle_telegram(channel_id: int, body: ToggleChannelRequest):
+        row = source_row('telegram_channels', 'id', channel_id)
+        if not row:
+            raise HTTPException(404, '채널을 찾을 수 없습니다')
+        with connection() as conn:
+            records.set_source(conn, 'telegram', row['channel_name'], is_active=1 if body.is_active else 0)
+        row['is_active'] = 1 if body.is_active else 0
+        return {key: row[key] for key in ('id', 'channel_name', 'display_name', 'is_active', 'last_fetched_at', 'added_at')}
+
+    @router.patch('/api/spine/sources/youtube/{channel_id}')
+    def toggle_youtube(channel_id: str, is_active: bool):
+        # Like the legacy UPDATE, an unknown channel is answered the same way and changes nothing.
+        if source_row('youtube_channels', 'channel_id', channel_id):
+            with connection() as conn:
+                records.set_source(conn, 'youtube', channel_id, is_active=int(is_active))
+        return {'channel_id': channel_id, 'is_active': is_active}
+
+    @router.post('/api/spine/sources/collect')
+    def set_collect(body: CollectToggle):
+        table, column = records.SOURCE_TABLES.get(body.kind, (None, None))
+        if not table:
+            raise HTTPException(400, '알 수 없는 kind')
+        if not source_row(table, column, body.key):
+            raise HTTPException(404, '해당 소스를 찾을 수 없습니다')
+        with connection() as conn:
+            records.set_source(conn, body.kind, body.key, collect_enabled=1 if body.enabled else 0)
+        return {'kind': body.kind, 'key': body.key, 'collect_enabled': body.enabled}
 
     @router.post('/api/spine/trade/follow', status_code=201)
     def upsert_trade_follow(body: TradeFollowReq):
