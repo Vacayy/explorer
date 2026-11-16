@@ -12,18 +12,18 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
         super().setUp()
         self.q=sqlite3.connect(':memory:');self.addCleanup(self.q.close)
         self.q.executescript('''
-        CREATE TABLE questions(id INTEGER PRIMARY KEY AUTOINCREMENT,text TEXT,narrative_id INTEGER,source_doc_id INTEGER,status TEXT,updated_at TEXT,lead_verdict TEXT,confirm_verdict TEXT,divergence TEXT,last_viewed_at TEXT);
-        CREATE TABLE sub_questions(id INTEGER PRIMARY KEY,question_id INTEGER,text TEXT,verdict TEXT);
-        CREATE TABLE proxy_registry(id INTEGER PRIMARY KEY,sub_question_id INTEGER,label TEXT,modality TEXT,yes_direction TEXT,unit TEXT,tickers TEXT,extract_hint TEXT,active INTEGER);
+        CREATE TABLE questions(id INTEGER PRIMARY KEY AUTOINCREMENT,text TEXT,narrative_id INTEGER,source_doc_id INTEGER,status TEXT,updated_at TEXT,lead_verdict TEXT,confirm_verdict TEXT,divergence TEXT,last_viewed_at TEXT,created_by TEXT,stock_code TEXT);
+        CREATE TABLE sub_questions(id INTEGER PRIMARY KEY,question_id INTEGER,text TEXT,verdict TEXT,falsifier TEXT);
+        CREATE TABLE proxy_registry(id INTEGER PRIMARY KEY,key TEXT UNIQUE,sub_question_id INTEGER,label TEXT,modality TEXT,yes_direction TEXT,unit TEXT,tickers TEXT,extract_hint TEXT,active INTEGER);
         CREATE TABLE proxy_observations(id INTEGER PRIMARY KEY,proxy_id INTEGER,transcript_id INTEGER,observed_at TEXT,value_num REAL,value_text TEXT,direction TEXT,confidence REAL,source_type TEXT);
         CREATE TABLE question_reports(id INTEGER PRIMARY KEY,question_id INTEGER,body TEXT,inputs_hash TEXT,created_at TEXT);
         CREATE TABLE proxy_scans(proxy_id INTEGER,transcript_id INTEGER);
         CREATE TABLE scenarios(topic TEXT,event TEXT,answer TEXT,beneficiaries TEXT,created_at TEXT,question_id INTEGER);
         CREATE TABLE transcripts(id INTEGER PRIMARY KEY,raw_doc_id INTEGER,ticker TEXT,fiscal_year INTEGER,fiscal_period TEXT);
         CREATE TABLE raw_documents(id INTEGER PRIMARY KEY,title TEXT,source_type TEXT);
-        INSERT INTO questions VALUES(1,'원래 질문',7,10,'active','2026-01-01','unknown','unknown',NULL,NULL);
-        INSERT INTO sub_questions VALUES(2,1,'하위 질문','unknown');
-        INSERT INTO proxy_registry VALUES(3,2,'관측','numeric','up','개',NULL,NULL,1);
+        INSERT INTO questions VALUES(1,'원래 질문',7,10,'active','2026-01-01','unknown','unknown',NULL,NULL,'user',NULL);
+        INSERT INTO sub_questions VALUES(2,1,'하위 질문','unknown',NULL);
+        INSERT INTO proxy_registry VALUES(3,'q1_signal_0',2,'관측','numeric','up','개',NULL,NULL,1);
         INSERT INTO transcripts VALUES(4,10,'ABC',2026,'Q1');
         INSERT INTO proxy_observations VALUES(5,3,4,'2026-01-01',1,NULL,'up',0.8,'transcript');
         INSERT INTO raw_documents VALUES(10,'자료','transcript');
@@ -70,3 +70,30 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
             conn=factory()
             try:self.assertEqual(conn.execute("SELECT seq FROM sqlite_sequence WHERE name='questions'").fetchone()[0],50)
             finally:conn.close()
+
+    def test_decomposition_is_atomic_and_preserves_sequence(self):
+        from pipeline.postgres_question_create_fixture import stage_plan
+        with self.target() as pg:import_questions(self.q,pg)
+        plan={'sub_questions':[{'text':'새 하위 질문','proxies':[{'label':'성장','modality':'numeric','tickers':'ABC'}]}]}
+        result=stage_plan(self.target,'새 질문',plan)
+        self.assertEqual(result['question_id'],51)
+        self.assertTrue(result['numeric_extraction_needed'])
+        self.assertTrue(result['rollup_needed'])
+        store=QuestionsFixture(self.target)
+        tree=store.detail(51)
+        self.assertEqual(tree['sub_questions'][0]['proxies'][0]['tickers'],'ABC')
+        self.assertEqual(len(store.listing()),2)
+        with self.assertRaises(AttributeError):
+            stage_plan(self.target,'실패해야 할 질문',{'sub_questions':[{'text':'임시','proxies':[None]}]})
+        self.assertEqual(len(store.listing()),2)
+        next_id=stage_plan(self.target,'다음 질문',{'sub_questions':[]})['question_id']
+        self.assertEqual(next_id,52)
+
+    def test_concurrent_decompositions_get_distinct_ids(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from pipeline.postgres_question_create_fixture import stage_plan
+        with self.target() as pg:import_questions(self.q,pg)
+        def make(n):return stage_plan(self.target,f'질문 {n}',{'sub_questions':[{'text':f'하위 {n}','proxies':[]}]})['question_id']
+        with ThreadPoolExecutor(max_workers=2) as pool:ids=list(pool.map(make,(1,2)))
+        self.assertEqual(set(ids),{51,52})
+        self.assertEqual(len(QuestionsFixture(self.target).listing()),3)

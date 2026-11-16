@@ -1,7 +1,8 @@
 """Captured question records and existing read contracts in disposable PG.
 
 SQLite is only a private in-memory projection of PG rows for existing reads;
-it never points at the operational database or accepts writes.
+it never points at the operational database. Any writable projection is
+private and committed back only through an explicit locked PG transaction.
 """
 import json
 import sqlite3
@@ -56,7 +57,7 @@ def import_questions(source, target):
 
 
 @contextmanager
-def _projection(connect):
+def _projection(connect, *, writable=False):
     uri='file:question-fixture-'+uuid.uuid4().hex+'?mode=memory&cache=shared'
     root=sqlite3.connect(uri,uri=True);root.row_factory=sqlite3.Row
     try:
@@ -83,7 +84,9 @@ def _projection(connect):
                 else:root.execute('INSERT INTO sqlite_sequence(name,seq) VALUES (?,?)',(table,seq))
         root.commit()
         def connection():
-            conn=sqlite3.connect(uri,uri=True);conn.row_factory=sqlite3.Row;conn.execute('PRAGMA query_only=ON');return conn
+            conn=sqlite3.connect(uri,uri=True);conn.row_factory=sqlite3.Row
+            if not writable:conn.execute('PRAGMA query_only=ON')
+            return conn
         yield connection
     finally:root.close()
 
