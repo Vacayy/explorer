@@ -91,6 +91,23 @@ for module in list(sys.modules.values()):
 legacy_search_module.search = legacy_search
 
 
+def legacy_embeddings(conn, doc_ids):
+    """The legacy `consolidation._embeddings` contract ({doc_id: vector}) from the candidate's PG vectors."""
+    import struct
+    with factory() as connection:
+        rows = connection.execute('SELECT document_id,embedding FROM document_embeddings WHERE document_id=ANY(%s)',
+                                  (list(doc_ids),)).fetchall()
+    return {ident: list(struct.unpack(f'{len(blob) // 4}f', blob)) for ident, blob in rows}
+
+
+import pipeline.consolidation as legacy_consolidation  # noqa: E402 - doc_vec is not in the projection
+import pipeline.falsifiers  # noqa: E402,F401 - binds `_embeddings` at import
+for module in list(sys.modules.values()):
+    if getattr(module, '_embeddings', None) is legacy_consolidation._embeddings and module is not legacy_consolidation:
+        module._embeddings = legacy_embeddings
+legacy_consolidation._embeddings = legacy_embeddings
+
+
 class SnapshotMetadata:
     connect = staticmethod(factory)
 
