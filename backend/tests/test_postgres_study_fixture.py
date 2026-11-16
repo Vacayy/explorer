@@ -67,3 +67,41 @@ class StudyFixtureTests(ChatPreviewForkTests):
             pg.execute("UPDATE conversations SET title='다른 스냅샷' WHERE id=1")
             with self.assertRaisesRegex(ValueError, 'Chat snapshot mismatch'):
                 import_studies(self.source, pg)
+
+    def test_project_documents_and_annotations_remain_isolated(self):
+        from psycopg.types.json import Jsonb
+        from pipeline.postgres_study_projects_fixture import StudyProjectsFixture
+        from routers.postgres_study_projects_fixture import create_router as project_router
+        with self.fixture.pg() as pg:
+            pg.execute("INSERT INTO legacy_snapshot_tables VALUES('raw_documents','[]','fixture',1) ON CONFLICT DO NOTHING")
+            pg.execute("INSERT INTO legacy_snapshot_rows VALUES('raw_documents',99999,%s)",
+                (Jsonb({'id':11,'title':'테스트 원문','source_type':'blog','markdown':'한글😀본문','url':'https://example.test'}),))
+        with self.target() as pg:
+            fork_chat_preview(self.source, pg, self.fixture.schema)
+            import_studies(self.source, pg)
+        projects = StudyProjectsFixture(self.target)
+        app = FastAPI()
+        app.include_router(project_router(projects))
+        app.include_router(create_router(StudyFixture(self.target)))
+        with TestClient(app) as client:
+            pid = client.post('/api/spine/study-projects', json={'title':'첫 프로젝트'}).json()['id']
+            pid2 = client.post('/api/spine/study-projects', json={'title':'둘째'}).json()['id']
+            url = f'/api/spine/study-projects/{pid}/documents'
+            self.assertEqual(client.get('/api/spine/study-projects/search?q=원문').json()[0]['id'],11)
+            self.assertEqual(client.post(url,json={'document_ids':[11,999]}).status_code,404)
+            self.assertEqual(client.get(f'/api/spine/study-projects/{pid}').json()['documents'],[])
+            sid = client.post(url,json={'document_ids':[11,11]}).json()['study_ids'][0]
+            sid2 = client.post(f'/api/spine/study-projects/{pid2}/documents',json={'document_ids':[11]}).json()['study_ids'][0]
+            self.assertNotEqual(sid,sid2)
+            a = client.post(f'/api/spine/studies/{sid}/annotations',json={'kind':'comment','start':2,'end':3,'exact':'😀','comment':'메모'})
+            self.assertEqual(a.status_code,200)
+            self.assertEqual(client.get(f'/api/spine/studies/{sid2}').json()['annotations'],[])
+            self.assertEqual(client.delete(f'/api/spine/study-projects/{pid}/documents/{sid}').status_code,200)
+            self.assertEqual(client.get(f'/api/spine/study-projects/{pid}').json()['documents'],[])
+            self.assertEqual(client.post(url,json={'document_ids':[11]}).json()['study_ids'],[sid])
+            self.assertEqual(client.get(f'/api/spine/studies/{sid}').json()['annotations'][0]['id'],a.json()['id'])
+            self.assertEqual(client.patch(f'/api/spine/study-projects/{pid}',json={'title':'수정','note':'메모','revision':1}).status_code,200)
+            self.assertEqual(client.patch(f'/api/spine/study-projects/{pid}',json={'title':'충돌','revision':1}).status_code,409)
+            clip=client.post(f'/api/spine/study-projects/{pid}/clips',json={'title':'발췌','text':'직접 작성'})
+            self.assertEqual(clip.status_code,200)
+            self.assertEqual(len(client.get(f'/api/spine/study-projects/{pid}').json()['documents']),2)
