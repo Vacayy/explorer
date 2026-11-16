@@ -71,7 +71,7 @@ def stage_plan(connect,text,plan,*,created_by='user',narrative_id=None,source_do
             finally:db.close()
 
 
-def stage_plan_native(connect, text, plan, *, created_by='user', narrative_id=None, source_doc_id=None):
+def stage_plan_native(connect, text, plan, *, created_by='user', narrative_id=None, source_doc_id=None, run_id=None):
     """Save a decomposition into the single-path fixture, without starting jobs.
 
     Extraction and rollup are separate required steps; do not expose this as a
@@ -106,5 +106,10 @@ def stage_plan_native(connect, text, plan, *, created_by='user', narrative_id=No
                     has_numeric = True
                 elif modality == 'sentiment':
                     has_sentiment = True
+        if run_id is not None:
+            updated = pg.execute("UPDATE question_creation_runs SET question_id=%s WHERE id=%s AND status='running' AND question_id IS NULL",
+                                 (qid, run_id))
+            if updated.rowcount != 1:
+                raise ValueError('Question creation run is unavailable')
         return {'question_id': qid, 'numeric_extraction_needed': has_numeric,
                 'sentiment_extraction_needed': has_sentiment, 'rollup_needed': True}
