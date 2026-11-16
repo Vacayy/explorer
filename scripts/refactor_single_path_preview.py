@@ -20,6 +20,7 @@ from pipeline.postgres_study_fixture import StudyFixture
 from pipeline.postgres_study_projects_fixture import StudyProjectsFixture
 from pipeline.postgres_study_turn_fixture import StudyTurnsFixture
 from routers.postgres_chat_fixture import create_router as chat_router
+from routers.postgres_questions_fixture import create_router as questions_router
 from routers.postgres_study_fixture import create_router as study_router
 from routers.postgres_study_projects_fixture import create_router as project_router
 
@@ -80,6 +81,7 @@ tools = PostgreSQLChatTools(factory, search, query_vector=query_vector,
 turns = StudyTurnsFixture(factory, store, tools, owner_chat_id=owner)
 actions = StudyActionsFixture(factory, store, tools, owner_chat_id=owner)
 app.include_router(chat_router(store, tools, owner_chat_id=owner))
+app.include_router(questions_router(factory))
 app.include_router(study_router(StudyFixture(factory), turns=turns, actions=actions))
 app.include_router(project_router(StudyProjectsFixture(factory), turns=turns))
 
