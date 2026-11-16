@@ -218,7 +218,7 @@ app.include_router(project_router(StudyProjectsFixture(factory), turns=turns))
 legacy_projection = LegacyProjection(factory, '/projection', on_change=search.close, external=True)
 install_legacy_reads(app, legacy_projection,
                      database_host=psycopg.conninfo.conninfo_to_dict(os.environ['REFACTOR_POSTGRES_DSN'])['host'])
-install_owner_portfolio(app, factory)  # after the legacy reads it replaces
+install_owner_portfolio(app, factory, run_llm=question_model, search=question_search)  # after the legacy reads it replaces
 # Model-assisted reads with no stored result: the unchanged legacy handlers, structured calls via llm.run.
 from fastapi.routing import APIRoute  # noqa: E402
 from routers import analysis as legacy_analysis_router, chart_structure as legacy_chart_router  # noqa: E402

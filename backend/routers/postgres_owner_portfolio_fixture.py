@@ -4,8 +4,8 @@ The preview has no authentication: the owner is whichever principal the data
 explicitly maps to the archived owner group (one `fixture_portfolio_legacy_mapping`
 row); nothing is hard-coded or inferred, so a production cut-over remaps data. Never serve this router beyond the
 private loopback gateway; external exposure needs the member/owner gate first.
-Responses keep the legacy owner routes' shapes and errors. Quote refresh,
-principle parsing (model call) and thesis writes stay unavailable.
+Responses keep the legacy owner routes' shapes and errors. Quote refresh stays unavailable; principle
+parsing and holding theses (native question creation with the stock code, as the watch reasons) call models.
 """
 import json
 
@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.routing import APIRoute
 
 from models.portfolio import (HistoryPoint, Principle, PrincipleCreate, PrincipleParse, PrincipleParseRequest, PrincipleText, PortfolioSummary,
-                              TransactionCreate, TransactionItem)
+                              ThesisCreate, TransactionCreate, TransactionItem)
 from pipeline import portfolio_principles as pp
 from pipeline import postgres_portfolio_fixture as ledger
 from pipeline.portfolio import LedgerError
@@ -26,7 +26,7 @@ def _rules(body):
     return json.dumps(clean), json.dumps(notes, ensure_ascii=False)
 
 
-def create_router(factory):
+def create_router(factory, *, run_llm=None, search=None):
     router = APIRouter(prefix='/api/portfolio')
 
     def owner(conn):
@@ -108,6 +108,28 @@ def create_router(factory):
         except Exception as e:  # noqa: BLE001
             raise HTTPException(503, f'원칙을 해석하지 못했습니다: {type(e).__name__}')
 
+    @router.post('/thesis', status_code=201)
+    def create_thesis(body: ThesisCreate):
+        # Legacy portfolio_thesis.start: the thesis becomes a tracked question tied to the holding.
+        from pipeline import portfolio_thesis as pt
+        from pipeline.postgres_question_orchestration_fixture import (QuestionModelUncertain, QuestionRunUnresolved,
+                                                                      create_question_native)
+        held = {h['code']: h['name'] for h in read()['summary']['holdings']}
+        if body.stock_code not in held:
+            raise HTTPException(404, '보유 종목이 아닙니다.')
+        if run_llm is None or search is None:
+            raise HTTPException(503, '질문 생성이 준비되지 않았습니다')
+        name = held[body.stock_code]
+        try:
+            result = create_question_native(factory, pt.question_text(name, body.why, body.falsifier), run_llm=run_llm,
+                                            search=search, created_by='portfolio', stock_code=body.stock_code,
+                                            hint=pt.KR_HINT.format(name=name, code=body.stock_code))
+        except QuestionRunUnresolved as exc:
+            raise HTTPException(409, {'message': str(exc), 'run_id': exc.run_id}) from exc
+        except (QuestionModelUncertain, ValueError) as exc:
+            raise HTTPException(503, '논지를 질문으로 분해하지 못했습니다') from exc
+        return {'id': result['question_id']}
+
     @router.post('/principles', status_code=201)
     def create_principle(body: PrincipleCreate):
         try:
@@ -148,9 +170,9 @@ def create_router(factory):
     return router
 
 
-def install(app, factory):
+def install(app, factory, *, run_llm=None, search=None):
     """Put the ledger routes ahead of any read-only portfolio route with the same path."""
-    router = create_router(factory)
+    router = create_router(factory, run_llm=run_llm, search=search)
     owned = {(route.path, method) for route in router.routes for method in route.methods}
     app.router.routes[:] = [route for route in app.router.routes
                             if not (isinstance(route, APIRoute) and any((route.path, m) in owned for m in route.methods))]
