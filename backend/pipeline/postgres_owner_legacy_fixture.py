@@ -13,7 +13,9 @@ from psycopg.types.json import Jsonb
 
 from pipeline.postgres_graph_fixture import _guard
 
-TABLES = ('stock_groups', 'stock_group_members', 'watch_rules', 'watch_evaluations')
+TABLES = ('stock_groups', 'stock_group_members', 'watch_rules', 'watch_evaluations',
+          # User-edited reference records (industry universe, business segments, IR notes), added by `adopt`.
+          'industry_groups', 'industry_members', 'business_segments', 'ir_notes')
 
 
 def portfolio_group(conn):
@@ -24,7 +26,7 @@ def portfolio_group(conn):
 
 
 def initialize(conn, backup_dir):
-    """Copy the four tables and their AUTOINCREMENT high-water marks from the base generation."""
+    """Copy the group tables and their AUTOINCREMENT high-water marks from the base generation."""
     _guard(conn)
     backup = Path(backup_dir)
     manifest = json.loads((backup / 'manifest.json').read_text())
@@ -91,3 +93,29 @@ def apply(conn, started, changes, sequences):
     for table, seq in sequences.items():
         conn.execute('UPDATE owner_legacy_sequences SET seq=GREATEST(seq,%s) WHERE table_name=%s', (seq, table))
     conn.execute('UPDATE owner_legacy_version SET counter=counter+1')
+
+
+def adopt(conn, tables):
+    """Move more user-edited tables into the ledger, rows unchanged, IDs never reissued."""
+    _guard(conn)
+    with conn.transaction():
+        counts = {}
+        for table in tables:
+            if table not in TABLES:
+                raise ValueError(f'Not an owner legacy table: {table}')
+            if conn.execute('SELECT 1 FROM owner_legacy_sequences WHERE table_name=%s', (table,)).fetchone():
+                raise ValueError(f'Already in the ledger: {table}')
+            rows = [row for (row,) in conn.execute('SELECT row_data FROM legacy_snapshot_rows WHERE table_name=%s', (table,))]
+            expected = conn.execute('SELECT row_count FROM legacy_snapshot_tables WHERE table_name=%s', (table,)).fetchone()[0]
+            if len(rows) != expected:
+                raise ValueError(f'Visible rows differ from the table count: {table}')
+            with conn.cursor().copy('COPY owner_legacy_rows (table_name,pk,row_data) FROM STDIN') as copy:
+                for row in rows:
+                    copy.write_row((table, row['id'], json.dumps(row, ensure_ascii=False)))
+            sequence = conn.execute("SELECT max((row_data->>'seq')::bigint) FROM legacy_snapshot_rows "
+                                    "WHERE table_name='sqlite_sequence' AND row_data->>'name'=%s", (table,)).fetchone()[0]
+            conn.execute('INSERT INTO owner_legacy_sequences VALUES (%s,%s)',
+                         (table, max([sequence or 0, *(row['id'] for row in rows)])))
+            counts[table] = len(rows)
+        conn.execute('UPDATE owner_legacy_version SET counter=counter+1')
+        return counts

@@ -42,7 +42,8 @@ VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'questio
 # show at once; the file keeps its own (possibly older) derived copy underneath.
 SHADOWED = ('portfolio_transactions', 'stock_group_members', 'stock_groups', 'watch_rules', 'watch_evaluations', 'portfolio_principles', 'follows', 'kalshi_pins', 'channel_reads',
             'saved_items', 'tracker_conditions', 'transcript_follow', 'knowledge', 'trade_follow', 'narrative_candidates',
-            'telegram_channels', 'blog_sources', 'youtube_channels', *NATIVE)
+            'telegram_channels', 'blog_sources', 'youtube_channels',
+            'industry_groups', 'industry_members', 'business_segments', 'ir_notes', *NATIVE)
 CHECK_SECONDS = 10
 log = logging.getLogger(__name__)
 

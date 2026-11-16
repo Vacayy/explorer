@@ -1,7 +1,8 @@
 """Unchanged legacy group writes over writable TEMP copies, kept in the owner ledger.
 
 Loopback-only preview adapter, minimal scope: create/rename/delete a group and
-add/update/remove its members, replace its rules and toggle member tracking. Each request borrows one projection connection
+add/update/remove its members, replace its rules and toggle member tracking; add industry
+universe members, edit business segments and IR notes. Each request borrows one projection connection
 whose owner tables are TEMP copies of the PG ledger; the legacy handler runs
 unchanged on it and, only if it ends 2xx, the PK diff is stored in one PG
 transaction that first checks no other write landed. Writes to any other table
@@ -22,7 +23,10 @@ ADAPTED = (('POST', '/api/spine/groups'), ('PATCH', '/api/spine/groups/{group_id
            ('PATCH', '/api/spine/groups/{group_id}/members/{stock_code}'),
            ('DELETE', '/api/spine/groups/{group_id}/members/{stock_code}'),
            ('PUT', '/api/spine/groups/{group_id}/rules'),
-           ('PUT', '/api/spine/groups/{group_id}/members/{stock_code}/tracked'))
+           ('PUT', '/api/spine/groups/{group_id}/members/{stock_code}/tracked'),
+           ('POST', '/api/industries/{group_id}/members'), ('POST', '/api/business/{stock_code}/segments'),
+           ('PUT', '/api/business/segments/{segment_id}'), ('DELETE', '/api/business/segments/{segment_id}'),
+           ('POST', '/api/ir-notes/{stock_code}'), ('DELETE', '/api/ir-notes/{note_id}'))
 LOCK = 'owner-legacy-write'
 
 
@@ -117,11 +121,12 @@ def _reasons_router(projection, factory, run_llm, search):
 
 def install(app, projection, factory, *, run_llm=None, search=None):
     app.include_router(_reasons_router(projection, factory, run_llm, search))
-    from routers import spine_groups
+    from routers import business, industries, ir_notes, spine_groups
     wanted = set(ADAPTED)
-    for route in spine_groups.router.routes:
-        if isinstance(route, APIRoute) and any((method, route.path) in wanted for method in route.methods):
-            app.router.routes.append(route)
+    for router in (spine_groups.router, industries.router, business.router, ir_notes.router):
+        for route in router.routes:
+            if isinstance(route, APIRoute) and any((method, route.path) in wanted for method in route.methods):
+                app.router.routes.append(route)
     patterns = [(method, re.compile('^' + re.sub(r'\\\{[^}]+\\\}', '[^/]+', re.escape(path)) + '$')) for method, path in ADAPTED]
 
     @app.middleware('http')
