@@ -983,6 +983,22 @@ finally:
                 self.assertEqual(c.execute("SELECT count(*) FROM ingest_narrative_versions WHERE topic='합성 신주제'").fetchone()[0],3)
         finally:
             stage.close()
+        child_code='''import os,psycopg
+from pipeline.postgres_projection_publisher_fixture import FixturePublisher
+from pipeline.postgres_narrative_fixture import cached_narrative
+dsn=os.environ['REFACTOR_POSTGRES_DSN']; source=os.environ['FIXTURE_SCHEMA']
+def target(schema): return psycopg.connect(dsn,options='-c search_path='+schema)
+publisher=FixturePublisher(lambda:target(source),source,target)
+try:
+    publisher.publish()
+    with target(publisher.active[0]) as c:
+        c.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        assert cached_narrative(c,'합성 신주제').title=='세 번째 합성 이야기'
+finally:
+    publisher.close()
+'''
+        child=subprocess.run([sys.executable,'-c',child_code],env={**os.environ,'FIXTURE_SCHEMA':self.schema},timeout=15,capture_output=True)
+        self.assertEqual(child.returncode,0,child.stderr.decode()[-1000:])
         stage=FixturePublisher(self.pg,self.schema,target)
         try:
             stage.publish()
