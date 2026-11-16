@@ -16,10 +16,11 @@ from pipeline.postgres_graph_fixture import _guard
 # table -> natural key column
 OVERRIDES = {'feature_flags': 'name', 'era_checks': 'key', 'research_candidates': 'id',
              'agent_proposals': 'id', 'entity_keywords': 'id',
-             'lens_readings': 'id', 'source_digests': 'id', 'models': 'id', 'narratives': 'id'}
+             'lens_readings': 'id', 'source_digests': 'id', 'models': 'id', 'narratives': 'id',
+             'knowledge_falsifiers': 'id'}
 # Computation outputs: copied into TEMP only for the computing request; reads see them from the
 # next projection build (the computing request answers with the result itself).
-COMPUTED = ('lens_readings', 'source_digests', 'models', 'narratives')
+COMPUTED = ('lens_readings', 'source_digests', 'models', 'narratives', 'knowledge_falsifiers')
 
 
 def initialize(conn):
@@ -84,6 +85,9 @@ def apply(conn, before, after, *, source=None):
     changed = 0
     touched = []
     conn.execute("SELECT pg_advisory_xact_lock(hashtextextended('owner-row-overrides',0))")
+    if conn.execute("SELECT to_regclass('owner_override_keys')").fetchone()[0] is not None:
+        conn.cursor().executemany('INSERT INTO owner_override_keys VALUES (%s,%s) ON CONFLICT (table_name) DO NOTHING',
+                                  list(OVERRIDES.items()))
     for table in after:
         old, new = before[table], after[table]
         for key in set(old) | set(new):

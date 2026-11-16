@@ -28,7 +28,7 @@ from routers.spine_transcript import FollowReq, PinReq
 from models.tracker import TrackerCondition, TrackerConditionIn, TrackerConditionPatch
 
 
-def create_router(factory, timeline):
+def create_router(factory, timeline, projection=None):
     router = APIRouter()
 
     def connection():
@@ -327,10 +327,26 @@ def create_router(factory, timeline):
         finally:
             legacy.close()
         epistemic = 'corroborated' if independent >= 2 else 'observed'
-        # Falsifier generation (a model call in the legacy route) is not connected yet.
         with connection() as conn:
             records.review_knowledge(conn, knowledge_id, 'active', epistemic)
+        if projection is not None:
+            falsify(knowledge_id)
         return {'id': knowledge_id, 'epistemic_status': epistemic}
+
+    def falsify(knowledge_id):
+        # As the legacy route: falsifiers from the moment knowledge becomes active (one model call, idempotent),
+        # run unchanged on a writable copy of its table and kept as computed rows.
+        from pipeline import postgres_owner_overrides as overrides
+        from pipeline.falsifiers import generate_falsifiers
+        conn, _ = projection.write_connection(('knowledge_falsifiers',))
+        try:
+            statement = conn.execute('SELECT statement FROM knowledge WHERE id=?', (knowledge_id,)).fetchone()['statement']
+            before = overrides.rows(conn)
+            generate_falsifiers(conn, knowledge_id, statement)
+            with factory() as pg, pg.transaction():
+                overrides.apply(pg, before, overrides.rows(conn), source=f'POST /api/spine/knowledge/items/{knowledge_id}/approve')
+        finally:
+            conn.close()
 
     @router.post('/api/spine/knowledge/items/{knowledge_id}/reject')
     def reject_knowledge(knowledge_id: int):
@@ -355,9 +371,9 @@ def create_router(factory, timeline):
     return router
 
 
-def install(app, factory, timeline):
+def install(app, factory, timeline, projection=None):
     """Put the ledger routes ahead of the read-only legacy routes with the same path."""
-    router = create_router(factory, timeline)
+    router = create_router(factory, timeline, projection)
     owned = {(route.path, method) for route in router.routes for method in route.methods}
     app.router.routes[:] = [route for route in app.router.routes
                             if not (isinstance(route, APIRoute) and any((route.path, m) in owned for m in route.methods))]

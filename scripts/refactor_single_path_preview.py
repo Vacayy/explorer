@@ -125,7 +125,7 @@ legacy_projection = LegacyProjection(factory, '/projection', on_change=search.cl
 install_legacy_reads(app, legacy_projection,
                      database_host=psycopg.conninfo.conninfo_to_dict(os.environ['REFACTOR_POSTGRES_DSN'])['host'])
 install_owner_portfolio(app, factory)  # after the legacy reads it replaces
-install_owner_records(app, factory, document_ui.timeline_reader)
+install_owner_records(app, factory, document_ui.timeline_reader, legacy_projection)
 install_owner_legacy(app, legacy_projection, factory, run_llm=question_model, search=question_search)
 install_claims(app, factory, question_model)  # claims extraction here, related documents in the compute worker
 install_owner_overrides(app, legacy_projection, factory)  # admin decisions over collected rows
