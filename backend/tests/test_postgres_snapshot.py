@@ -104,6 +104,26 @@ class SnapshotReplacementTests(unittest.TestCase):
         finally:
             source.close()
 
+    def test_member_portfolio_fixture_isolates_transactions_and_rolls_back(self):
+        from pipeline import postgres_portfolio_fixture as portfolio
+        from pipeline.portfolio import LedgerError
+        with self.pg() as c:
+            portfolio.initialize(c)
+        with self.pg() as c:
+            a=portfolio.add_transaction(c,'member-a',{'trade_date':'2026-01-02','kind':'buy','stock_code':'000001','amount':100,'price':10},companies={'000001'},last_close=lambda *_:None)
+        with self.pg() as c:
+            self.assertEqual(portfolio.list_transactions(c,'member-b',names={}),[])
+            self.assertFalse(portfolio.delete_transaction(c,'member-b',a))
+        with self.pg() as c:
+            rows=portfolio.list_transactions(c,'member-a',names={'000001':'합성 회사'})
+            self.assertEqual([r['kind'] for r in rows],['buy','deposit'])
+            self.assertNotIn('amount',rows[0])
+        with self.assertRaises(LedgerError):
+            with self.pg() as c:
+                portfolio.add_transaction(c,'member-a',{'trade_date':'2026-01-03','kind':'withdraw','amount':1},companies=set(),last_close=lambda *_:None)
+        with self.pg() as c:
+            self.assertEqual(len(portfolio.list_transactions(c,'member-a',names={})),2)
+
     def test_portfolio_snapshot_keeps_group_relationships_and_amounts(self):
         with closing(self.fixture.connect()) as source:
             source.execute('CREATE TABLE stock_groups(id INTEGER PRIMARY KEY, name TEXT, kind TEXT)')

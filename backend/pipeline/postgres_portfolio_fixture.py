@@ -1,0 +1,89 @@
+"""Member-scoped portfolio experiment for disposable PostgreSQL schemas only.
+
+The caller must supply a verified internal principal; this module is not an
+authentication boundary and is never registered with the running service.
+"""
+from models.portfolio import TransactionCreate
+from pipeline.portfolio import EPS, LedgerError, replay
+from pipeline.postgres_graph_fixture import _guard
+
+
+def initialize(conn):
+    _guard(conn)
+    conn.execute('''CREATE TABLE fixture_portfolio_accounts (
+        principal TEXT PRIMARY KEY CHECK (principal <> ''),
+        id BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE NOT NULL)''')
+    conn.execute('''CREATE TABLE fixture_portfolio_transactions (
+        id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        account_id BIGINT NOT NULL REFERENCES fixture_portfolio_accounts(id),
+        trade_date TEXT NOT NULL, kind TEXT NOT NULL,
+        stock_code TEXT, amount DOUBLE PRECISION NOT NULL CHECK(amount > 0),
+        price DOUBLE PRECISION, note TEXT NOT NULL DEFAULT '')''')
+
+
+def _account(conn, principal):
+    _guard(conn)
+    if not isinstance(principal,str) or not principal.strip():
+        raise ValueError('Verified principal required')
+    conn.execute('INSERT INTO fixture_portfolio_accounts(principal) VALUES (%s) ON CONFLICT DO NOTHING',(principal,))
+    return conn.execute('SELECT id FROM fixture_portfolio_accounts WHERE principal=%s FOR UPDATE',(principal,)).fetchone()[0]
+
+
+def _transactions(conn, account):
+    return [dict(zip(('id','trade_date','kind','stock_code','amount','price'),row)) for row in
+            conn.execute('SELECT id,trade_date,kind,stock_code,amount,price FROM fixture_portfolio_transactions '
+                         'WHERE account_id=%s ORDER BY trade_date,id',(account,))]
+
+
+def list_transactions(conn, principal, *, names):
+    rows=_transactions(conn,_account(conn,principal))
+    return [{'id':t['id'],'trade_date':t['trade_date'],'kind':t['kind'],'stock_code':t['stock_code'],
+             'name':names.get(t['stock_code'],t['stock_code']) if t['stock_code'] else None,'price':t['price']}
+            for t in reversed(rows)]
+
+
+def add_transaction(conn, principal, raw, *, companies, last_close):
+    """Validate and write one account under its row lock; caller owns transaction."""
+    tx=TransactionCreate.model_validate(raw).model_dump()
+    account=_account(conn,principal)
+    if tx['kind'] in ('buy','sell'):
+        if not tx.get('stock_code'):
+            raise LedgerError('종목을 선택하세요.')
+        if tx['stock_code'] not in companies:
+            raise LedgerError('알 수 없는 종목입니다.')
+        if not tx.get('price'):
+            tx['price']=last_close(tx['stock_code'],tx['trade_date'])
+            if not tx['price']:
+                raise LedgerError('체결가를 입력하세요(저장된 종가 없음).')
+    else:
+        tx['stock_code'],tx['price']=None,None
+    existing=_transactions(conn,account)
+    if tx['sell_all']:
+        position=replay([row for row in existing if row['trade_date'] <= tx['trade_date']]).positions.get(tx['stock_code'])
+        if not position:
+            raise LedgerError(f"{tx['trade_date']}에 보유하지 않은 종목입니다.")
+        tx['amount']=position.qty*tx['price']
+    pending=[]
+    if tx['kind']=='buy' and tx['fund_shortfall']:
+        cash=replay([row for row in existing if row['trade_date'] <= tx['trade_date']]).cash
+        if tx['amount'] > cash+EPS:
+            pending.append({'kind':'deposit','amount':tx['amount']-cash,'stock_code':None,'price':None,
+                            'trade_date':tx['trade_date'],'note':'매수 부족분 자동 입금'})
+    pending.append(tx)
+    next_id=max((row['id'] for row in existing),default=0)+1
+    replay(existing+[{**item,'id':next_id+i} for i,item in enumerate(pending)])
+    for item in pending:
+        ident=conn.execute('INSERT INTO fixture_portfolio_transactions(account_id,trade_date,kind,stock_code,amount,price,note) '
+            'VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id',
+            (account,item['trade_date'],item['kind'],item['stock_code'],item['amount'],item['price'],item.get('note') or '')).fetchone()[0]
+    return ident
+
+
+def delete_transaction(conn, principal, ident):
+    account=_account(conn,principal)
+    rows=_transactions(conn,account)
+    if not any(row['id']==ident for row in rows):
+        return False
+    replay([row for row in rows if row['id'] != ident])
+    conn.execute('DELETE FROM fixture_portfolio_transactions WHERE account_id=%s AND id=%s',(account,ident))
+    return True
