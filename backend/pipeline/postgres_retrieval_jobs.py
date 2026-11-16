@@ -31,8 +31,10 @@ def enqueue(conn, kind, subject, request):
 
 def legacy_retrieval(chunks_path, projection_path):
     """Point the unchanged legacy retrieval modules at the chunk index with the projection attached."""
+    import sys
+
     import database
-    from pipeline import chat_tools, chunks, rag, search, visibility
+    from pipeline import chat_tools, chunks, quotes, rag, search, visibility
 
     def connection():
         conn = sqlite3.connect(chunks_path, timeout=30)
@@ -40,8 +42,14 @@ def legacy_retrieval(chunks_path, projection_path):
         conn.row_factory = sqlite3.Row
         return conn
 
-    for module in (database, chat_tools, chunks, rag, search):  # each bound get_connection at import
+    original = database.get_connection
+    database.get_connection = connection  # modules imported later bind this one
+    for module in list(sys.modules.values()):  # each bound get_connection at import
+        if getattr(module, 'get_connection', None) is original:
+            module.get_connection = connection
+    for module in (chat_tools, chunks, rag, search):
         module.get_connection = connection
+    quotes.fetch_quotes = stored_quotes  # the candidate does not collect: saved closes, never a live request
     # The owner's personal mute is not applied without per-user identity (all collected material shows),
     # and retrieval shown to users does not drop unverified sources (scrap) either (PM decision).
     visibility.get_muted = lambda conn: {'telegram': set(), 'blog': []}
@@ -49,9 +57,34 @@ def legacy_retrieval(chunks_path, projection_path):
     return connection
 
 
-# AI-answer tools run here unchanged on the chunk index and projection: evidence search (chunk hybrid search
-# and rerank), the causal graph and cached narratives. All are reads without model calls.
-WORKER_CHAT_TOOLS = ('search_docs', 'get_worldmodel', 'get_narrative')
+# AI-answer tools run here unchanged on the chunk index and projection (evidence search with chunk hybrid
+# search and rerank, the causal graph, narratives, knowledge, questions, regime, market and owner records).
+# All are reads without model calls; quotes are saved closes (`stored_quotes`).
+WORKER_CHAT_TOOLS = ('search_docs', 'get_worldmodel', 'get_narrative', 'get_knowledge', 'get_questions', 'get_regime',
+                     'get_us_briefing', 'get_pricing_ledger', 'get_proxies', 'get_trade', 'get_study', 'list_recent',
+                     'get_lens', 'get_saved', 'get_portfolio', 'get_quote', 'get_price_history')
+STORED_QUOTE_TITLE = '저장 종가 (실시간 시세 아님 — 후보에서는 시세를 수집하지 않음)'
+
+
+def stored_quotes(codes):
+    """fetch_quotes' shape from the projection's saved daily closes (latest two trading days)."""
+    from database import get_connection
+    conn = get_connection()
+    try:
+        out = []
+        for code in dict.fromkeys(c.strip() for c in codes if c and c.strip()):
+            rows = conn.execute('SELECT trade_date,close FROM stock_prices WHERE stock_code=? AND close IS NOT NULL '
+                                'ORDER BY trade_date DESC LIMIT 2', (code,)).fetchall()
+            if not rows:
+                continue
+            last, prev = rows[0], rows[1] if len(rows) > 1 else None
+            change = last[1] - prev[1] if prev else 0
+            out.append({'stock_code': code, 'price': last[1], 'change': change,
+                        'change_pct': change / prev[1] * 100 if prev and prev[1] else 0, 'volume': None,
+                        'market_status': 'CLOSE', 'traded_at': last[0]})
+        return out
+    finally:
+        conn.close()
 
 
 def chat_tool(factory, request):
@@ -62,7 +95,13 @@ def chat_tool(factory, request):
     allowed = chat_tools.TOOLS[name]['args'] | ({'k'} if name == 'search_docs' else set())
     result = chat_tools.TOOLS[name]['fn'](**{key: value for key, value in request['args'].items()
                                              if key in allowed and value is not None})
-    return {'args': result.args, 'items': result.items, 'note': result.note, 'assumed': result.assumed}
+    items = result.items
+    if name == 'get_quote':  # the legacy title says real time; these are saved closes
+        items = [{**item, 'title': STORED_QUOTE_TITLE} if item.get('kind') == 'quote' else item for item in items]
+    note = result.note
+    if name == 'get_quote' and note == '시세 조회 실패':
+        note = '저장된 시세 없음 (최신 시세 미반영 — 후보에서는 시세를 수집하지 않음)'
+    return {'args': result.args, 'items': items, 'note': note, 'assumed': result.assumed}
 
 
 def run_queued(factory, handlers):

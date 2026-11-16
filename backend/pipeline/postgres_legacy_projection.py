@@ -28,7 +28,7 @@ from pipeline.postgres_graph_fixture import _guard
 write_connection_var = ContextVar('legacy_write_connection', default=None)
 
 # PG-native ledgers that replaced a legacy table; legacy reads must see their rows.
-NATIVE = ('study_projects', 'questions', 'sub_questions')
+NATIVE = ('study_projects', 'questions', 'sub_questions', 'proxy_registry', 'proxy_observations')
 # Everything the projection reads that can change after the base load.
 VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'question_graph_overlay_rows',
              'legacy_supplement_tables', 'legacy_supplement_rows', *NATIVE,
@@ -37,7 +37,7 @@ VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'questio
              'owner_saved_items', 'owner_tracker_conditions', 'owner_legacy_rows',
              'owner_transcript_pins', 'owner_transcript_additions', 'owner_knowledge_reviews', 'owner_trade_follow',
              'collected_row_revisions', 'owner_narrative_decisions', 'owner_source_settings',
-             'owner_source_additions', 'owner_row_overrides')
+             'owner_source_additions', 'owner_row_overrides', 'candidate_job_runs')
 # Small owner-ledger tables re-derived per connection in TEMP shadows, so writes
 # show at once; the file keeps its own (possibly older) derived copy underneath.
 SHADOWED = ('portfolio_transactions', 'stock_group_members', 'stock_groups', 'watch_rules', 'watch_evaluations', 'portfolio_principles', 'follows', 'kalshi_pins', 'channel_reads',
