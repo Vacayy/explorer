@@ -108,6 +108,23 @@ for module in list(sys.modules.values()):
 legacy_consolidation._embeddings = legacy_embeddings
 
 
+import logging  # noqa: E402
+import pipeline.scenario as legacy_scenario  # noqa: E402
+_build_scenario = legacy_scenario.build_scenario
+
+
+def build_scenario_logged(*args, **kwargs):
+    # The legacy route turns any failure into status 'error'; keep the reason in the log.
+    try:
+        return _build_scenario(*args, **kwargs)
+    except Exception:
+        logging.getLogger('preview.scenario').exception('Scenario build failed')
+        raise
+
+
+legacy_scenario.build_scenario = build_scenario_logged
+
+
 class SnapshotMetadata:
     connect = staticmethod(factory)
 

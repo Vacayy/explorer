@@ -338,19 +338,25 @@ def create_router(factory, timeline, projection=None):
     def inject_knowledge(body: InjectRequest):
         # The legacy injection on a private projection copy; the note goes to the candidate-only notes folder.
         from pipeline.postgres_knowledge_inject import inject
+        from routers.postgres_legacy_read_fixture import _offline
         if projection is None:
             raise HTTPException(503, 'Knowledge injection unavailable')
+        offline = _offline.set(True)  # in-process network guard; model calls run as CLI subprocesses
         try:
             return InjectResponse(**inject(projection, factory, '/app/vault/notes/injected', body.content, body.epistemic,
                                            body.rationale, body.source))
         except ValueError as e:
             raise HTTPException(400, str(e))
+        finally:
+            _offline.reset(offline)
 
     def falsify(knowledge_id):
         # As the legacy route: falsifiers from the moment knowledge becomes active (one model call, idempotent),
         # run unchanged on a writable copy of its table and kept as computed rows.
         from pipeline import postgres_owner_overrides as overrides
         from pipeline.falsifiers import generate_falsifiers
+        from routers.postgres_legacy_read_fixture import _offline
+        offline = _offline.set(True)
         conn, _ = projection.write_connection(('knowledge_falsifiers',))
         try:
             statement = conn.execute('SELECT statement FROM knowledge WHERE id=?', (knowledge_id,)).fetchone()['statement']
@@ -360,6 +366,7 @@ def create_router(factory, timeline, projection=None):
                 overrides.apply(pg, before, overrides.rows(conn), source=f'POST /api/spine/knowledge/items/{knowledge_id}/approve')
         finally:
             conn.close()
+            _offline.reset(offline)
 
     @router.post('/api/spine/knowledge/items/{knowledge_id}/reject')
     def reject_knowledge(knowledge_id: int):

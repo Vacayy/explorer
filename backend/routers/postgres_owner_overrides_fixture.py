@@ -25,9 +25,10 @@ ADAPTED = (('POST', '/api/spine/admin/flag'), ('PUT', '/api/spine/regimes/checks
            ('POST', '/api/spine/beneficiary/upside'), ('POST', '/api/spine/narrative/mer/compute'),
            ('POST', '/api/spine/narrative/compute'),
            # Button computations over the candidate's own material (no external requests).
-           ('POST', '/api/spine/person/{name}/profile'))
+           ('POST', '/api/spine/person/{name}/profile'), ('POST', '/api/spine/narrative/scenario/compute'),
+           ('POST', '/api/spine/report/compute'))
 # Computations that also write the graph: graph tables are copied writable and their diff is published.
-GRAPH_WRITERS = {'/api/spine/narrative/compute'}
+GRAPH_WRITERS = {'/api/spine/narrative/compute', '/api/spine/narrative/scenario/compute'}
 # Approvals whose legacy action only touches the decision tables (alias registration, acknowledgement).
 APPROVABLE = {'entity_alias', 'devils_advocate', 'falsifier_watch'}
 APPROVE = re.compile(r'^/api/spine/agent-proposals/(\d+)/approve$')
@@ -35,12 +36,12 @@ APPROVE = re.compile(r'^/api/spine/agent-proposals/(\d+)/approve$')
 
 def install(app, projection, factory):
     from routers import (spine_admin, spine_approvals, spine_causal, spine_keywords, spine_lens, spine_narrative,
-                         spine_person, spine_regimes, spine_research, spine_sources)
+                         spine_person, spine_regimes, spine_report, spine_research, spine_sources)
     from routers.postgres_owner_legacy_fixture import _Borrowed
     wanted = set(ADAPTED)
     for router in (spine_admin.router, spine_regimes.router, spine_research.router, spine_approvals.agent_router,
                    spine_keywords.router, spine_lens.router, spine_sources.router, spine_causal.beneficiary_router,
-                   spine_narrative.router, spine_person.router):
+                   spine_narrative.router, spine_person.router, spine_report.router):
         for route in router.routes:
             if isinstance(route, APIRoute) and any((method, route.path) in wanted for method in route.methods):
                 app.router.routes.append(route)
@@ -65,6 +66,8 @@ def install(app, projection, factory):
                 return JSONResponse({'detail': '이 제안의 승인 작업은 후보에서 아직 실행하지 않습니다'}, status_code=409)
         from pipeline import postgres_graph_compute as graph
         writes_graph = request.url.path in GRAPH_WRITERS
+        from routers.postgres_legacy_read_fixture import _offline
+        offline = _offline.set(True)  # in-process network guard; model calls run as CLI subprocesses
         conn, _ = await run_in_threadpool(projection.write_connection, graph.GRAPH if writes_graph else ())
         try:
             before = overrides.rows(conn)
@@ -86,3 +89,4 @@ def install(app, projection, factory):
             return response
         finally:
             conn.close()
+            _offline.reset(offline)
