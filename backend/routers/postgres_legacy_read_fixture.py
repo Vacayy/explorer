@@ -10,6 +10,7 @@ guard: any outbound connection during them fails and is logged, so a stale cache
 falls back to saved data instead of fetching.
 """
 import logging
+import os
 import re
 import socket
 import sys
@@ -132,6 +133,10 @@ def install(app, projection, *, database_host):
     for module in list(sys.modules.values()):
         if getattr(module, 'DB_PATH', None) is original_path:
             module.DB_PATH = projection.stable_path
+    # shared_result reuses a result while the file's data_version is unchanged; projection files never
+    # change in place, so key it on the file the stable path points at (a new build is a new key).
+    from services import shared_result
+    shared_result._db_state = lambda: (os.path.realpath(projection.stable_path),)
 
     import importlib
     # The owner-gated experimental portfolio adapter is replaced by the legacy reads.

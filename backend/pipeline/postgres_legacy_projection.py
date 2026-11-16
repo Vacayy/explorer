@@ -37,13 +37,14 @@ VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'questio
              'owner_saved_items', 'owner_tracker_conditions', 'owner_legacy_rows',
              'owner_transcript_pins', 'owner_transcript_additions', 'owner_knowledge_reviews', 'owner_trade_follow',
              'collected_row_revisions', 'owner_narrative_decisions', 'owner_source_settings',
-             'owner_source_additions')
+             'owner_source_additions', 'owner_row_overrides')
 # Small owner-ledger tables re-derived per connection in TEMP shadows, so writes
 # show at once; the file keeps its own (possibly older) derived copy underneath.
 SHADOWED = ('portfolio_transactions', 'stock_group_members', 'stock_groups', 'watch_rules', 'watch_evaluations', 'portfolio_principles', 'follows', 'kalshi_pins', 'channel_reads',
             'saved_items', 'tracker_conditions', 'transcript_follow', 'knowledge', 'trade_follow', 'narrative_candidates',
             'telegram_channels', 'blog_sources', 'youtube_channels',
-            'industry_groups', 'industry_members', 'business_segments', 'ir_notes', *NATIVE)
+            'industry_groups', 'industry_members', 'business_segments', 'ir_notes',
+            'feature_flags', 'era_checks', 'research_candidates', 'agent_proposals', 'entity_keywords', *NATIVE)
 CHECK_SECONDS = 10
 log = logging.getLogger(__name__)
 
@@ -273,6 +274,10 @@ class LegacyProjection:
             legacy = self._owner_legacy(pg)
             ddl = dict(pg.execute('SELECT table_name,schema_sql FROM legacy_snapshot_tables WHERE table_name=ANY(%s)',
                                   (list(owner_legacy.TABLES),)).fetchall()) if writable else {}
+            if writable:  # decision tables keep their keys and checks, not their foreign keys
+                from pipeline.postgres_owner_overrides import OVERRIDES, writable_ddl
+                ddl.update({name: writable_ddl(sql) for name, sql in pg.execute(
+                    'SELECT table_name,schema_sql FROM legacy_snapshot_tables WHERE table_name=ANY(%s)', (list(OVERRIDES),))})
             # The file already holds this ledger version: skip re-deriving its large evaluation table.
             current = self.current
             fresh = not writable and legacy is not None and current is not None and current[2] == legacy[0]
@@ -440,6 +445,8 @@ def _derive_owner_records(root, pg):
             root.execute(f'UPDATE {table} SET is_active=COALESCE(?,is_active),collect_enabled=COALESCE(?,collect_enabled) '
                          f'WHERE {column}=?', (active, collect, key))
     derive_owner_narrative_decisions(root, pg)
+    from pipeline.postgres_owner_overrides import derive as derive_overrides
+    derive_overrides(root, pg)
     if pg.execute("SELECT to_regclass('owner_trade_follow')").fetchone()[0] is not None:
         # The owner's on/off wins (a collector re-seed would switch items back on); names stay the collector's.
         for hs, name, group, active, updated in pg.execute(

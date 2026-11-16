@@ -32,6 +32,7 @@ from routers.postgres_owner_portfolio_fixture import install as install_owner_po
 from routers.postgres_owner_records_fixture import install as install_owner_records
 from routers.postgres_owner_legacy_fixture import install as install_owner_legacy
 from routers.postgres_claims_fixture import install as install_claims
+from routers.postgres_owner_overrides_fixture import install as install_owner_overrides
 
 if os.environ.get('REFACTOR_FEED_POINTER_SCHEMA'):
     raise RuntimeError('Single-path preview does not permit a separate feed pointer')
@@ -113,6 +114,7 @@ install_owner_portfolio(app, factory)  # after the legacy reads it replaces
 install_owner_records(app, factory, document_ui.timeline_reader)
 install_owner_legacy(app, legacy_projection, factory, run_llm=question_model, search=question_search)
 install_claims(app, factory, question_model)  # claims extraction here, related documents in the compute worker
+install_owner_overrides(app, legacy_projection, factory)  # admin decisions over collected rows
 threading.Thread(target=legacy_projection.path, daemon=True).start()  # warm before the first home visit
 
 
