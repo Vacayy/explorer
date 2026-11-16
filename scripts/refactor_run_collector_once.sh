@@ -16,7 +16,9 @@ docker inspect "$API" --format '{{range .Config.Env}}{{println .}}{{end}}' \
 IMAGE=$(docker inspect "$API" --format '{{.Config.Image}}')
 NETWORK=$(docker inspect "$API" --format '{{.HostConfig.NetworkMode}}')
 USER_ID=$(docker exec "$API" id -u):$(docker exec "$API" id -g)
+# The base generation's own backup, read-only (supplement and chunk index loads).
+BACKUP=${REFACTOR_BASE_BACKUP:-$HOME/server-data/staging/refactor-preview-backup-20261116T050656Z}
 docker run --rm --memory=2g --network "$NETWORK" --env-file "$ENV_FILE" -e EXPLORER_ONESHOT=1 \
-  --user "$USER_ID" -v explorer-refactor-single-projection:/projection \
+  --user "$USER_ID" -v explorer-refactor-single-projection:/projection -v "$BACKUP:/backup:ro" \
   -v "$ROOT/backend:/app/backend:ro" -v "$ROOT/scripts:/app/scripts:ro" -w /app/backend \
   -e PYTHONPATH=/app/backend -e PYTHONDONTWRITEBYTECODE=1 "$IMAGE" python "/app/$FILE" "$@"
