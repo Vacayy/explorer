@@ -5,6 +5,7 @@ mode (EXPLORER_ACCESS_MODE=public) it assembles, with development's environment 
 - the auth routes, their LoginFlow on the PG identity store (pipeline.postgres_identity_store) and a
   separately provisioned login-transaction SQLite (in-progress logins only, as in development);
 - the model-call usage gate on the PG chat quota (development's trial policy and identity secret);
+- the redaction of the operator's personal parts from public reads (home) for everyone else;
 - the candidate access boundary, outermost, so it runs first.
 """
 import os
@@ -49,5 +50,7 @@ def install_public(app, factory):
         max_in_flight=int(os.environ['EXPLORER_TRIAL_MAX_IN_FLIGHT'])))
     gate.install(llm, quota)
     gate.add_middleware(app, identity=identity, factory=factory)
+    from pipeline import postgres_personal_redaction
+    postgres_personal_redaction.add_middleware(app)  # the operator's personal parts of public reads
     app.add_middleware(CandidateAccessBoundary, routes=app.router.routes, service_factory=lambda: service)
     return True
