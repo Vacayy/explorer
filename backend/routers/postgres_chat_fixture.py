@@ -8,7 +8,7 @@ from starlette.concurrency import run_in_threadpool
 from pipeline.postgres_conversations import ConversationNotFound, DocumentNotFound, TargetNotFound
 from pipeline.postgres_chat_generation import generate_answer
 from routers.spine_ask import AskRequest, AskResponse
-from routers.spine_conversations import ChatMessage, ConversationDetail, ConversationItem, stream_conversation
+from routers.spine_conversations import ChatMessage, ConversationDetail, ConversationItem, TitlePatch, stream_conversation
 
 
 def create_router(store, tools, *, owner_chat_id=None):
@@ -63,9 +63,17 @@ def create_router(store, tools, *, owner_chat_id=None):
 
     @router.get('/api/spine/conversations', response_model=list[ConversationItem])
     def list_conversations(limit: int = 20, stock: str | None = None):
-        if stock:
-            raise HTTPException(422, '격리 시험에서는 종목별 대화 목록을 지원하지 않습니다')
-        return store.list(owner_chat_id=owner_chat_id, limit=limit)
+        return store.list(owner_chat_id=owner_chat_id, limit=limit, stock=stock)
+
+    @router.patch('/api/spine/conversations/{conversation_id}', response_model=ConversationItem)
+    def rename(conversation_id: int, body: TitlePatch):
+        title = body.title.strip()[:120]
+        if not title:
+            raise HTTPException(400, '제목이 비어 있습니다')
+        try:
+            return store.rename(conversation_id, title, owner_chat_id=owner_chat_id)
+        except ConversationNotFound as exc:
+            raise HTTPException(404, '대화를 찾을 수 없습니다') from exc
 
     @router.get('/api/spine/conversations/{conversation_id}', response_model=ConversationDetail)
     def detail(conversation_id: int):

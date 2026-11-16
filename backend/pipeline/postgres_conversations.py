@@ -374,11 +374,34 @@ class PostgreSQLConversations:
                           usage.get('cache_read'), usage.get('output'), usage.get('thinking'),
                           result.cost_usd if result else None, duration_ms, error is None, safe_error))
 
-    def list(self, *, owner_chat_id=None, limit=20):
+    def list(self, *, owner_chat_id=None, limit=20, stock=None):
+        owner = "(c.channel='web' OR c.chat_id IS NULL OR (c.chat_id=%s AND %s::text IS NOT NULL))"
         with self.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+            if stock:
+                # The legacy rule: conversations anchored to the company, or whose messages link it.
+                company = conn.execute("SELECT (row_data->>'id')::bigint FROM legacy_snapshot_rows WHERE table_name='entities' "
+                                       "AND row_data->>'type'='company' AND row_data->>'aliases'=%s "
+                                       "ORDER BY (row_data->>'id')::bigint LIMIT 1", (stock,)).fetchone()
+                cur.execute("SELECT DISTINCT c.id, c.title, c.channel, c.anchor_entity_id, c.updated_at, "
+                            "(SELECT count(*) FROM chat_messages m WHERE m.conversation_id=c.id) AS message_count "
+                            "FROM conversations c LEFT JOIN chat_messages m ON m.conversation_id=c.id "
+                            "LEFT JOIN chat_entity_links cel ON cel.message_id=m.id "
+                            f"WHERE (c.anchor_entity_id=%s OR cel.entity_id=%s) AND {owner} "
+                            "ORDER BY c.updated_at DESC LIMIT %s",
+                            (company and company[0], company and company[0], owner_chat_id, owner_chat_id, max(1, min(limit, 100))))
+                return cur.fetchall()
             cur.execute("SELECT c.id, c.title, c.channel, c.anchor_entity_id, c.updated_at, "
                         "(SELECT count(*) FROM chat_messages m WHERE m.conversation_id=c.id) AS message_count "
-                        "FROM conversations c WHERE c.channel='web' OR c.chat_id IS NULL "
-                        "OR (c.chat_id=%s AND %s::text IS NOT NULL) ORDER BY c.updated_at DESC, c.id DESC LIMIT %s",
+                        f"FROM conversations c WHERE {owner} ORDER BY c.updated_at DESC, c.id DESC LIMIT %s",
                         (owner_chat_id, owner_chat_id, max(1, min(limit, 100))))
             return cur.fetchall()
+
+    def rename(self, conversation_id, title, *, owner_chat_id=None):
+        """The legacy title edit (D-145); returns the list row."""
+        with self.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+            self._owned(cur, conversation_id, owner_chat_id, lock=True)
+            cur.execute('UPDATE conversations SET title=%s WHERE id=%s', (title, conversation_id))
+            cur.execute("SELECT c.id, c.title, c.channel, c.anchor_entity_id, c.updated_at, "
+                        "(SELECT count(*) FROM chat_messages m WHERE m.conversation_id=c.id) AS message_count "
+                        'FROM conversations c WHERE c.id=%s', (conversation_id,))
+            return cur.fetchone()
