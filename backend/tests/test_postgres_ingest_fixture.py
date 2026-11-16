@@ -25,6 +25,10 @@ from pipeline.postgres_ingest_coordinator_fixture import FixtureCoordinator
 from pipeline.postgres_document_read import PostgreSQLDocumentReader
 from pipeline.postgres_search_snapshot import SearchSnapshot
 from pipeline.postgres_search_feed import search_feed
+from pipeline.postgres_chat_tools import PostgreSQLChatTools, UnsupportedPostgresChatTool
+from pipeline.postgres_chat_runtime import PostgreSQLChatRuntime
+from pipeline.postgres_conversations import PostgreSQLConversations
+from pipeline import chat, llm
 
 
 @unittest.skipUnless(os.getenv('REFACTOR_TEST_DISPOSABLE') == '1', 'disposable fixture required')
@@ -178,6 +182,67 @@ class IngestFixtureTests(unittest.TestCase):
             retry = claim_enrichment(c, document_id=row['id'], worker_id='worker-2')
             self.assertFalse(finish_enrichment(c, document_id=row['id'], **first, summary='late', model='fixture'))
             self.assertTrue(finish_enrichment(c, document_id=row['id'], **retry, summary='new', model='fixture'))
+
+    def test_pg_document_chat_turn_with_model_stub_and_no_sqlite(self):
+        with self.pg() as conn:
+            doc = store_document(conn, source_type='note', source_id='chat-turn', title='반도체 전망',
+                                 markdown='반도체 원문', raw_content='반도체 원문', published_at='2026-01-01')
+            rebuild(conn)
+            conn.execute((Path(__file__).resolve().parents[1] / 'refactor_sql/conversation_store.sql').read_text())
+        store = PostgreSQLConversations(self.pg)
+        cid, _ = store.create_question('반도체를 설명해줘', document_id=doc['id'])
+        context = store.load_context(cid, '반도체를 설명해줘')
+        with self.pg() as conn:
+            conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            index = SearchSnapshot.from_postgres(conn, lexical_only=True)
+        try:
+            runtime = PostgreSQLChatRuntime(store, cid, PostgreSQLChatTools(self.pg, index, allow_lexical_only=True))
+
+            def fake_model(prompt, *, task, record_call, **kwargs):
+                responses = {
+                    'chat.route': '{"intent":"research","answer_style":"analysis","tools":[{"name":"search_docs","args":{"query":"반도체"}}]}',
+                    'chat.review': '{"enough":true}',
+                    'chat.answer': '반도체 원문입니다. [1]',
+                }
+                result = llm.LLMResult(text=responses[task], model='fixture', engine='fixture', usage={})
+                record_call(task, 'fixture', 'fixture', None, result, 1, None)
+                return result
+
+            with patch('pipeline.postgres_chat_runtime.llm.run', side_effect=fake_model), \
+                 patch('pipeline.chat.get_connection', side_effect=AssertionError('SQLite must not be used')):
+                turn = chat.run_turn('반도체를 설명해줘', conversation_id=cid, ctx=context, runtime=runtime)
+            self.assertIn('반도체 원문', turn.answer)
+            self.assertTrue(any(e.get('doc_id') == doc['id'] for e in turn.evidence))
+            store.append_assistant(cid, turn.answer, model=turn.model, citations=turn.citations)
+            with self.pg() as conn:
+                self.assertGreaterEqual(conn.execute('SELECT count(*) FROM chat_model_calls').fetchone()[0], 2)
+            self.assertEqual(store.detail(cid)[1][-1]['content'], turn.answer)
+        finally:
+            index.close()
+
+    def test_pg_chat_document_search_is_explicit_about_missing_features(self):
+        with self.pg() as conn:
+            doc = store_document(conn, source_type='note', source_id='test-chat', title='반도체 전망',
+                                 markdown='반도체 원문', raw_content='반도체 원문', published_at='2026-01-01')
+            rebuild(conn)
+        with self.pg() as conn:
+            conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            index = SearchSnapshot.from_postgres(conn, lexical_only=True)
+        try:
+            with self.assertRaises(ValueError):
+                PostgreSQLChatTools(self.pg, index)
+            tools = PostgreSQLChatTools(self.pg, index, allow_lexical_only=True)
+            result = tools.run_tool({'name': 'search_docs', 'args': {'query': '반도체'}})
+            self.assertEqual(result.items[0]['doc_id'], doc['id'])
+            self.assertIn('반도체 원문', result.items[0]['text'])
+            self.assertIn('키워드만', result.note)
+            self.assertEqual(tools.run_tool({'name': 'open_doc', 'args': {'doc_id': doc['id']}}).items[0]['doc_id'], doc['id'])
+            with self.assertRaises(UnsupportedPostgresChatTool):
+                tools.run_tool({'name': 'search_docs', 'args': {'query': '반도체', 'channel': 'fixture'}})
+            with self.assertRaises(UnsupportedPostgresChatTool):
+                tools.run_tool({'name': 'get_portfolio', 'args': {}})
+        finally:
+            index.close()
 
     def test_ingest_to_existing_feed_and_lexical_search_generation(self):
         with self.pg() as c:
