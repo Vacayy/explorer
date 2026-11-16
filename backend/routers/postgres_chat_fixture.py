@@ -3,10 +3,11 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from starlette.concurrency import run_in_threadpool
 from pipeline.postgres_conversations import ConversationNotFound, DocumentNotFound
 from pipeline.postgres_chat_generation import generate_answer
 from routers.spine_ask import AskRequest, AskResponse
-from routers.spine_conversations import ChatMessage, ConversationDetail, ConversationItem
+from routers.spine_conversations import ChatMessage, ConversationDetail, ConversationItem, stream_conversation
 
 
 def create_router(store, tools, *, owner_chat_id=None):
@@ -72,4 +73,12 @@ def create_router(store, tools, *, owner_chat_id=None):
                         route=json.loads(m['route_json']) if m['route_json'] else None,
                         attachments=json.loads(m['attachments_json']) if m['attachments_json'] else None,
                         created_at=m['created_at']) for m in messages])
+
+    @router.get('/api/spine/conversations/{conversation_id}/stream')
+    async def stream(conversation_id: int):
+        try:
+            await run_in_threadpool(store.detail, conversation_id, owner_chat_id=owner_chat_id)
+        except ConversationNotFound as exc:
+            raise HTTPException(404, '대화를 찾을 수 없습니다') from exc
+        return await stream_conversation(conversation_id)
     return router
