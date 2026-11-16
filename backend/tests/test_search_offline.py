@@ -48,6 +48,13 @@ class OfflineSearchTests(unittest.TestCase):
             self.assertIsNone(rerank.rerank('NVLink', ['관련 자료']))
             encoder.assert_called_once_with(rerank.RERANK_MODEL, cache_dir=FASTEMBED_CACHE, local_files_only=True)
 
+    def test_reranker_uses_bounded_batches_without_changing_scores(self):
+        encoder = MagicMock()
+        encoder.rerank.return_value = iter([0.25, 0.75])
+        with patch.object(rerank, '_get', return_value=encoder):
+            self.assertEqual(rerank.rerank('질문', ['자료1', '자료2']), [0.25, 0.75])
+        encoder.rerank.assert_called_once_with('질문', ['자료1', '자료2'], batch_size=1)
+
 
 if __name__ == '__main__':
     unittest.main()

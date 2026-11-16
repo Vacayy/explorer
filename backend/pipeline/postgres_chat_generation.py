@@ -1,12 +1,25 @@
 """Isolated PostgreSQL chat generation; no live service is configured here."""
+import threading
+
 from pipeline import chat
 from pipeline.postgres_chat_runtime import PostgreSQLChatRuntime
+
+_generation_lock = threading.Lock()
 
 
 def generate_answer(store, tools, conversation_id, question, *, owner_chat_id=None,
                     quote=None, page_context=None):
-    """Complete a previously stored question, keeping conversation data in PG."""
+    """Queue one local generation per worker to bound model memory."""
     stream = chat._open(conversation_id)
+    stream.set_status('앞선 답변 생성 대기 중')
+    with _generation_lock:
+        return _generate_answer(store, tools, conversation_id, question, stream=stream,
+                                owner_chat_id=owner_chat_id, quote=quote, page_context=page_context)
+
+
+def _generate_answer(store, tools, conversation_id, question, *, stream, owner_chat_id=None,
+                     quote=None, page_context=None):
+    """Complete a previously stored question, keeping conversation data in PG."""
     runtime = PostgreSQLChatRuntime(store, conversation_id, tools, owner_chat_id=owner_chat_id)
     try:
         context = store.load_context(conversation_id, question, owner_chat_id=owner_chat_id)

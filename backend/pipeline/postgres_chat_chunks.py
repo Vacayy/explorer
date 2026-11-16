@@ -2,8 +2,8 @@
 import os
 import re
 import sqlite3
+import tempfile
 import threading
-import uuid
 
 
 class ChatChunkImportConflict(RuntimeError):
@@ -81,19 +81,28 @@ def import_chat_chunks(source, target, *, document_ids=None, batch_size=500):
 
 
 class PostgreSQLChunkSearch:
-    """Disposable in-memory search index reconstructed from one PG generation.
+    """Disposable on-disk search cache reconstructed from one PG generation.
 
     PG is the source of truth; the private SQLite FTS/vector index is an
-    ephemeral cache so the original search_chunks ranking can be reused.
+    ephemeral Linux-local cache so the original search_chunks ranking can be reused
+    without keeping the whole index in process memory. It is removed on close.
     """
-    def __init__(self, connect, model_provider, *, allow_partial=False):
+    def __init__(self, connect, model_provider, *, allow_partial=False, release_model=None,
+                 evict_cache_after_search=False):
         import sqlite_vec
         self.connect = connect
         self.model_provider = model_provider
+        self.release_model = release_model
+        self.evict_cache_after_search = evict_cache_after_search
         self.lock = threading.RLock()
-        self.uri = f'file:pg-chat-chunks-{uuid.uuid4().hex}?mode=memory&cache=shared'
-        self.keeper = sqlite3.connect(self.uri, uri=True, check_same_thread=False)
+        self.directory = tempfile.TemporaryDirectory(prefix='explorer-pg-chat-chunks-')
+        self.path = os.path.join(self.directory.name, 'index.sqlite')
+        self.keeper = sqlite3.connect(self.path, check_same_thread=False)
         try:
+            self.keeper.execute('PRAGMA journal_mode=OFF')
+            self.keeper.execute('PRAGMA synchronous=OFF')
+            self.keeper.execute('PRAGMA cache_size=-8192')
+            self.keeper.execute('PRAGMA temp_store=FILE')
             self.keeper.enable_load_extension(True)
             sqlite_vec.load(self.keeper)
             self.keeper.enable_load_extension(False)
@@ -124,12 +133,15 @@ class PostgreSQLChunkSearch:
                     raise ChatChunkImportConflict('chunk index count differs from metadata')
         except Exception:
             self.keeper.close()
+            self.directory.cleanup()
             raise
 
     def _connection(self):
         import sqlite_vec
-        conn = sqlite3.connect(self.uri, uri=True, check_same_thread=False)
+        conn = sqlite3.connect(self.path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
+        conn.execute('PRAGMA cache_size=-8192')
+        conn.execute('PRAGMA temp_store=FILE')
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
         conn.enable_load_extension(False)
@@ -151,13 +163,34 @@ class PostgreSQLChunkSearch:
                 current = pg.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
             if not current or str(current[0]) != self.generation:
                 raise ChatChunkImportConflict('document generation changed')
-            result = search_chunks(query, runtime=self, **kwargs)
+            try:
+                result = search_chunks(query, runtime=self, **kwargs)
+            finally:
+                if self.release_model is not None:
+                    self.release_model()
+                if self.evict_cache_after_search:
+                    self._evict_cache()
             with self.connect() as pg:
                 current = pg.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
             if not current or str(current[0]) != self.generation:
                 raise ChatChunkImportConflict('document generation changed')
             return result
 
+    def _evict_cache(self):
+        if not hasattr(os, 'posix_fadvise') or not hasattr(os, 'POSIX_FADV_DONTNEED'):
+            raise ChatChunkImportConflict('cache eviction is unavailable')
+        fd = os.open(self.path, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+            os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+        finally:
+            os.close(fd)
+
     def close(self):
         with self.lock:
-            self.keeper.close()
+            try:
+                if self.release_model is not None:
+                    self.release_model()
+            finally:
+                self.keeper.close()
+                self.directory.cleanup()

@@ -12,6 +12,8 @@ RERANK_MODEL = os.getenv("RERANK_MODEL", "jinaai/jina-reranker-v2-base-multiling
 _enc = None
 _failed = False
 _lock = threading.Lock()
+_inference_lock = threading.Lock()
+RERANK_BATCH_SIZE = 1  # 같은 모델·결과를 유지하면서 동시 활성화 메모리를 제한한다.
 
 
 def available() -> bool:
@@ -56,7 +58,8 @@ def rerank(query: str, texts: list[str]) -> list[float] | None:
     if enc is None:
         return None
     try:
-        return [float(s) for s in enc.rerank(query, texts)]
+        with _inference_lock:
+            return [float(s) for s in enc.rerank(query, texts, batch_size=RERANK_BATCH_SIZE)]
     except Exception as e:  # noqa: BLE001
         print(f"[rerank] 실패 — {type(e).__name__}: {str(e)[:120]}", flush=True)
         return None

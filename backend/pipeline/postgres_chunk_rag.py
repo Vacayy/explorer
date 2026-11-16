@@ -1,5 +1,6 @@
 """Experimental fixture-only RAG adapter using one PostgreSQL snapshot."""
 import sqlite3
+import threading
 
 from pipeline.postgres_chat_chunks import ChatChunkImportConflict
 
@@ -8,6 +9,7 @@ class PostgreSQLChunkRAG:
     def __init__(self, chunks, rerank):
         self.chunks = chunks
         self.rerank = rerank
+        self.retrieval_lock = threading.RLock()
 
     def _check(self, conn):
         current = conn.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()

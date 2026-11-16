@@ -1,4 +1,7 @@
 import unittest
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -28,6 +31,28 @@ class GenerationTests(unittest.TestCase):
             result = generate_answer(store, Mock(), 5, '질문')
         self.assertNotIn('sensitive', result['error'])
         self.assertTrue(__import__('pipeline.chat', fromlist=['get_stream']).get_stream(5).done)
+
+    def test_concurrent_generations_do_not_overlap(self):
+        store = Mock()
+        store.load_context.return_value = {}
+        guard = threading.Lock()
+        state = {'active': 0, 'peak': 0}
+        turn = SimpleNamespace(answer='답변', citations=[], gaps=[], model='test',
+                               route={'intent': 'research', 'entities': []}, calls=[], route_log=lambda: {})
+
+        def run(*_args, **_kwargs):
+            with guard:
+                state['active'] += 1
+                state['peak'] = max(state['peak'], state['active'])
+            time.sleep(0.03)
+            with guard:
+                state['active'] -= 1
+            return turn
+
+        with patch('pipeline.chat.run_turn', side_effect=run), ThreadPoolExecutor(max_workers=2) as pool:
+            answers = list(pool.map(lambda ident: generate_answer(store, Mock(), ident, '질문'), (10, 11)))
+        self.assertEqual(state['peak'], 1)
+        self.assertEqual([answer['answer'] for answer in answers], ['답변', '답변'])
 
 
 if __name__ == '__main__':

@@ -1,10 +1,12 @@
 import unittest
+import threading
 from unittest.mock import MagicMock, Mock, patch
 
 from pipeline.rag import retrieve_docs
 class ChunkRAGTests(unittest.TestCase):
     def test_retrieval_uses_injected_search_filter_and_reranker(self):
         runtime = Mock()
+        runtime.retrieval_lock = threading.RLock()
         runtime.chunk_index_ready.return_value = True
         runtime.search_chunks.return_value = [
             {'doc_id': i, 'chunk_id': i, 'prefix': 'prefix', 'text': str(i) * 90} for i in (1, 2)]
@@ -26,6 +28,7 @@ class ChunkRAGTests(unittest.TestCase):
     def test_chat_tool_uses_chunk_rag_and_keeps_filters_explicit(self):
         from pipeline.postgres_chat_tools import PostgreSQLChatTools, UnsupportedPostgresChatTool
         runtime = Mock()
+        runtime.retrieval_lock = threading.RLock()
         tools = PostgreSQLChatTools(Mock(), None, chunk_rag=runtime)
         docs = [{'id': 7, 'title': '문서', 'excerpt': '근거', 'published_at': '2026-01-01', 'source_type': 'blog'}]
         with patch('pipeline.rag.retrieve_docs', return_value=docs) as retrieve:

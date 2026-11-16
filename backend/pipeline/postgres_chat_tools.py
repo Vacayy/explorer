@@ -166,9 +166,11 @@ class PostgreSQLChatTools:
                 return ToolResult(name, args, [], f"'{args['channel']}' 채널·블로거를 구독 소스에서 찾지 못함")
             eid, terms, assumptions = (self.chunk_rag.entity_scope(args['entity'])
                                        if args.get('entity') else (None, None, {}))
-            docs = retrieve_docs(query, k=limit, since_days=args.get('since_days'), source=args.get('source'),
-                                 variants=variants or None, doc_ids=scope[0] if scope else None,
-                                 entity_id=eid, entity_terms=terms, runtime=self.chunk_rag)
+            # Keep embedding and reranking from overlapping in one worker.
+            with self.chunk_rag.retrieval_lock:
+                docs = retrieve_docs(query, k=limit, since_days=args.get('since_days'), source=args.get('source'),
+                                     variants=variants or None, doc_ids=scope[0] if scope else None,
+                                     entity_id=eid, entity_terms=terms, runtime=self.chunk_rag)
             note = '실험용 PG 청크 검색; 출처명 및 출처별 부분일치 폴백 미구현'
             if not docs and scope and scope[0]:
                 docs = sorted(self.chunk_rag.fetch_docs(list(scope[0])),

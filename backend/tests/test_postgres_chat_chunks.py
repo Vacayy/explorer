@@ -73,17 +73,24 @@ class PostgreSQLChatChunkTests(unittest.TestCase):
         provider = lambda **kwargs: Model()
         with self.assertRaises(ChatChunkImportConflict):
             PostgreSQLChunkSearch(self.fixture.pg, provider)
-        index = PostgreSQLChunkSearch(self.fixture.pg, provider, allow_partial=True)
+        from unittest.mock import Mock
+        release = Mock()
+        index = PostgreSQLChunkSearch(self.fixture.pg, provider, allow_partial=True,
+                                      release_model=release, evict_cache_after_search=True)
+        cache_path = Path(index.path)
         try:
+            self.assertTrue(cache_path.is_file())
             matches = index.search('반도체', k=5, pool=8)
             self.assertEqual(matches[0]['doc_id'], self.doc_id)
             self.assertEqual(matches[0]['text'], '반도체 원문')
+            release.assert_called_once()
             with self.fixture.pg() as conn:
                 conn.execute("UPDATE snapshot_metadata SET generation_id='11111111-1111-1111-1111-111111111111'")
             with self.assertRaises(ChatChunkImportConflict):
                 index.search('반도체', k=5, pool=8)
         finally:
             index.close()
+        self.assertFalse(cache_path.exists())
 
     def test_postgres_rag_reads_document_and_applies_snapshot_entity_filter(self):
         with self.fixture.pg() as conn:
