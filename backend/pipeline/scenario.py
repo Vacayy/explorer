@@ -82,41 +82,46 @@ def _build_prompt(event: str, docs: list[dict], knowledge: list[dict],
     )
 
 
-def build_scenario(event: str, report_context: str | None = None) -> dict:
+def build_scenario(event: str, report_context: str | None = None, *, runtime=None) -> dict:
     """사건 → 파급 체인 시나리오. 반환: rag.ask와 같은 형태 (answer/citations/model).
 
     report_context: 질문 종합 리포트(현재 결산) — 주면 전망의 '출발 조건'으로 주입(D-093 체인).
     """
-    if llm_engine() != "claude-code":
-        return {"error": "LLM 엔진 없음 (ENRICH_ENGINE=claude-code 필요)"}
-    from pipeline.search import search
-    from pipeline.knowledge_recall import recall_for_query
-    from pipeline.visibility import get_muted, is_muted
+    if runtime is not None:
+        # The supplied runtime owns all persistence and source boundaries.
+        # Never fall back to the process-global SQLite connection.
+        docs, knowledge, vocab = runtime.gather(event, limit=TOP_DOCS)
+    else:
+        if llm_engine() != "claude-code":
+            return {"error": "LLM 엔진 없음 (ENRICH_ENGINE=claude-code 필요)"}
+        from pipeline.search import search
+        from pipeline.knowledge_recall import recall_for_query
+        from pipeline.visibility import get_muted, is_muted
 
-    hits = search(event, k=TOP_DOCS + 5)
-    conn = get_connection()
-    muted = get_muted(conn)
-    docs = []
-    for h in hits:
-        d = conn.execute(f"""
-            SELECT id, source_type, source_id, title, url, published_at,
-                   substr(markdown, 1, {EXCERPT}) excerpt
-            FROM raw_documents WHERE id=?""", (h["doc_id"],)).fetchone()
-        if d and not is_muted(d["source_type"], d["source_id"] or "", d["url"], muted):
-            docs.append(dict(d))
-        if len(docs) >= TOP_DOCS:
-            break
-    knowledge = recall_for_query(conn, event)
-    from pipeline.narrative import _node_vocab, _persist_causal
-    vocab = _node_vocab(conn)
-    conn.close()
+        hits = search(event, k=TOP_DOCS + 5)
+        conn = get_connection()
+        muted = get_muted(conn)
+        docs = []
+        for h in hits:
+            d = conn.execute(f"""
+                SELECT id, source_type, source_id, title, url, published_at,
+                       substr(markdown, 1, {EXCERPT}) excerpt
+                FROM raw_documents WHERE id=?""", (h["doc_id"],)).fetchone()
+            if d and not is_muted(d["source_type"], d["source_id"] or "", d["url"], muted):
+                docs.append(dict(d))
+            if len(docs) >= TOP_DOCS:
+                break
+        knowledge = recall_for_query(conn, event)
+        from pipeline.narrative import _node_vocab
+        vocab = _node_vocab(conn)
+        conn.close()
 
     # opus는 결과를 ```json 펜스로 감싸거나 긴 출력이 절단될 수 있어 파싱이 간헐 실패 → 1회 재시도.
-    prompt = _build_prompt(event, docs, knowledge, vocab)
+    prompt = _build_prompt(event, docs, knowledge, vocab, report_context=report_context)
     data, last_err = None, ""
     for _ in range(2):
         from pipeline import llm
-        raw = llm.run(prompt, task='scenario.generate').text
+        raw = (runtime.run_llm if runtime is not None else llm.run)(prompt, task='scenario.generate').text
         try:
             raw = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
             s, e = raw.find("{"), raw.rfind("}")
@@ -136,23 +141,30 @@ def build_scenario(event: str, report_context: str | None = None) -> dict:
     beneficiaries: list[dict] = []
     picks = data.get("beneficiaries") or []
     if isinstance(picks, list) and picks:
-        from pipeline.beneficiary import resolve_and_enrich
-        conn = get_connection()
-        try:
-            beneficiaries = resolve_and_enrich(conn, [p for p in picks if isinstance(p, dict)])
-        finally:
-            conn.close()
+        if runtime is not None:
+            beneficiaries = runtime.resolve_beneficiaries([p for p in picks if isinstance(p,dict)])
+        else:
+            from pipeline.beneficiary import resolve_and_enrich
+            conn = get_connection()
+            try:
+                beneficiaries = resolve_and_enrich(conn, [p for p in picks if isinstance(p, dict)])
+            finally:
+                conn.close()
 
     # 인과 그래프 물질화 (D-028 제3 공급원) — 시나리오 파급 체인도 같은 그래프에 적재.
     # 가정된 사건에서 출발하므로 confidence 상한은 문서 레벨과 같은 0.5.
     if data.get("causal"):
-        conn = get_connection()
-        try:
-            # 가정 사건에서 출발한 체인이라 문서 출처가 없다 (D-204). 전에는 검색 1위 문서를 출처로 붙였다.
-            _persist_causal(conn, None, None, data["causal"], conf_cap=0.5, source_status="scenario")
-            conn.commit()
-        finally:
-            conn.close()
+        if runtime is not None:
+            runtime.persist_causal(data["causal"],conf_cap=0.5,source_status="scenario")
+        else:
+            from pipeline.narrative import _persist_causal
+            conn = get_connection()
+            try:
+                # 가정 사건에서 출발한 체인이라 문서 출처가 없다 (D-204).
+                _persist_causal(conn, None, None, data["causal"], conf_cap=0.5, source_status="scenario")
+                conn.commit()
+            finally:
+                conn.close()
     md += ("\n\n---\n*감시 조건 중 계속 지켜볼 것이 있으면 `기억해: <조건>`으로 주입하세요 — "
            "반증 센티넬이 매일 감시합니다.*")
     return {
