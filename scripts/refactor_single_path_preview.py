@@ -30,6 +30,7 @@ from pipeline.postgres_legacy_projection import LegacyProjection
 from routers.postgres_legacy_read_fixture import install as install_legacy_reads
 from routers.postgres_owner_portfolio_fixture import install as install_owner_portfolio
 from routers.postgres_owner_records_fixture import install as install_owner_records
+from routers.postgres_owner_legacy_fixture import install as install_owner_legacy
 
 if os.environ.get('REFACTOR_FEED_POINTER_SCHEMA'):
     raise RuntimeError('Single-path preview does not permit a separate feed pointer')
@@ -106,6 +107,7 @@ install_legacy_reads(app, legacy_projection,
                      database_host=psycopg.conninfo.conninfo_to_dict(os.environ['REFACTOR_POSTGRES_DSN'])['host'])
 install_owner_portfolio(app, factory)  # after the legacy reads it replaces
 install_owner_records(app, factory, document_ui.timeline_reader)
+install_owner_legacy(app, legacy_projection, factory)
 threading.Thread(target=legacy_projection.path, daemon=True).start()  # warm before the first home visit
 
 

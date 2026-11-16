@@ -18,7 +18,13 @@ import time
 import uuid
 from pathlib import Path
 
+from contextvars import ContextVar
+
+from pipeline import postgres_owner_legacy_fixture as owner_legacy
 from pipeline.postgres_graph_fixture import _guard
+
+# The one connection a legacy write request may use (see postgres_owner_legacy_router).
+write_connection_var = ContextVar('legacy_write_connection', default=None)
 
 # PG-native ledgers that replaced a legacy table; legacy reads must see their rows.
 NATIVE = ('study_projects', 'questions')
@@ -27,10 +33,10 @@ VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'questio
              'legacy_supplement_tables', 'legacy_supplement_rows', *NATIVE,
              'fixture_portfolio_transactions', 'fixture_portfolio_members', 'fixture_portfolio_principles',
              'owner_follows', 'owner_kalshi_pins', 'owner_channel_reads',
-             'owner_saved_items', 'owner_tracker_conditions')
+             'owner_saved_items', 'owner_tracker_conditions', 'owner_legacy_rows')
 # Small owner-ledger tables re-derived per connection in TEMP shadows, so writes
 # show at once; the file keeps its own (possibly older) derived copy underneath.
-SHADOWED = ('portfolio_transactions', 'stock_group_members', 'portfolio_principles', 'follows', 'kalshi_pins', 'channel_reads',
+SHADOWED = ('portfolio_transactions', 'stock_group_members', 'stock_groups', 'watch_rules', 'watch_evaluations', 'portfolio_principles', 'follows', 'kalshi_pins', 'channel_reads',
             'saved_items', 'tracker_conditions')
 CHECK_SECONDS = 10
 log = logging.getLogger(__name__)
@@ -75,6 +81,7 @@ class LegacyProjection:
         self.current = None  # (path, version)
         self.building = False
         self.failures = 0
+        self.legacy_cache = None  # (version, rows, sequences) of the owner legacy ledger
 
     def _version(self, pg):
         changes = pg.execute('SELECT counter FROM legacy_projection_version WHERE singleton').fetchone()[0]
@@ -111,6 +118,10 @@ class LegacyProjection:
                     root.execute(f'CREATE TABLE "{name}" ({quoted}, PRIMARY KEY("id"))')
                     rows = pg.execute(f'SELECT {quoted} FROM {name}').fetchall()
                     root.executemany(f'INSERT INTO "{name}" ({quoted}) VALUES ({",".join("?" for _ in columns)})', rows)
+                legacy_version = None
+                if pg.execute("SELECT to_regclass('owner_legacy_rows')").fetchone()[0] is not None:
+                    legacy_version, rows, _ = owner_legacy.load(pg)
+                    _derive_owner_legacy(root, pg, rows)
                 _derive_owner_portfolio(root, pg)
                 _derive_owner_records(root, pg)
                 for (sql,) in pg.execute('SELECT sql FROM legacy_snapshot_indexes'):
@@ -119,7 +130,7 @@ class LegacyProjection:
             root.execute('ANALYZE')
             root.close()
             os.chmod(path, 0o400)
-            return path, version
+            return path, version, legacy_version
         except BaseException:
             root.close()
             path.unlink(missing_ok=True)
@@ -181,27 +192,97 @@ class LegacyProjection:
                 threading.Thread(target=self._poll, daemon=True, name='legacy-projection-poll').start()
             return self.current[0]
 
-    def connect(self):
-        conn = sqlite3.connect(f'file:{self.path()}?mode=ro', uri=True, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        try:
-            # TEMP names shadow main ones; the unchanged derivations then write only the shadows.
+    def _owner_legacy(self, pg):
+        if pg.execute("SELECT to_regclass('owner_legacy_rows')").fetchone()[0] is None:
+            return None
+        version = pg.execute('SELECT counter FROM owner_legacy_version WHERE singleton').fetchone()[0]
+        with self.lock:
+            cached = self.legacy_cache
+        if cached is None or cached[0] != version:
+            cached = owner_legacy.load(pg)  # same snapshot as the version just read
+            with self.lock:
+                self.legacy_cache = cached
+        return cached
+
+    def _shadow(self, conn, *, writable=False):
+        """TEMP names shadow main ones; the unchanged derivations then write only the shadows."""
+        with self.factory() as pg:
+            pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            legacy = self._owner_legacy(pg)
+            ddl = dict(pg.execute('SELECT table_name,schema_sql FROM legacy_snapshot_tables WHERE table_name=ANY(%s)',
+                                  (list(owner_legacy.TABLES),)).fetchall()) if writable else {}
+            # The file already holds this ledger version: skip re-deriving its large evaluation table.
+            current = self.current
+            fresh = not writable and legacy is not None and current is not None and current[2] == legacy[0]
+            skip = {'watch_evaluations'} if fresh else set()
             for table in SHADOWED:
-                conn.execute(f'CREATE TEMP TABLE "{table}" AS SELECT * FROM main."{table}"')
+                if table in skip:
+                    continue
+                if table in ddl:
+                    # Original DDL keeps PKs, AUTOINCREMENT and cascades for the legacy writer.
+                    conn.execute(re.sub(r'^\s*CREATE\s+TABLE\s+', 'CREATE TEMP TABLE ', ddl[table], flags=re.I))
+                    conn.execute(f'INSERT INTO temp."{table}" SELECT * FROM main."{table}"')
+                else:
+                    conn.execute(f'CREATE TEMP TABLE "{table}" AS SELECT * FROM main."{table}"')
                 # Same index names, so legacy `CREATE INDEX IF NOT EXISTS` stays a no-op under query_only.
                 for (sql,) in conn.execute("SELECT sql FROM main.sqlite_master WHERE type='index' AND tbl_name=? "
                                            "AND sql IS NOT NULL", (table,)).fetchall():
                     conn.execute(re.sub(r'^CREATE\s+(UNIQUE\s+)?INDEX\s+(IF\s+NOT\s+EXISTS\s+)?',
                                         r'CREATE \1INDEX IF NOT EXISTS temp.', sql, flags=re.I))
-            with self.factory() as pg:
-                pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
-                _derive_owner_portfolio(conn, pg)
-                _derive_owner_records(conn, pg)
+            if legacy:
+                _derive_owner_legacy(conn, pg, legacy[1], skip=skip)
+            _derive_owner_portfolio(conn, pg)
+            _derive_owner_records(conn, pg)
+            if writable and legacy:
+                for table, seq in legacy[2].items():
+                    # Never hand out an ID the legacy writer already used.
+                    conn.execute('DELETE FROM temp.sqlite_sequence WHERE name=?', (table,))
+                    conn.execute('INSERT INTO temp.sqlite_sequence(name,seq) VALUES (?,?)', (table, seq))
+            return legacy[0] if legacy else None
+
+    def connect(self):
+        borrowed = write_connection_var.get()
+        if borrowed is not None:
+            return borrowed
+        conn = sqlite3.connect(f'file:{self.path()}?mode=ro', uri=True, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        try:
+            self._shadow(conn)
         except BaseException:
             conn.close()
             raise
         conn.execute('PRAGMA query_only=ON')
         return conn
+
+    def write_connection(self):
+        """A projection connection whose owner tables are writable TEMP copies, with the ledger version."""
+        conn = sqlite3.connect(f'file:{self.path()}?mode=ro', uri=True, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        try:
+            version = self._shadow(conn, writable=True)
+            if version is None:
+                raise LookupError('Owner legacy ledger unavailable')
+        except BaseException:
+            conn.close()
+            raise
+        conn.execute('PRAGMA foreign_keys=ON')  # as legacy get_connection
+        return conn, version
+
+
+def _derive_owner_legacy(root, pg, rows, *, skip=()):
+    """Show the owner legacy ledger (groups and their rules/evaluations) through the legacy tables."""
+    group = owner_legacy.portfolio_group(pg)
+    for table in owner_legacy.TABLES:
+        if table in skip:
+            continue
+        columns = [row[1] for row in root.execute(f'PRAGMA table_info("{table}")')]
+        if table == 'stock_group_members':
+            root.execute('DELETE FROM stock_group_members WHERE group_id IS NOT ?', (group,))
+        else:
+            root.execute(f'DELETE FROM "{table}"')
+        quoted = ','.join('"' + column + '"' for column in columns)
+        root.executemany(f'INSERT INTO "{table}" ({quoted}) VALUES ({",".join("?" for _ in columns)})',
+                         (tuple(row.get(column) for column in columns) for row in rows[table]))
 
 
 def _derive_owner_portfolio(root, pg):
