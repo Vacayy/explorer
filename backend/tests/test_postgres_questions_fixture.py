@@ -17,7 +17,7 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
         CREATE TABLE sub_questions(id INTEGER PRIMARY KEY,question_id INTEGER,text TEXT,verdict TEXT,falsifier TEXT);
         CREATE TABLE proxy_registry(id INTEGER PRIMARY KEY,key TEXT UNIQUE,sub_question_id INTEGER,label TEXT,modality TEXT,yes_direction TEXT,unit TEXT,tickers TEXT,extract_hint TEXT,active INTEGER);
         CREATE TABLE proxy_observations(id INTEGER PRIMARY KEY,proxy_id INTEGER,transcript_id INTEGER,observed_at TEXT,value_num REAL,value_text TEXT,direction TEXT,confidence REAL,source_type TEXT,source_id TEXT,created_at TEXT);
-        CREATE TABLE question_reports(id INTEGER PRIMARY KEY,question_id INTEGER,body TEXT,inputs_hash TEXT,created_at TEXT);
+        CREATE TABLE question_reports(id INTEGER PRIMARY KEY,question_id INTEGER,body TEXT,inputs_hash TEXT,created_at TEXT DEFAULT (datetime('now')),model TEXT);
         CREATE TABLE proxy_scans(proxy_id INTEGER,transcript_id INTEGER);
         CREATE TABLE scenarios(topic TEXT,event TEXT,answer TEXT,beneficiaries TEXT,created_at TEXT,question_id INTEGER);
         CREATE TABLE transcripts(id INTEGER PRIMARY KEY,raw_doc_id INTEGER,ticker TEXT,fiscal_year INTEGER,fiscal_period TEXT);
@@ -39,7 +39,7 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
         INSERT INTO entity_relations VALUES(1,7,9,NULL,NULL);
         INSERT INTO narrative_edge_evidence VALUES(15,7,1);
         INSERT INTO knowledge VALUES(9,'검증된 지식','verified');
-        INSERT INTO question_reports VALUES(6,1,'저장 보고서','old-hash','2026-01-01');
+        INSERT INTO question_reports VALUES(6,1,'저장 보고서','old-hash','2026-01-01','fixture');
         UPDATE sqlite_sequence SET seq=50 WHERE name='questions';
         ''')
         self.q.execute('PRAGMA query_only=ON');self.q.execute('BEGIN')
@@ -340,3 +340,38 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
         with self.fixture.pg() as pg:
             base=pg.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entity_relations' AND row_data->>'id'='1'").fetchone()[0]
             self.assertIsNone(base['obs_confirmed_qid'])
+
+    def test_report_creation_is_cached_and_does_not_repeat_model(self):
+        from types import SimpleNamespace
+        from pipeline.postgres_question_report_fixture import generate_report
+        with self.target() as pg:import_questions(self.q,pg)
+        calls=[]
+        def model(prompt,**kw):calls.append(kw['task']);return SimpleNamespace(text='{"report":"새로운 결산"}')
+        result=generate_report(self.target,1,run_llm=model)
+        self.assertEqual(result['status'],'report_ready');self.assertTrue(result['scenario_required'])
+        self.assertEqual(QuestionsFixture(self.target).synthesis(1)['body'],'새로운 결산')
+        self.assertEqual(generate_report(self.target,1,run_llm=model)['status'],'cached')
+        self.assertEqual(calls,['question.report'])
+
+    def test_report_stale_or_interrupted_call_is_not_reused(self):
+        from types import SimpleNamespace
+        from pipeline.postgres_question_report_fixture import generate_report
+        with self.target() as pg:import_questions(self.q,pg)
+        def changed(prompt,**kw):
+            with self.target() as pg:
+                pg.execute("UPDATE question_capture_rows SET row_data=jsonb_set(row_data,'{text}',to_jsonb('변경 질문'::text)) WHERE table_name='questions' AND row_data->>'id'='1'")
+            return SimpleNamespace(text='{"report":"오래된 결산"}')
+        self.assertEqual(generate_report(self.target,1,run_llm=changed)['status'],'stale')
+        self.assertEqual(QuestionsFixture(self.target).synthesis(1)['body'],'저장 보고서')
+        def crash(prompt,**kw):raise SystemExit('simulated process loss')
+        with self.assertRaises(SystemExit):generate_report(self.target,1,run_llm=crash)
+        self.assertEqual(generate_report(self.target,1,run_llm=changed)['status'],'unresolved')
+
+    def test_uncertain_report_failure_never_auto_retries(self):
+        from pipeline.postgres_question_report_fixture import generate_report
+        with self.target() as pg:import_questions(self.q,pg)
+        calls=[]
+        def failure(prompt,**kw):calls.append(1);raise TimeoutError('unknown external outcome')
+        self.assertEqual(generate_report(self.target,1,run_llm=failure)['status'],'unresolved')
+        self.assertEqual(generate_report(self.target,1,run_llm=failure)['status'],'unresolved')
+        self.assertEqual(len(calls),1)

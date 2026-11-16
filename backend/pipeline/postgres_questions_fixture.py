@@ -35,6 +35,11 @@ def import_questions(source, target):
             table_name TEXT NOT NULL REFERENCES question_capture_tables(table_name),row_ordinal BIGINT NOT NULL,
             row_data JSONB NOT NULL,PRIMARY KEY(table_name,row_ordinal))''')
         target.execute('CREATE TABLE question_capture_sequences (table_name TEXT PRIMARY KEY,sequence_value BIGINT NOT NULL)')
+        target.execute("""CREATE TABLE question_report_attempts (
+            token UUID PRIMARY KEY, question_id BIGINT NOT NULL, input_hash TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('running','completed','failed','stale','unknown')),
+            started_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(), finished_at TIMESTAMPTZ)""")
+        target.execute("CREATE UNIQUE INDEX question_report_one_unresolved ON question_report_attempts(question_id) WHERE status IN ('running','unknown')")
         has_sequence=source.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'").fetchone()
         if has_sequence:
             sequences=source.execute('SELECT name,seq FROM sqlite_sequence WHERE name IN ('+','.join('?' for _ in TABLES)+')',TABLES).fetchall()

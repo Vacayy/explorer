@@ -99,10 +99,10 @@ def _build_report_prompt(ev: dict) -> str:
     )
 
 
-def _generate_report(ev: dict) -> str | None:
+def _generate_report(ev: dict, *, run_llm=None) -> str | None:
     prompt = _build_report_prompt(ev)
     try:
-        out = llm.run(prompt, task='question.report').text
+        out = (run_llm or llm.run)(prompt, task='question.report').text
     except Exception:  # noqa: BLE001
         return None
     s, e = out.find("{"), out.rfind("}")
