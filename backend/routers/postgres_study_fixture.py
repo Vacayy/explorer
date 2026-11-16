@@ -1,11 +1,15 @@
 """Explicitly mounted isolated study read/annotation routes only."""
 from fastapi import APIRouter, BackgroundTasks
-from routers.spine_study import Annotation, EditAnnotation, StudyQuestion
+from routers.spine_study import Annotation, EditAnnotation, OpenStudy, StudyQuestion
 from models.study_actions import AnnotationActionRequest
 
 
 def create_router(store, turns=None, actions=None):
     router = APIRouter(prefix='/api/spine/studies', tags=['study'])
+
+    @router.post('')
+    def open_document(body: OpenStudy):
+        return store.open_document(body.document_id)
 
     @router.get('')
     def listing():

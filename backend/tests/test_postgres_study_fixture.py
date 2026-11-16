@@ -80,6 +80,27 @@ class StudyFixtureTests(ChatPreviewForkTests):
             self.assertTrue(any(a['id'] == ident for a in response.json()['annotations']))
             self.assertEqual(restarted.get('/api/spine/studies').status_code, 200)
 
+    def test_open_document_then_annotate_in_same_store(self):
+        from psycopg.types.json import Jsonb
+        with self.fixture.pg() as pg:
+            pg.execute("INSERT INTO legacy_snapshot_tables VALUES('raw_documents','[]','fixture',1) ON CONFLICT DO NOTHING")
+            pg.execute("INSERT INTO legacy_snapshot_rows VALUES('raw_documents',99999,%s)",
+                (Jsonb({'id':11,'title':'자료','source_type':'blog','markdown':'한글😀본문','url':'https://example.test'}),))
+        with self.target() as pg:
+            fork_chat_preview(self.source, pg, self.fixture.schema)
+            import_studies(self.source, pg)
+        app = FastAPI()
+        app.include_router(create_router(StudyFixture(self.target)))
+        with TestClient(app) as client:
+            first = client.post('/api/spine/studies', json={'document_id': 11})
+            self.assertEqual(first.status_code, 200)
+            sid = first.json()['id']
+            self.assertEqual(client.post('/api/spine/studies', json={'document_id': 11}).json()['id'], sid)
+            response = client.post(f'/api/spine/studies/{sid}/annotations', json={
+                'kind': 'highlight', 'start': 2, 'end': 3, 'exact': '😀'})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(client.get(f'/api/spine/studies/{sid}').json()['annotations'][0]['exact'], '😀')
+
     def test_different_chat_snapshot_refuses_import(self):
         with self.target() as pg:
             fork_chat_preview(self.source, pg, self.fixture.schema)

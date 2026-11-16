@@ -3,6 +3,7 @@
 The source must share one SQLite read transaction with the chat import. This
 module neither publishes routes nor starts queued model jobs.
 """
+import hashlib
 import json
 
 from fastapi import HTTPException
@@ -107,6 +108,31 @@ class StudyFixture:
     """Study read and annotation mutations against the same isolated PG schema."""
     def __init__(self, connect):
         self.connect = connect
+
+    def open_document(self, document_id):
+        with self.connect() as c:
+            _guard(c)
+            with c.cursor(row_factory=dict_row) as cur:
+                # Imported fixture tables do not retain SQLite UNIQUE clauses.
+                # Serialize this document's create-or-open operation explicitly.
+                cur.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))', ('study:0:' + str(document_id),))
+                cur.execute('SELECT id FROM study_sessions WHERE document_id=%s AND project_id=0', (document_id,))
+                row = cur.fetchone()
+                if row:
+                    return {'id': row['id']}
+                cur.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='raw_documents' AND row_data->>'id'=%s", (str(document_id),))
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(404, '수집 자료를 찾을 수 없습니다')
+                doc = row['row_data']
+                body = doc.get('markdown') or doc.get('raw_content') or ''
+                if not body.strip() or len(body) > 1_000_000:
+                    raise HTTPException(422, '텍스트가 없거나 본문이 너무 큽니다.')
+                kind = '영상 보관 본문 · AI 정리본일 수 있음' if doc.get('source_type') == 'youtube' and doc.get('markdown') else '보관 원문'
+                cur.execute("""INSERT INTO study_sessions(document_id,project_id,title,source_url,source_type,published_at,body_kind,body,content_hash,created_at,updated_at)
+                    VALUES(%s,0,%s,%s,%s,%s,%s,%s,%s,to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS'),to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')) RETURNING id""",
+                    (document_id, doc.get('title') or '제목 없는 자료', doc.get('url'), doc.get('source_type'), doc.get('published_at'), kind, body, hashlib.sha256(body.encode()).hexdigest()))
+                return {'id': cur.fetchone()['id']}
 
     def listing(self):
         with self.connect() as c:
