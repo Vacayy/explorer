@@ -28,7 +28,7 @@ MAX_NEW_PER_CHANNEL = 5   # 채널당 회차 신규 영상 상한 (첫 구독 �
 MAX_TRANSCRIPT_CHARS = 45000  # opus 입력 상한 (긴 라이브 방어)
 
 
-def digest_transcript(title: str, transcript: str) -> str | None:
+def digest_transcript(title: str, transcript: str, *, run_llm=None, max_attempts=3, quiet=False) -> str | None:
     """자막을 opus로 내용 중심·시간순 정리본(markdown)으로 가공.
 
     자막 raw는 그 자체로 검색·지식에 노이즈다 — 정리본을 본문으로 삼아
@@ -36,7 +36,9 @@ def digest_transcript(title: str, transcript: str) -> str | None:
     """
     from pipeline import llm
     from pipeline.enrich import llm_engine
-    if llm_engine() != "claude-code":
+    if not isinstance(max_attempts, int) or not 1 <= max_attempts <= 3:
+        raise ValueError('invalid digest attempt limit')
+    if run_llm is None and llm_engine() != "claude-code":
         return None
     scope_note = (
         f"※ 자막이 입력 한도를 넘어 앞 {MAX_TRANSCRIPT_CHARS:,}자에 대한 요약입니다. 영상 후반부는 포함되지 않을 수 있습니다.\n\n"
@@ -90,9 +92,9 @@ def digest_transcript(title: str, transcript: str) -> str | None:
     # 일시적 실패(호출 blip)로 raw가 영구화되지 않도록 소폭 재시도 — 백오프 5s·10s
     import time
     last = ""
-    for attempt in range(3):
+    for attempt in range(max_attempts):
         try:
-            result = llm.run(prompt, task='youtube.digest')
+            result = (run_llm or llm.run)(prompt, task='youtube.digest')
             if len(result.text.strip()) > 100:
                 return scope_note + result.text.strip()
             last = "LLM 정리본이 너무 짧습니다"
@@ -100,9 +102,10 @@ def digest_transcript(title: str, transcript: str) -> str | None:
             last = f"exc={type(e).__name__}:{e}"
         if any(marker in last.lower() for marker in ('oauth', 'authenticate', 'authentication', 'not logged in', 'login required')):
             break
-        if attempt < 2:
+        if attempt + 1 < max_attempts:
             time.sleep(5 * (attempt + 1))
-    print(f"[digest_transcript] '{title[:40]}' 생성 실패 — {last}", flush=True)
+    if not quiet:
+        print(f"[digest_transcript] '{title[:40]}' 생성 실패 — {last}", flush=True)
     return None
 
 

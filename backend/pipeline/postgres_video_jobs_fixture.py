@@ -84,3 +84,21 @@ def stage_video_result(connect, doc_id, token, digest):
             return True
         pg.execute("UPDATE video_digest_work SET status='staged',digest=%s,updated_at=now() WHERE document_id=%s", (digest.strip(), doc_id))
         return True
+
+
+def run_video_job(connect, doc_id, token, title, transcript, *, run_llm):
+    """Run the existing digest prompt once and stage, never auto-retry."""
+    from pipeline.connectors.youtube import digest_transcript
+    digest = digest_transcript(title, transcript, run_llm=run_llm, max_attempts=1, quiet=True)
+    if digest is not None:
+        return {'status': 'staged' if stage_video_result(connect, doc_id, token, digest) else 'stale'}
+    with connect() as pg:
+        _guard(pg)
+        pg.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (f'video-digest:{doc_id}',))
+        changed = pg.execute("UPDATE video_digest_work SET status='unknown',updated_at=now() "
+                             "WHERE document_id=%s AND token=%s AND status='running'", (doc_id, token))
+        if changed.rowcount:
+            pg.execute("UPDATE video_digest_overlay_rows SET row_data=row_data || %s "
+                       "WHERE table_name='youtube_digest_jobs' AND row_data->>'doc_id'=%s",
+                       (Jsonb({'status': 'interrupted', 'error': '정리 결과를 확인하지 못했습니다.', 'updated_at': time.time()}), str(doc_id)))
+    return {'status': 'unknown' if changed.rowcount else 'stale'}
