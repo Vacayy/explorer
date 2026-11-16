@@ -28,10 +28,10 @@ READ_ROUTES = {'/api/spine/home', '/api/spine/home/ai-activity', '/api/spine/hom
                '/api/spine/narrative/{narrative_id}/diff', '/api/spine/narrative/{narrative_id}/grounding',
                '/api/spine/narrative/{narrative_id}/related', '/api/spine/narrative/mer', '/api/spine/narrative/scenario',
                '/api/spine/narrative/versions', '/api/spine/world/checkpoint',
-               '/api/spine/narratives/{narrative_id}/market-today'}
+               '/api/spine/narratives/{narrative_id}/market-today', '/api/spine/follows'}
 LEGACY_ROUTERS = ('spine_home', 'spine_search', 'spine_regimes', 'spine_indices', 'spine_credit', 'spine_market_overview',
                   'spine_risk', 'spine_world', 'spine_retail', 'spine_trend', 'spine_pricing', 'spine_tracker',
-                  'spine_trade', 'spine_transcript', 'spine_groups', 'spine_approvals', 'portfolio', 'spine_narrative', 'spine_market_today')
+                  'spine_trade', 'spine_transcript', 'spine_groups', 'spine_approvals', 'portfolio', 'spine_narrative', 'spine_market_today', 'spine_follows')
 
 
 def install(app, projection):

@@ -313,3 +313,25 @@ class PostgreSQLSectorSource:
             ) price
         ''', (as_of,))
         return {code: (close, market_cap or 0) for code, close, market_cap in rows}
+
+
+def attach_peer_runtime(target, peer_runtime):
+    """Add a separately captured Peer bundle beside a base snapshot that has none."""
+    from psycopg.types.json import Jsonb
+    from models.peers import PeerRuntime
+    from pipeline.postgres_graph_fixture import _guard
+    _guard(target)
+    payload = PeerRuntime.model_validate(peer_runtime).model_dump(mode='json')
+    with target.transaction():
+        if target.execute("SELECT to_regclass('sector_market_peer_runtime_overlay')").fetchone()[0] is not None:
+            raise ValueError('Peer runtime overlay already attached')
+        if target.execute('SELECT 1 FROM sector_market_peer_runtime').fetchone():
+            raise ValueError('Snapshot already has a Peer runtime')
+        definition = target.execute("SELECT pg_get_viewdef(to_regclass('sector_market_peer_runtime'),true)").fetchone()[0]
+        if definition is None or 'WHERE false' not in definition:
+            raise ValueError('Unexpected Peer runtime view')
+        target.execute('CREATE TABLE sector_market_peer_runtime_overlay (singleton BOOLEAN PRIMARY KEY DEFAULT true '
+                       'CHECK(singleton),payload JSONB NOT NULL)')
+        target.execute('INSERT INTO sector_market_peer_runtime_overlay (payload) VALUES (%s)', (Jsonb(payload),))
+        target.execute(f'CREATE OR REPLACE VIEW sector_market_peer_runtime AS {definition.rstrip().rstrip(";")} '
+                       'UNION ALL SELECT singleton,payload FROM sector_market_peer_runtime_overlay')
