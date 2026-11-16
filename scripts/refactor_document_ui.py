@@ -33,6 +33,8 @@ from pipeline.postgres_related_documents import CentroidIndex, related_documents
 from pipeline.postgres_us_sectors import us_map as postgres_us_map, us_sector_detail as postgres_us_sector_detail
 from pipeline.sector_view import industry_map_from_source, sector_detail_from_source, sector_peer_list_from_source
 from models.industry import UsIndustryMapResponse, UsSectorDetailResponse
+from models.market_today import MarketToday
+from pipeline.postgres_market_today_fixture import market_today
 
 
 dsn = os.environ['REFACTOR_POSTGRES_DSN']
@@ -51,6 +53,14 @@ app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 search_lock = threading.RLock()
 search_index = None
 related_index = None
+
+
+@app.get('/api/spine/market-today', response_model=MarketToday)
+def experimental_market_today(date: str | None = Query(None, pattern=r'^\d{4}-\d{2}-\d{2}$'),
+                              slot: str | None = Query(None, pattern=r'^(0810|0930|1130|1500|1600|1000|1300|1540)$')):
+    with factory() as connection:
+        connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        return market_today(connection,day=date,slot=slot)
 
 
 @app.get('/api/spine/signals', response_model=SignalsResponse)

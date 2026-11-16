@@ -369,13 +369,14 @@ def _link_after(conn, day: date) -> dict:
 
 # ---------- 읽기 ----------
 
-def read(day: str | None = None, slot: str | None = None) -> dict:
+def read(day: str | None = None, slot: str | None = None, *, connection=None) -> dict:
     """그날(없으면 오늘 KST — 자정에 넘어간다) 회차 목록 + 선택(없으면 최신) 회차 본문, 앞뒤로 회차가 있는 날. LLM 0."""
     today = datetime.now(timezone.utc).astimezone(KST).date().isoformat()
     day = day or today
-    conn = get_connection()
+    conn = connection if connection is not None else get_connection()
     try:
-        ensure_schema(conn)
+        if connection is None:
+            ensure_schema(conn)
         prev = conn.execute("SELECT MAX(trade_date) d FROM market_today WHERE trade_date < ?", (day,)).fetchone()["d"]
         nxt = conn.execute("SELECT MIN(trade_date) d FROM market_today WHERE trade_date > ?", (day,)).fetchone()["d"]
         if nxt is None and day < today:
@@ -402,7 +403,8 @@ def read(day: str | None = None, slot: str | None = None) -> dict:
                                   for i, t in enumerate(json.loads(pick["items_json"]))]}
         return {"trade_date": day, "slots": slots, "current": current, **nav}
     finally:
-        conn.close()
+        if connection is None:
+            conn.close()
 
 
 def _next_label(now: datetime | None = None) -> str | None:
