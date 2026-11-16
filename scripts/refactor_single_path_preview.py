@@ -24,6 +24,7 @@ from pipeline.postgres_study_turn_fixture import StudyTurnsFixture
 from routers.postgres_chat_fixture import create_router as chat_router
 from routers.postgres_questions_fixture import create_router as questions_router
 from routers.postgres_questions_fixture import create_proxy_router as proxy_extract_router
+from pipeline.postgres_keyword_backfill import create_router as keyword_approve_router
 from routers.postgres_video_fixture import create_router as video_router
 from routers.postgres_study_fixture import create_router as study_router
 from routers.postgres_study_projects_fixture import create_router as project_router
@@ -214,6 +215,7 @@ def question_search(query, *, k):
 app.include_router(questions_router(factory, run_llm=question_model, search=question_search,
                                     projection=lambda: legacy_projection))
 app.include_router(proxy_extract_router(factory, run_llm=question_model))
+app.include_router(keyword_approve_router(factory))
 app.include_router(video_router(factory, search_lock=document_ui.search_lock, invalidate_search=search.close))
 app.include_router(study_router(StudyFixture(factory), turns=turns, actions=actions))
 app.include_router(project_router(StudyProjectsFixture(factory), turns=turns))

@@ -28,7 +28,10 @@ def main(directory='/projection'):
     from pipeline.postgres_claims_fixture import related_documents
     from pipeline.postgres_retrieval_jobs import chat_tool, legacy_retrieval, run_queued
     legacy_retrieval(directory / 'chunks.db', directory / manifest['file'])
-    handlers = {'doc_claims': related_documents, 'chat_tool': chat_tool}
+    from pipeline.postgres_keyword_backfill import backfill
+    projection_path = directory / manifest['file']
+    handlers = {'doc_claims': related_documents, 'chat_tool': chat_tool,
+                'keyword_backfill': lambda factory, request: backfill(factory, projection_path, request['keyword_id'])}
     last = time.monotonic()
     while time.monotonic() - last < IDLE_SECONDS:
         done = run_queued(factory, handlers)
