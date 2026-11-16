@@ -349,10 +349,14 @@ def compute_core(conn, season: str, *, persist: bool = True) -> dict[str, list[s
     return {tk: r for tk, (r, _, _) in rows.items() if r}
 
 
-def core_map(conn, season: str | None = None, recompute_days: int = 7, *, persist: bool = True) -> dict[str, list[str]]:
+def core_map(conn, season: str | None = None, recompute_days: int = 7, *, persist: bool = True, recompute=None) -> dict[str, list[str]]:
+    if persist and recompute is not None:
+        raise ValueError('A custom recomputation is only supported for read-only views')
     season = season or season_of(date.today().isoformat())["key"]
     last = conn.execute("SELECT max(computed_at) FROM earnings_core WHERE season=?", (season,)).fetchone()[0]
     if not last or conn.execute("SELECT julianday('now')-julianday(?) > ?", (last, recompute_days)).fetchone()[0]:
+        if recompute is not None:
+            return recompute(conn, season)
         return compute_core(conn, season) if persist else compute_core(conn, season, persist=False)
     out = {r["ticker"]: json.loads(r["reasons"]) for r in conn.execute("SELECT ticker, reasons FROM earnings_core WHERE season=?", (season,))}
     pinned = {r[0] for r in conn.execute("SELECT ticker FROM transcript_follow WHERE active=1 AND core_pinned=1")}
@@ -722,14 +726,14 @@ def season_calendar(evs: list[dict], fs: dict, core: dict) -> list[dict]:
     return [days[k] for k in sorted(days)]
 
 
-def season_overview(season: str | None = None, *, persist_core: bool = True) -> dict:
+def season_overview(season: str | None = None, *, persist_core: bool = True, recompute_core=None) -> dict:
     conn = get_connection()
     today = date.today().isoformat()
     cur = season_of(today)
     season = season or cur["key"]
     s = season_by_key(season)
     fs = follows(conn)
-    core = core_map(conn, season, persist=persist_core)
+    core = core_map(conn, season, persist=persist_core, recompute=recompute_core)
     evs = _event_rows(conn, season)
     reported, upcoming = [], []
     for e in evs:
@@ -813,12 +817,12 @@ def season_overview(season: str | None = None, *, persist_core: bool = True) -> 
             "reported": reported}
 
 
-def sector_detail(key: str, season: str | None = None, *, persist_core: bool = True) -> dict:
+def sector_detail(key: str, season: str | None = None, *, persist_core: bool = True, recompute_core=None) -> dict:
     conn = get_connection()
     season = season or season_of(date.today().isoformat())["key"]
     fs = follows(conn)
     members = {t: f for t, f in fs.items() if f["sector"] == key}
-    core = core_map(conn, season, persist=persist_core)
+    core = core_map(conn, season, persist=persist_core, recompute=recompute_core)
     etf = sector_etf(key)
     seasons = [r[0] for r in conn.execute(
         f"SELECT DISTINCT season FROM earnings_events WHERE ticker IN ({','.join('?' * len(members))}) AND confirmed=1 ORDER BY season DESC LIMIT 4",
