@@ -53,5 +53,20 @@ class ChatPreviewForkTests(unittest.TestCase):
             fork_chat_preview(self.source, pg, self.fixture.schema)
 
 
+    def test_deleted_chat_ids_are_not_reused(self):
+        self.source.rollback()
+        self.source.execute('PRAGMA query_only=OFF')
+        self.source.execute('CREATE TABLE sequence_fixture(id INTEGER PRIMARY KEY AUTOINCREMENT)')
+        self.source.execute("INSERT INTO sqlite_sequence(name,seq) VALUES('conversations',82),('chat_messages',346)")
+        self.source.commit()
+        self.source.execute('PRAGMA query_only=ON')
+        self.source.execute('BEGIN')
+        with self.target() as pg:
+            fork_chat_preview(self.source, pg, self.fixture.schema)
+            cid=pg.execute("INSERT INTO conversations(channel) VALUES('web') RETURNING id").fetchone()[0]
+            mid=pg.execute("INSERT INTO chat_messages(conversation_id,role,content) VALUES(%s,'user','test') RETURNING id",(cid,)).fetchone()[0]
+            self.assertEqual((cid,mid),(83,347))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -32,6 +32,13 @@ def import_questions(source, target):
         target.execute('''CREATE TABLE question_capture_rows (
             table_name TEXT NOT NULL REFERENCES question_capture_tables(table_name),row_ordinal BIGINT NOT NULL,
             row_data JSONB NOT NULL,PRIMARY KEY(table_name,row_ordinal))''')
+        target.execute('CREATE TABLE question_capture_sequences (table_name TEXT PRIMARY KEY,sequence_value BIGINT NOT NULL)')
+        has_sequence=source.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'").fetchone()
+        if has_sequence:
+            sequences=source.execute('SELECT name,seq FROM sqlite_sequence WHERE name IN ('+','.join('?' for _ in TABLES)+')',TABLES).fetchall()
+            if sequences:
+                with target.cursor() as cur:
+                    cur.executemany('INSERT INTO question_capture_sequences VALUES (%s,%s)',(tuple(row) for row in sequences))
         counts={}
         for table in TABLES:
             schema=source.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?",(table,)).fetchone()
@@ -67,6 +74,13 @@ def _projection(connect):
                 names=','.join('"'+name.replace('"','""')+'"' for name in columns)
                 root.executemany('INSERT INTO "'+table+'" ('+names+') VALUES ('+','.join('?' for _ in columns)+')',
                                  (tuple(row[0].get(name) for name in columns) for row in rows))
+            sequences=pg.execute('SELECT table_name,sequence_value FROM question_capture_sequences').fetchall()
+            for table,seq in sequences:
+                if table not in TABLES:raise ValueError('Unknown question sequence')
+                current=root.execute('SELECT seq FROM sqlite_sequence WHERE name=?',(table,)).fetchone()
+                if current and current[0] > seq:raise ValueError('Question sequence predates captured rows')
+                if current:root.execute('UPDATE sqlite_sequence SET seq=? WHERE name=?',(seq,table))
+                else:root.execute('INSERT INTO sqlite_sequence(name,seq) VALUES (?,?)',(table,seq))
         root.commit()
         def connection():
             conn=sqlite3.connect(uri,uri=True);conn.row_factory=sqlite3.Row;conn.execute('PRAGMA query_only=ON');return conn

@@ -12,7 +12,7 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
         super().setUp()
         self.q=sqlite3.connect(':memory:');self.addCleanup(self.q.close)
         self.q.executescript('''
-        CREATE TABLE questions(id INTEGER PRIMARY KEY,text TEXT,narrative_id INTEGER,source_doc_id INTEGER,status TEXT,updated_at TEXT,lead_verdict TEXT,confirm_verdict TEXT,divergence TEXT,last_viewed_at TEXT);
+        CREATE TABLE questions(id INTEGER PRIMARY KEY AUTOINCREMENT,text TEXT,narrative_id INTEGER,source_doc_id INTEGER,status TEXT,updated_at TEXT,lead_verdict TEXT,confirm_verdict TEXT,divergence TEXT,last_viewed_at TEXT);
         CREATE TABLE sub_questions(id INTEGER PRIMARY KEY,question_id INTEGER,text TEXT,verdict TEXT);
         CREATE TABLE proxy_registry(id INTEGER PRIMARY KEY,sub_question_id INTEGER,label TEXT,modality TEXT,yes_direction TEXT,unit TEXT,tickers TEXT,extract_hint TEXT,active INTEGER);
         CREATE TABLE proxy_observations(id INTEGER PRIMARY KEY,proxy_id INTEGER,transcript_id INTEGER,observed_at TEXT,value_num REAL,value_text TEXT,direction TEXT,confidence REAL,source_type TEXT);
@@ -34,6 +34,7 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
         INSERT INTO entity_relations VALUES(1,7,9);
         INSERT INTO knowledge VALUES(9,'검증된 지식','verified');
         INSERT INTO question_reports VALUES(6,1,'저장 보고서','old-hash','2026-01-01');
+        UPDATE sqlite_sequence SET seq=50 WHERE name='questions';
         ''')
         self.q.execute('PRAGMA query_only=ON');self.q.execute('BEGIN')
 
@@ -61,3 +62,11 @@ class QuestionsFixtureTests(ChatPreviewForkTests):
     def test_read_transaction_required(self):
         self.q.rollback()
         with self.target() as pg, self.assertRaises(ValueError):import_questions(self.q,pg)
+
+    def test_deleted_highest_id_sequence_is_preserved(self):
+        from pipeline.postgres_questions_fixture import _projection
+        with self.target() as pg:import_questions(self.q,pg)
+        with _projection(self.target) as factory:
+            conn=factory()
+            try:self.assertEqual(conn.execute("SELECT seq FROM sqlite_sequence WHERE name='questions'").fetchone()[0],50)
+            finally:conn.close()

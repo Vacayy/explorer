@@ -98,8 +98,13 @@ def import_sqlite_conversations(source, target):
             cur.executemany("INSERT INTO conversation_import_unresolved_docs (document_id,reason) VALUES (%s,'missing_in_source')",
                             [(i,) for i in sorted(unresolved_source)])
             cur.executemany('INSERT INTO conversation_import_origin (conversation_id) VALUES (%s)', [(r[0],) for r in conversations])
+        # SQLite AUTOINCREMENT remembers deleted IDs in sqlite_sequence.
+        # Preserve that high-water mark rather than reusing deleted chat IDs.
+        has_sequence = source.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'").fetchone()
         for table in ('conversations', 'chat_messages'):
-            target.execute("SELECT setval(pg_get_serial_sequence(%s, 'id'), COALESCE((SELECT max(id) FROM " + table + "), 1), EXISTS(SELECT 1 FROM " + table + '))', (table,))
+            prior = source.execute('SELECT seq FROM sqlite_sequence WHERE name=?', (table,)).fetchone() if has_sequence else None
+            high_water = int(prior[0]) if prior and prior[0] is not None else 0
+            target.execute("SELECT setval(pg_get_serial_sequence(%s, 'id'), GREATEST(COALESCE((SELECT max(id) FROM " + table + "),0),%s,1), (GREATEST(COALESCE((SELECT max(id) FROM " + table + "),0),%s)>0))", (table,high_water,high_water))
     return {'conversations': len(conversations), 'messages': len(messages), 'entity_links': len(links),
             'document_references': len(document_ids), 'entity_references': len(entity_ids),
             'documents_missing_in_source': len(unresolved_source)}
