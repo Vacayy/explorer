@@ -313,6 +313,7 @@ class LegacyProjection:
         except BaseException:
             conn.close()
             raise
+        conn.commit()  # the shadow inserts opened a transaction; legacy readers may BEGIN their own
         conn.execute('PRAGMA query_only=ON')
         return conn
 
