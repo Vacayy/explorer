@@ -1,5 +1,6 @@
 """Disposable, same-backup portfolio read trial; never a production importer."""
 import json
+from datetime import date, timedelta
 
 from psycopg.types.json import Jsonb
 
@@ -60,9 +61,28 @@ def read_portfolio_tool(connect):
     from pipeline.postgres_urgent_selection_fixture import open_snapshot
     with connect() as pg:
         pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
-        tables = READ_TABLES + ('portfolio_principles',)
+        present = {r[0] for r in pg.execute(
+            'SELECT table_name FROM legacy_snapshot_tables WHERE table_name=ANY(%s)', (list(READ_TABLES),))}
+        normalized_prices = 'stock_prices' not in present
+        tables = tuple(t for t in READ_TABLES if t != 'stock_prices' or not normalized_prices) + ('portfolio_principles',)
         db, uri, _ = open_snapshot(pg, tables)
         try:
+            if normalized_prices:
+                metadata = pg.execute('SELECT m.generation_id,m.linked_document_generation,s.generation_id '
+                                      'FROM sector_market_metadata m CROSS JOIN snapshot_metadata s '
+                                      'WHERE m.singleton AND s.singleton').fetchone()
+                if not metadata or not metadata[1] or metadata[0] != metadata[2]:
+                    raise PortfolioArchiveConflict('market and document generations differ')
+                txs = db.execute('SELECT stock_code,trade_date FROM portfolio_transactions ORDER BY trade_date,id').fetchall()
+                codes = sorted({r['stock_code'] for r in txs if r['stock_code']})
+                since = (date.fromisoformat(txs[0]['trade_date']) - timedelta(days=14)).isoformat() if txs else None
+                db.execute('CREATE TABLE stock_prices(stock_code TEXT,trade_date TEXT,close REAL)')
+                if codes:
+                    rows = pg.execute('SELECT stock_code,trade_date,close FROM sector_market_prices '
+                                      'WHERE stock_code=ANY(%s) AND trade_date >= %s AND close IS NOT NULL '
+                                      'ORDER BY stock_code,trade_date', (codes, since))
+                    db.executemany('INSERT INTO stock_prices VALUES (?,?,?)', rows)
+                db.commit()
             def factory():
                 conn = sqlite3.connect(uri, uri=True)
                 conn.row_factory = sqlite3.Row

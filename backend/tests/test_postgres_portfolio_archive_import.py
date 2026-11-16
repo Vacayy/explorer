@@ -72,6 +72,19 @@ class PortfolioArchiveImportTests(unittest.TestCase):
         owned = PostgreSQLChatTools(self.fixture.pg, None, allow_lexical_only=True,
                                     portfolio_provider=lambda: read_portfolio_tool(self.fixture.pg))
         self.assertEqual(owned.run_tool({'name': 'get_portfolio', 'args': {}}), result)
+        with self.fixture.pg() as pg:
+            pg.execute("DELETE FROM legacy_snapshot_rows WHERE table_name='stock_prices'")
+            pg.execute("DELETE FROM legacy_snapshot_tables WHERE table_name='stock_prices'")
+            generation = pg.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()[0]
+            pg.execute('CREATE TABLE sector_market_metadata(singleton BOOLEAN,generation_id UUID,linked_document_generation BOOLEAN)')
+            pg.execute('INSERT INTO sector_market_metadata VALUES (TRUE,%s,TRUE)', (generation,))
+            pg.execute('CREATE TABLE sector_market_prices(stock_code TEXT,trade_date TEXT,close REAL)')
+            pg.execute("INSERT INTO sector_market_prices VALUES ('123456','2026-01-02',100),('123456','2026-01-03',110)")
+        self.assertEqual(read_portfolio_tool(self.fixture.pg), result)
+        with self.fixture.pg() as pg:
+            pg.execute('UPDATE sector_market_metadata SET linked_document_generation=FALSE')
+        with self.assertRaises(PortfolioArchiveConflict):
+            read_portfolio_tool(self.fixture.pg)
         with self.fixture.pg() as pg, self.assertRaises(PortfolioArchiveConflict):
             import_read_snapshot(self.source, pg)
 
