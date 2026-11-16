@@ -111,6 +111,10 @@ TASKS = MappingProxyType({
     # Principle sentence -> numeric rules preview (the single-path candidate's engine-neutral path for
     # portfolio_principles.parse; the legacy route calls the Claude CLI directly).
     'portfolio.principle_parse': TaskSpec('haiku', timeout=60, schema=True),
+    # Search-question refinement and the chart request's company-name assist (single-path candidate paths for
+    # market_analysis.model.structured_call, which calls the Claude CLI directly in the legacy routes).
+    'analysis.refine': TaskSpec('sonnet', timeout=90, schema=True, model_env='MARKET_ANALYSIS_MODEL'),
+    'chart.company_assist': TaskSpec('haiku', timeout=20, schema=True),
     'signal.interpret_price': TaskSpec('haiku', timeout=180),
     'signal.interpret_surge': TaskSpec('haiku', timeout=180),
     'study.intent_plan': TaskSpec('haiku', timeout=45, effort='low'),

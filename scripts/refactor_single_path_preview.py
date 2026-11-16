@@ -125,6 +125,36 @@ def build_scenario_logged(*args, **kwargs):
 legacy_scenario.build_scenario = build_scenario_logged
 
 
+import pipeline.chart_structure as legacy_chart  # noqa: E402
+import pipeline.market_analysis.model as legacy_model  # noqa: E402
+import pipeline.market_analysis.refine as legacy_refine  # noqa: E402
+STRUCTURED_TASKS = {legacy_refine.SYSTEM: 'analysis.refine', legacy_chart.ASSIST_SYSTEM: 'chart.company_assist'}
+
+
+def structured_call_via_llm(system, context, schema, *, budget, timeout, model=None):
+    # The legacy structured_call needs the Claude CLI; the same prompt, context and schema go through a
+    # registered llm.run task (Codex fallback while Claude is unavailable). Unknown callers are refused.
+    import json
+    import re
+    from pipeline import llm
+    task = STRUCTURED_TASKS.get(system)
+    if task is None:
+        raise legacy_model.ModelError('이 구조화 호출은 후보에서 아직 실행하지 않습니다.', 0)
+    try:
+        result = llm.run(json.dumps(context, ensure_ascii=False), task=task, system=system, json_schema=schema,
+                         record_call=lambda *args: None)
+        match = re.search(r'\{.*\}', result.text, re.S)
+        return json.loads(match.group(0) if match else result.text), float(result.cost_usd or 0)
+    except legacy_model.ModelError:
+        raise
+    except Exception as exc:  # the legacy routes answer ModelError as 502 / an unknown company
+        raise legacy_model.ModelError(f'모델 호출 실패: {type(exc).__name__}', 0) from exc
+
+
+legacy_model.structured_call = structured_call_via_llm
+legacy_refine.structured_call = structured_call_via_llm
+
+
 class SnapshotMetadata:
     connect = staticmethod(factory)
 
@@ -160,6 +190,13 @@ legacy_projection = LegacyProjection(factory, '/projection', on_change=search.cl
 install_legacy_reads(app, legacy_projection,
                      database_host=psycopg.conninfo.conninfo_to_dict(os.environ['REFACTOR_POSTGRES_DSN'])['host'])
 install_owner_portfolio(app, factory)  # after the legacy reads it replaces
+# Model-assisted reads with no stored result: the unchanged legacy handlers, structured calls via llm.run.
+from fastapi.routing import APIRoute  # noqa: E402
+from routers import analysis as legacy_analysis_router, chart_structure as legacy_chart_router  # noqa: E402
+for legacy_router, path in ((legacy_chart_router.router, '/api/spine/chart-structure/interpret'),
+                            (legacy_analysis_router.router, '/api/analysis/refine')):
+    app.router.routes.extend(route for route in legacy_router.routes
+                             if isinstance(route, APIRoute) and route.path == path and 'POST' in route.methods)
 install_owner_records(app, factory, document_ui.timeline_reader, legacy_projection)
 install_owner_legacy(app, legacy_projection, factory, run_llm=question_model, search=question_search)
 install_claims(app, factory, question_model)  # claims extraction here, related documents in the compute worker
