@@ -4,10 +4,11 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request, Response
 from psycopg.rows import dict_row
 from pipeline.postgres_graph_fixture import _guard
-from routers.spine_questions import AskRequest, FromDocRequest
+from routers.spine_questions import AskRequest, FromDocRequest, ScenarioRequest
 
 
-def create_router(connect, *, run_llm=None, search=None):
+def create_router(connect, *, run_llm=None, search=None, projection=None):
+    # projection: returns the LegacyProjection (it is created after this router is included)
     router = APIRouter(prefix='/api/spine/questions')
 
     @router.get('/creation-runs/{run_id}')
@@ -142,47 +143,159 @@ def create_router(connect, *, run_llm=None, search=None):
                         'WHERE id=%s', (question_id,))
             return question
 
+    def evidence(cur, question_id):
+        """The legacy report material (question_report._gather) from the PG question tables; grounding is
+        knowledge ids in edge order. None if the question is missing."""
+        cur.execute('SELECT * FROM questions WHERE id=%s', (question_id,))
+        question = cur.fetchone()
+        if not question:
+            return None
+        cur.execute('SELECT id,text,verdict FROM sub_questions WHERE question_id=%s ORDER BY id', (question_id,))
+        subs = cur.fetchall()
+        for sub in subs:
+            cur.execute('SELECT id,label,modality,unit FROM proxy_registry '
+                        'WHERE sub_question_id=%s AND active=1 ORDER BY id', (sub['id'],))
+            proxies = cur.fetchall()
+            for proxy in proxies:
+                cur.execute('SELECT observed_at,value_num,value_text,direction FROM proxy_observations '
+                            'WHERE proxy_id=%s ORDER BY observed_at DESC NULLS LAST,id DESC LIMIT 1', (proxy['id'],))
+                proxy['obs'] = cur.fetchone()
+            sub['proxies'] = proxies
+        grounding = []
+        if subs and question['narrative_id']:
+            cur.execute("SELECT count(*) AS n FROM legacy_snapshot_tables WHERE table_name IN ('entity_relations','knowledge')")
+            if cur.fetchone()['n'] != 2:
+                raise HTTPException(503, '보고서의 근거 자료가 준비되지 않았습니다')
+            cur.execute("SELECT k.row_data->>'id' AS knowledge_id, min(e.row_ordinal) AS ordinal "
+                        "FROM legacy_snapshot_rows e JOIN legacy_snapshot_rows k ON k.table_name='knowledge' "
+                        "AND k.row_data->>'id'=e.row_data->>'promoted_knowledge_id' "
+                        "WHERE e.table_name='entity_relations' AND e.row_data->>'narrative_id'=%s "
+                        "GROUP BY k.row_data->>'id' ORDER BY ordinal", (str(question['narrative_id']),))
+            grounding = [{'knowledge_id': int(row['knowledge_id'])} for row in cur.fetchall()]
+        return {'q': question, 'subs': subs, 'grounding': grounding}
+
     @router.get('/{question_id}/synthesis')
     def synthesis(question_id: int):
         from pipeline.question_report import _hash
         with connect() as conn, conn.cursor(row_factory=dict_row) as cur:
             conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
             _guard(conn)
-            cur.execute('SELECT * FROM questions WHERE id=%s', (question_id,))
-            question = cur.fetchone()
-            if not question:
+            ev = evidence(cur, question_id)
+            if ev is None:
                 raise HTTPException(404, '질문 없음')
-            cur.execute('SELECT id,text,verdict FROM sub_questions WHERE question_id=%s ORDER BY id', (question_id,))
-            subs = cur.fetchall()
-            if not subs:
+            if not ev['subs']:
                 return {'status': 'empty', 'body': None, 'created_at': None, 'stale': False}
-            for sub in subs:
-                cur.execute('SELECT id,label,modality,unit FROM proxy_registry '
-                            'WHERE sub_question_id=%s AND active=1 ORDER BY id', (sub['id'],))
-                proxies = cur.fetchall()
-                for proxy in proxies:
-                    cur.execute('SELECT observed_at,value_num,value_text,direction FROM proxy_observations '
-                                'WHERE proxy_id=%s ORDER BY observed_at DESC NULLS LAST,id DESC LIMIT 1', (proxy['id'],))
-                    proxy['obs'] = cur.fetchone()
-                sub['proxies'] = proxies
-            grounding = []
-            if question['narrative_id']:
-                cur.execute("SELECT count(*) AS n FROM legacy_snapshot_tables WHERE table_name IN ('entity_relations','knowledge')")
-                if cur.fetchone()['n'] != 2:
-                    raise HTTPException(503, '보고서의 근거 자료가 준비되지 않았습니다')
-                cur.execute("SELECT k.row_data->>'id' AS knowledge_id, min(e.row_ordinal) AS ordinal "
-                            "FROM legacy_snapshot_rows e JOIN legacy_snapshot_rows k ON k.table_name='knowledge' "
-                            "AND k.row_data->>'id'=e.row_data->>'promoted_knowledge_id' "
-                            "WHERE e.table_name='entity_relations' AND e.row_data->>'narrative_id'=%s "
-                            "GROUP BY k.row_data->>'id' ORDER BY ordinal", (str(question['narrative_id']),))
-                grounding = [{'knowledge_id': int(row['knowledge_id'])} for row in cur.fetchall()]
             cur.execute('SELECT body,inputs_hash,created_at FROM question_reports WHERE question_id=%s ORDER BY id DESC LIMIT 1', (question_id,))
             cached = cur.fetchone()
             if not cached:
                 return {'status': 'empty', 'body': None, 'created_at': None, 'stale': True}
-            digest = _hash({'q': question, 'subs': subs, 'grounding': grounding})
             return {'status': 'ok', 'body': cached['body'], 'created_at': cached['created_at'],
-                    'stale': cached['inputs_hash'] != digest}
+                    'stale': cached['inputs_hash'] != _hash(ev)}
+
+    def build_scenario(question_id, event, report_context=None):
+        """Legacy run_scenario_for_event: the unchanged build_scenario runs on a projection connection with
+        writable graph copies (it adds the scenario's causal chain); the graph diff and the scenario row are
+        published in one PG transaction. Returns the legacy result or {'error'}."""
+        from pipeline import postgres_graph_compute as graph, scenario
+        from pipeline.postgres_legacy_projection import write_connection_var
+        from pipeline.postgres_owner_overrides import record_outputs
+        from routers.postgres_legacy_read_fixture import _offline
+        from routers.postgres_owner_legacy_fixture import _Borrowed
+        if not event.strip():
+            return {'error': 'event 비어 있음'}
+        if projection is None:
+            return {'error': '시나리오 계산이 준비되지 않았습니다'}
+        offline = _offline.set(True)
+        conn, _ = projection().write_connection(graph.GRAPH)
+        try:
+            before = graph.snapshot(conn)
+            token = write_connection_var.set(_Borrowed(conn))
+            try:
+                result = scenario.build_scenario(event, report_context=report_context)
+            finally:
+                write_connection_var.reset(token)
+            if result.get('error'):
+                return {'error': result['error']}
+            source = f'POST /api/spine/questions/{question_id}/scenario'
+            with connect() as pg, pg.transaction():
+                _guard(pg)
+                row = pg.execute('SELECT text FROM questions WHERE id=%s', (question_id,)).fetchone()
+                label = row[0][:60] if row else event.strip()
+                graph.publish(pg, before, graph.snapshot(conn), run_id=source)
+                pg.execute("INSERT INTO scenarios(topic,event,answer,beneficiaries,citations,narrative_version,question_id,model,created_at) "
+                           "VALUES(%s,%s,%s,%s,%s,NULL,%s,%s,to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')) "
+                           'ON CONFLICT(topic) DO UPDATE SET event=excluded.event,answer=excluded.answer,'
+                           'beneficiaries=excluded.beneficiaries,citations=excluded.citations,question_id=excluded.question_id,'
+                           'model=excluded.model,created_at=excluded.created_at',
+                           (label, event, result.get('answer'), json.dumps(result.get('beneficiaries') or [], ensure_ascii=False),
+                            json.dumps(result.get('citations') or [], ensure_ascii=False), question_id, result.get('model')))
+                record_outputs(pg, source, [('scenarios', label)])
+            return {'topic': label, 'answer': result.get('answer'), 'beneficiaries': result.get('beneficiaries') or []}
+        finally:
+            conn.close()
+            _offline.reset(offline)
+
+    @router.post('/{question_id}/scenario')
+    def question_scenario(question_id: int, body: ScenarioRequest):
+        result = build_scenario(question_id, body.event)
+        if 'error' in result:
+            raise HTTPException(503, result['error'])
+        return result
+
+    @router.post('/{question_id}/synthesis/compute')
+    def synthesis_compute(question_id: int, refresh: bool = False):
+        # Legacy compute_synthesis: report (current settlement) -> scenario chained on it, each only when needed.
+        from database import get_connection
+        from pipeline import question_report
+        if run_llm is None:
+            raise HTTPException(503, 'LLM 엔진 없음 (ENRICH_ENGINE=claude-code 필요)')
+        with connect() as conn, conn.cursor(row_factory=dict_row) as cur:
+            conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            _guard(conn)
+            ev = evidence(cur, question_id)
+            if ev is None:
+                raise HTTPException(404, '질문 없음')
+            if not question_report._has_material(ev):
+                return {'status': 'empty'}
+            cur.execute('SELECT body,inputs_hash,created_at FROM question_reports WHERE question_id=%s ORDER BY id DESC LIMIT 1', (question_id,))
+            cached = cur.fetchone()
+            has_scenario = cur.execute('SELECT 1 FROM scenarios WHERE question_id=%s', (question_id,)).fetchone() is not None
+        digest = question_report._hash(ev)
+        report_fresh = False
+        if cached and cached['inputs_hash'] == digest and not refresh:
+            body, created = cached['body'], cached['created_at']
+        else:
+            db = get_connection()
+            try:  # statements and open falsifiers of the grounding knowledge, for the prompt only
+                for item in ev['grounding']:
+                    row = db.execute('SELECT statement FROM knowledge WHERE id=?', (item['knowledge_id'],)).fetchone()
+                    item['statement'] = row['statement'] if row else ''
+                    item['falsifiers'] = [f['condition'] for f in db.execute(
+                        'SELECT condition FROM knowledge_falsifiers WHERE knowledge_id=? AND triggered_at IS NULL',
+                        (item['knowledge_id'],))]
+            finally:
+                db.close()
+            body = question_report._generate_report(ev, run_llm=run_llm)
+            if not body:
+                return {'status': 'failed'}
+            from pipeline.postgres_owner_overrides import record_outputs
+            with connect() as pg:
+                _guard(pg)
+                pg.execute("SELECT pg_advisory_xact_lock(hashtextextended('question-reports',0))")
+                ident, created = pg.execute(
+                    "INSERT INTO question_reports(id,question_id,body,inputs_hash,model,created_at) "
+                    "VALUES((SELECT COALESCE(max(id),0)+1 FROM question_reports),%s,%s,%s,%s,"
+                    "to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')) RETURNING id,created_at",
+                    (question_id, body, digest, f'claude-code/{question_report.REPORT_MODEL}')).fetchone()
+                record_outputs(pg, f'POST /api/spine/questions/{question_id}/synthesis/compute', [('question_reports', ident)])
+            report_fresh = True
+        scenario = None
+        if report_fresh or refresh or not has_scenario:
+            result = build_scenario(question_id, ev['q']['text'], report_context=body)
+            if not result.get('error'):
+                scenario = {'answer': result.get('answer'), 'beneficiaries': result.get('beneficiaries') or []}
+        return {'status': 'ok', 'report': {'body': body, 'created_at': created}, 'scenario': scenario}
+
     @router.post('/propose')
     def propose(limit: int = 3):
         # Legacy generator ①: no model call. Narratives and their edge counts come from the read projection,

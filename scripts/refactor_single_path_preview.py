@@ -148,7 +148,8 @@ def question_search(query, *, k):
     return tools.run_tool({'name': 'search_docs', 'args': {'query': query, 'k': k}})
 
 
-app.include_router(questions_router(factory, run_llm=question_model, search=question_search))
+app.include_router(questions_router(factory, run_llm=question_model, search=question_search,
+                                    projection=lambda: legacy_projection))
 app.include_router(video_router(factory, search_lock=document_ui.search_lock, invalidate_search=search.close))
 app.include_router(study_router(StudyFixture(factory), turns=turns, actions=actions))
 app.include_router(project_router(StudyProjectsFixture(factory), turns=turns))
