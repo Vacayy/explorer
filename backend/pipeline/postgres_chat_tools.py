@@ -14,13 +14,15 @@ class UnsupportedPostgresChatTool(NotImplementedError):
 
 
 class PostgreSQLChatTools:
-    def __init__(self, connect, index, *, query_vector=None, allow_lexical_only=False, chunk_rag=None):
+    def __init__(self, connect, index, *, query_vector=None, allow_lexical_only=False, chunk_rag=None,
+                 portfolio_provider=None):
         if query_vector is None and not allow_lexical_only and chunk_rag is None:
             raise ValueError('query embedding provider or explicit lexical-only mode required')
         self.connect = connect
         self.index = index
         self.query_vector = query_vector
         self.chunk_rag = chunk_rag
+        self.portfolio_provider = portfolio_provider
         self.reader = PostgreSQLDocumentReader(connect)
 
     def gather_attached_refs(self, refs):
@@ -38,6 +40,10 @@ class PostgreSQLChatTools:
         if name == 'open_doc':
             doc = self.reader.get(int(args['doc_id']))
             return ToolResult(name, args, [self._item(doc)] if doc else [], None if doc else '문서 없음')
+        if name == 'get_portfolio':
+            if self.portfolio_provider is None:
+                raise UnsupportedPostgresChatTool('explicit portfolio owner provider is required')
+            return self.portfolio_provider()
         if name == 'get_transcripts':
             import sqlite3
             from pipeline.chat_tools import get_transcripts

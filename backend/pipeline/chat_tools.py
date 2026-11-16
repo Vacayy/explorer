@@ -1075,17 +1075,17 @@ def get_pricing_ledger(weeks: int | str | None = None) -> ToolResult:
                                                             "date": d["as_of"], "doc_id": None, "href": "/regimes#now-pricing"}])
 
 
-def get_portfolio() -> ToolResult:
+def get_portfolio(*, connection_factory=None, principles_loader=None) -> ToolResult:
     """내 포트폴리오(비율·가격만)와 운용 원칙 원문·기계 점검 규칙·지금 위반·청산 내역 (D-228).
 
     원화 금액·수량은 싣지 않는다(D-212의 '비율 전용 요약'). 원칙 원문은 로컬 DB에서 읽어 이 대화의 맥락으로만 쓴다.
     """
     from pipeline import portfolio as pf
     from pipeline import portfolio_principles as pp
-    conn = pf.connect()
+    conn = connection_factory() if connection_factory is not None else pf.connect()
     try:
         s = pf.summary(conn)
-        principles = pp.principles(conn)
+        principles = principles_loader(conn) if principles_loader is not None else pp.principles(conn)
         broken = []
         if principles and s["holdings"] is not None:
             needs_exposure = any(r["type"] == "max_exposure" for p in principles for r in p["rules"])
