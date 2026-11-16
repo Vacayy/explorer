@@ -34,3 +34,10 @@ CREATE TABLE chat_entity_links (
     link_type TEXT,
     UNIQUE (message_id, entity_id)
 );
+
+-- Preserve citations that were already dangling in the source snapshot.
+-- An importer must never manufacture a document or silently drop its ID.
+CREATE TABLE conversation_import_unresolved_docs (
+    document_id BIGINT PRIMARY KEY,
+    reason TEXT NOT NULL CHECK (reason = 'missing_in_source')
+);

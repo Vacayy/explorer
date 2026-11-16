@@ -17,6 +17,93 @@ class DocumentNotFound(LookupError):
     pass
 
 
+class ConversationImportConflict(RuntimeError):
+    pass
+
+
+def import_sqlite_conversations(source, target):
+    """Import an immutable SQLite snapshot into empty PG tables atomically.
+
+    IDs and JSON text are kept unchanged. Existing target rows or references
+    missing only from PG stop the import. Already-missing source documents are
+    recorded explicitly and remain unchanged in the conversation data.
+    The caller owns both connections and selects the isolated PG schema.
+    """
+    conversations = [tuple(r) for r in source.execute(
+        'SELECT id,title,anchor_entity_id,channel,chat_id,summary,state_json,created_at,updated_at FROM conversations ORDER BY id')]
+    messages = [tuple(r) for r in source.execute(
+        'SELECT id,conversation_id,role,content,citations_json,gaps_json,model,route_json,attachments_json,created_at FROM chat_messages ORDER BY id')]
+    links = [tuple(r) for r in source.execute(
+        'SELECT message_id,entity_id,link_type FROM chat_entity_links ORDER BY message_id,entity_id')]
+
+    conversation_ids = {r[0] for r in conversations}
+    message_ids = {r[0] for r in messages}
+    if any(r[1] not in conversation_ids for r in messages) or any(r[0] not in message_ids for r in links):
+        raise ConversationImportConflict('orphan conversation or message reference')
+    entity_ids = {r[2] for r in conversations if r[2] is not None} | {r[1] for r in links}
+    document_ids = set()
+    try:
+        for row in conversations:
+            state = json.loads(row[6] or '{}')
+            document_ids.update(int(i) for i in state.get('attached_doc_ids', []))
+            for ref in state.get('attached_refs', []):
+                if ref.get('kind') == 'doc':
+                    document_ids.add(int(ref['ref']))
+        for row in messages:
+            for item in json.loads(row[4] or '[]'):
+                if item.get('doc_id') is not None:
+                    document_ids.add(int(item['doc_id']))
+            for item in json.loads(row[8] or '[]'):
+                if item.get('kind') == 'doc':
+                    document_ids.add(int(item['ref']))
+    except (TypeError, ValueError, KeyError, AttributeError) as exc:
+        raise ConversationImportConflict('invalid document reference in source') from exc
+
+    with target.transaction():
+        target.execute('LOCK TABLE conversations, chat_messages, chat_entity_links, conversation_import_unresolved_docs IN ACCESS EXCLUSIVE MODE')
+        if any(target.execute('SELECT EXISTS(SELECT 1 FROM ' + table + ')').fetchone()[0]
+               for table in ('conversations', 'chat_messages', 'chat_entity_links', 'conversation_import_unresolved_docs')):
+            raise ConversationImportConflict('target is not empty; refusing to overwrite')
+        unresolved_source = set()
+        if document_ids:
+            pg_docs = {r[0]: r[1] for r in target.execute(
+                'SELECT id,detail_document FROM document_projection WHERE id = ANY(%s)', (list(document_ids),))}
+            source_docs = {}
+            ids = sorted(document_ids)
+            for start in range(0, len(ids), 400):
+                batch = ids[start:start + 400]
+                placeholders = ','.join('?' for _ in batch)
+                for row in source.execute(
+                    f'SELECT id,source_type,url,title,published_at FROM raw_documents WHERE id IN ({placeholders})', tuple(batch)):
+                    source_docs[row[0]] = tuple(row[1:])
+            unresolved_source = document_ids - source_docs.keys()
+            missing_in_pg = source_docs.keys() - pg_docs.keys()
+            if missing_in_pg:
+                raise ConversationImportConflict(f'{len(missing_in_pg)} source documents are missing from PG')
+            fields = ('source_type', 'url', 'title', 'published_at')
+            mismatched = sum(any(value != pg_docs[doc_id].get(key) for key, value in zip(fields, values))
+                             for doc_id, values in source_docs.items())
+            if mismatched:
+                raise ConversationImportConflict(f'{mismatched} document identities differ')
+        if entity_ids:
+            found = {int(r[0]) for r in target.execute(
+                "SELECT row_data->>'id' FROM legacy_snapshot_rows WHERE table_name='entities' AND row_data->>'id' = ANY(%s)",
+                ([str(i) for i in entity_ids],))}
+            if found != entity_ids:
+                raise ConversationImportConflict(f'{len(entity_ids - found)} entity references are missing')
+        with target.cursor() as cur:
+            cur.executemany('INSERT INTO conversations (id,title,anchor_entity_id,channel,chat_id,summary,state_json,created_at,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)', conversations)
+            cur.executemany('INSERT INTO chat_messages (id,conversation_id,role,content,citations_json,gaps_json,model,route_json,attachments_json,created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)', messages)
+            cur.executemany('INSERT INTO chat_entity_links (message_id,entity_id,link_type) VALUES (%s,%s,%s)', links)
+            cur.executemany("INSERT INTO conversation_import_unresolved_docs (document_id,reason) VALUES (%s,'missing_in_source')",
+                            [(i,) for i in sorted(unresolved_source)])
+        for table in ('conversations', 'chat_messages'):
+            target.execute("SELECT setval(pg_get_serial_sequence(%s, 'id'), COALESCE((SELECT max(id) FROM " + table + "), 1), EXISTS(SELECT 1 FROM " + table + '))', (table,))
+    return {'conversations': len(conversations), 'messages': len(messages), 'entity_links': len(links),
+            'document_references': len(document_ids), 'entity_references': len(entity_ids),
+            'documents_missing_in_source': len(unresolved_source)}
+
+
 class PostgreSQLConversations:
     def __init__(self, connect):
         self.connect = connect
