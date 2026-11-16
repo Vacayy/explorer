@@ -117,3 +117,45 @@ def delete_transaction(conn, principal, ident):
     replay([row for row in rows if row['id'] != ident])
     conn.execute('DELETE FROM fixture_portfolio_transactions WHERE account_id=%s AND id=%s',(account,ident))
     return True
+
+
+class MemberPortfolioFixture:
+    """Adapter for the existing member router; fixture DB and principal only.
+
+    Authentication, CSRF and HTTP error handling belong to the existing router
+    and access boundary. The caller supplies their transaction-unavailable type.
+    """
+    def __init__(self, factory, principal, *, names, prices, last_close, unavailable):
+        if not isinstance(principal,str) or not principal.strip():
+            raise ValueError('Verified principal required')
+        self.factory,self.owner=factory,principal
+        self.names,self.prices,self.last_close=names,prices,last_close
+        self.unavailable=unavailable
+
+    def read(self, operation):
+        from pipeline import portfolio as legacy
+        with self.factory() as conn:
+            source=FixturePortfolioReadSource(conn,self.owner,names=self.names,prices=self.prices)
+            if operation is legacy.summary:
+                return legacy.summary_from_source(source)
+            if operation is legacy.history:
+                return legacy.history_from_source(source)
+            if operation is legacy.transactions:
+                return list_transactions(conn,self.owner,names=self.names)
+            raise ValueError('Unsupported portfolio operation')
+
+    def add(self, body):
+        with self.factory() as conn:
+            return add_transaction(conn,self.owner,body.model_dump(),companies=set(self.names),last_close=self.last_close)
+
+    def delete(self, ident):
+        with self.factory() as conn:
+            if not delete_transaction(conn,self.owner,ident):
+                raise self.unavailable()
+
+    def companies(self, query):
+        query=query.strip()
+        if not query:
+            return []
+        return [{'stock_code':code,'corp_name':name} for code,name in sorted(self.names.items())
+                if query in code or query in name][:20]
