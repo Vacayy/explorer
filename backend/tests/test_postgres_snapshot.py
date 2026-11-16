@@ -983,6 +983,23 @@ finally:
                 self.assertEqual(c.execute("SELECT count(*) FROM ingest_narrative_versions WHERE topic='합성 신주제'").fetchone()[0],3)
         finally:
             stage.close()
+        stage=FixturePublisher(self.pg,self.schema,target)
+        try:
+            stage.publish()
+            stage_schema=stage.active[0]
+            def generate_with_new_evidence(prompt):
+                with self.pg() as c:
+                    c.execute("INSERT INTO legacy_snapshot_rows VALUES ('knowledge_evidence',1,%s::jsonb)",
+                              (json.dumps({'id':2,'knowledge_id':1,'stance':'refute','independent':1,'observed_at':'2026-11-16'}),))
+                return {'title':'오래된 입력 결과','narrative':'저장되면 안 되는 합성 결과'}
+            result=run_fixture_narrative(self.pg,lambda:target(stage_schema),stage_schema,'합성 신주제',
+                embedder=lambda texts:[[1.0,0.0] for _ in texts],generate=generate_with_new_evidence,force=True)
+            self.assertEqual(result,{'status':'stale'})
+            with self.pg() as c:
+                self.assertEqual(c.execute("SELECT count(*) FROM ingest_narrative_versions WHERE topic='합성 신주제'").fetchone()[0],3)
+                self.assertEqual(c.execute("SELECT status FROM ingest_narrative_claims WHERE topic='합성 신주제'").fetchone()[0],'stale')
+        finally:
+            stage.close()
 
     def test_existing_enrichment_uses_isolated_graph_vocabulary(self):
         from pipeline import enrich as enrichment
