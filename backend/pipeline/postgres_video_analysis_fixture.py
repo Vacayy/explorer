@@ -68,4 +68,5 @@ def video_vocabulary(factory):
 def video_analyzer(factory, doc_id):
     from pipeline.enrich import enrich
     recorder = video_call_recorder(factory, doc_id)
-    return lambda title, body: enrich(title, body, vocabulary_provider=lambda: video_vocabulary(factory), record_call=recorder)
+    return lambda title, body: enrich(title, body, vocabulary_provider=lambda: video_vocabulary(factory), record_call=recorder,
+                                     allow_fallback=True)  # same Codex fallback as the digest call

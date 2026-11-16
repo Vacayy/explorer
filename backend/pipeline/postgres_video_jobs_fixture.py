@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from psycopg.types.json import Jsonb
 from pipeline.postgres_graph_fixture import _guard
+from pipeline.youtube_digest import STALE_SECONDS
 
 
 def initialize_video_jobs(target):
@@ -66,11 +67,29 @@ def queue_video(connect, doc_id):
         doc = row[1]
         if doc.get('digest_status') == 'ok':
             return {'status': 'ok', 'token': None}
-        work = pg.execute('SELECT status,analysis_status FROM video_digest_work WHERE document_id=%s FOR UPDATE', (doc_id,)).fetchone()
-        if work and (work[0] == 'unknown' or (work[0] == 'staged' and work[1] in ('unknown', 'stale', 'completed'))):
-            return {'status': 'interrupted', 'token': None}
-        if work and work[0] in ('running', 'staged'):
-            return {'status': 'generating', 'token': None}
+        work = pg.execute('SELECT status,analysis_status,token,transcript,extract(epoch FROM now()-updated_at) > %s '
+                          'FROM video_digest_work WHERE document_id=%s FOR UPDATE', (STALE_SECONDS, doc_id)).fetchone()
+        if work:
+            status, analysis, token, transcript, old = work
+            resume = None
+            if status == 'staged' and analysis == 'completed':
+                resume = 'publish'  # the saved digest and analysis are reused without a model call
+            elif status == 'staged' and analysis in ('pending', 'running', 'unknown') and (old or analysis == 'unknown'):
+                resume = 'analysis'  # the saved digest is reused; only the analysis runs again
+            elif not old and (status == 'running' or (status == 'staged' and analysis in ('pending', 'running'))):
+                return {'status': 'generating', 'token': None}
+            elif status == 'unknown' and not old:
+                # A digest call may have finished unseen; allow a new call only after the existing stale window.
+                return {'status': 'interrupted', 'token': None}
+            if resume:
+                pg.execute("UPDATE video_digest_work SET analysis_status=CASE WHEN %s='analysis' THEN 'pending' ELSE analysis_status END, "
+                           "analysis_token=CASE WHEN %s='analysis' THEN NULL ELSE analysis_token END,updated_at=now() "
+                           "WHERE document_id=%s", (resume, resume, doc_id))
+                pg.execute("UPDATE video_digest_overlay_rows SET row_data=row_data || %s "
+                           "WHERE table_name='youtube_digest_jobs' AND row_data->>'doc_id'=%s",
+                           (Jsonb({'status': 'generating', 'error': None, 'updated_at': time.time()}), str(doc_id)))
+                return {'status': 'generating', 'token': token, 'resume': resume,
+                        'title': doc.get('title') or '', 'transcript': transcript}
         previous = pg.execute("SELECT row_ordinal,row_data FROM legacy_snapshot_rows "
                               "WHERE table_name='youtube_digest_jobs' AND row_data->>'doc_id'=%s", (str(doc_id),)).fetchone()
         job = previous[1] if previous else None

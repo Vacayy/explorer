@@ -51,14 +51,14 @@ def classify_temporal(title: str, summary: str) -> dict:
     }
 
 
-def enrich(title: str, markdown: str, *, vocabulary_provider=None, record_call=None) -> dict:
+def enrich(title: str, markdown: str, *, vocabulary_provider=None, record_call=None, allow_fallback=False) -> dict:
     if llm_available():
         # Explicit providers fail closed; never silently open the default DB.
         vocabulary = _provided_vocabulary(vocabulary_provider)
         try:
             if vocabulary_provider is None and record_call is None:
                 return _enrich_llm(title, markdown)
-            return _enrich_llm(title, markdown, vocabulary=vocabulary, record_call=record_call)
+            return _enrich_llm(title, markdown, vocabulary=vocabulary, record_call=record_call, allow_fallback=allow_fallback)
         except llm.CallRecordingError:
             raise
         except Exception as e:
@@ -249,10 +249,10 @@ def _normalize_llm_result(data: dict, model: str) -> dict:
     }
 
 
-def _enrich_llm(title: str, markdown: str, *, vocabulary=None, record_call=None) -> dict:
+def _enrich_llm(title: str, markdown: str, *, vocabulary=None, record_call=None, allow_fallback=False) -> dict:
     prompt = _build_prompt(title, markdown, vocabulary=vocabulary)
     result = (llm.run(prompt, task="document.tag") if record_call is None
-              else llm.run(prompt, task="document.tag", record_call=record_call,allow_fallback=False))
+              else llm.run(prompt, task="document.tag", record_call=record_call,allow_fallback=allow_fallback))
     raw = result.text
     return _normalize_llm_result(_parse_json(raw), result.label)
 
