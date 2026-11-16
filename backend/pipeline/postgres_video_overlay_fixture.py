@@ -107,3 +107,19 @@ def install_video_analysis_overlay(target, base_schema):
             UNION ALL SELECT * FROM question_graph_overlay_rows
             UNION ALL SELECT * FROM video_digest_overlay_rows""").format(sql.Identifier(base_schema)))
     return {'initialized': True}
+
+
+def enable_video_graph_changes(target):
+    """Allow newly linked entities and keywords to share the video overlay."""
+    _guard(target)
+    with target.transaction():
+        definition = target.execute("SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+            "WHERE conrelid=to_regclass('video_digest_overlay_rows') AND conname='video_digest_overlay_rows_table_name_check'").fetchone()
+        if not definition or 'enrichments' not in definition[0] or "'entities'" in definition[0]:
+            raise ValueError('Unexpected or already expanded video graph overlay')
+        target.execute('ALTER TABLE video_digest_overlay_rows DROP CONSTRAINT video_digest_overlay_rows_table_name_check')
+        target.execute("ALTER TABLE video_digest_overlay_rows ADD CONSTRAINT video_digest_overlay_rows_table_name_check "
+                       "CHECK(table_name IN ('raw_documents','youtube_digest_jobs','enrichments','entity_links','entities','entity_keywords'))")
+        target.execute("CREATE UNIQUE INDEX video_overlay_entity_id ON video_digest_overlay_rows ((row_data->>'id')) WHERE table_name='entities'")
+        target.execute("CREATE UNIQUE INDEX video_overlay_keyword_id ON video_digest_overlay_rows ((row_data->>'id')) WHERE table_name='entity_keywords'")
+    return {'initialized': True}

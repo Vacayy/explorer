@@ -30,6 +30,10 @@ class PostgreSQLRawDocumentReader:
 
     def get_in_transaction(self, conn, doc_id: int) -> FeedDocument | None:
         """Read using the caller-owned transaction, without altering it."""
+        if conn.execute("SELECT to_regclass('video_projection_overrides')").fetchone()[0] is not None:
+            override = conn.execute('SELECT detail_document FROM video_projection_overrides WHERE document_id=%s', (doc_id,)).fetchone()
+            if override:
+                return FeedDocument.model_validate(override[0])
         row = conn.execute(
             "SELECT row_data FROM legacy_snapshot_rows "
             "WHERE table_name='raw_documents' AND row_data->>'id'=%s", (str(doc_id),)
