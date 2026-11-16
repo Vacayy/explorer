@@ -15,7 +15,7 @@ from pipeline.postgres_snapshot import _insert_batches
 # Collected/reference data read by existing home, macro, search and home tabs.
 # Excluded: tables replaced by PG-native ledgers, chunk/financial bulk loaded by
 # later units, and telemetry that the read paths do not need.
-EXCLUDED = frozenset({'doc_chunks', 'financial_statements', 'llm_calls', 'usage_events',
+EXCLUDED = frozenset({'doc_chunks', 'llm_calls', 'usage_events',
                       'api_requests_hourly', 'client_errors', 'image_backfill_docs',
                       'knowledge_doc_scans'})
 
@@ -82,10 +82,10 @@ def load_supplement(target, backup_dir, *, only=None):
                 count = source.execute(f'SELECT count(*) FROM "{name}"').fetchone()[0]
                 target.execute('INSERT INTO legacy_supplement_tables VALUES (%s,%s::jsonb,%s,%s)',
                                (name, json.dumps(columns), ddl, count))
-                def records(name=name):
+                # One COPY statement: fast, and statement triggers (projection version) fire once.
+                with target.cursor().copy('COPY legacy_supplement_rows (table_name,row_ordinal,row_data) FROM STDIN') as copy:
                     for ordinal, row in enumerate(source.execute(f'SELECT * FROM "{name}"')):
-                        yield (name, ordinal, json.dumps(dict(row), ensure_ascii=False, allow_nan=False))
-                _insert_batches(target, 'INSERT INTO legacy_supplement_rows VALUES (%s,%s,%s::jsonb)', records())
+                        copy.write_row((name, ordinal, json.dumps(dict(row), ensure_ascii=False, allow_nan=False)))
                 loaded[name] = count
             return loaded
     finally:

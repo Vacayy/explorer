@@ -36,6 +36,10 @@ READ_ROUTES = {'/api/spine/home', '/api/spine/home/ai-activity', '/api/spine/hom
                '/api/spine/narrative/{narrative_id}/related', '/api/spine/narrative/mer', '/api/spine/narrative/scenario',
                '/api/spine/narrative/versions', '/api/spine/world/checkpoint',
                '/api/spine/narratives/{narrative_id}/market-today', '/api/spine/follows',
+               # Company detail: saved prices, valuation, DART statements and disclosures
+               '/api/financials/{stock_code}', '/api/financials/{stock_code}/income-flow',
+               '/api/financials/{stock_code}/income-flow/quarters', '/api/kpi/{stock_code}', '/api/disclosures/{stock_code}',
+               '/api/stock-prices/{stock_code}', '/api/valuation/{stock_code}',
                # Remaining existing screens (people, Taiwan, thesis, admin, company, US, ...): every
                # legacy GET not served by a PG reader that passed the internet-less probe, including DNS.
                '/api/analysis/strategies', '/api/blog/sources',
@@ -180,6 +184,12 @@ def install(app, projection, *, database_host):
     app.router.routes[first_legacy:first_legacy] = wrappers
 
     _install_network_guard(database_host)
+    # Price and DART reads refresh an expired cache before reading the table; here
+    # the saved rows are always served (other is_cached users keep their meaning).
+    import importlib as _importlib
+    for name in ('services.krx_service', 'services.dart_service'):
+        service = _importlib.import_module(name)
+        service.is_cached = (lambda key, original=service.is_cached: True if _offline.get() else original(key))
     patterns = [re.compile('^' + re.sub(r'\\{[^}]+\\}', '[^/]+', re.escape(path)) + '$')
                 for path in READ_ROUTES | {route.path for route in router.routes}]
 
