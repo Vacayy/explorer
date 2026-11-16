@@ -1,0 +1,111 @@
+"""Same-generation legacy tables added beside a disposable single-path snapshot.
+
+The base snapshot holds only the tables with explicit document contracts. Home,
+macro and search still read many collected tables through legacy SQL; this adds
+those rows from the very backup the base was loaded from, without touching the
+base schema or the PG-native ledgers that replaced legacy user tables.
+"""
+import json
+import sqlite3
+from pathlib import Path
+
+from pipeline.postgres_graph_fixture import _guard
+from pipeline.postgres_snapshot import _insert_batches
+
+# Collected/reference data read by existing home, macro, search and home tabs.
+# Excluded: tables replaced by PG-native ledgers, chunk/financial bulk loaded by
+# later units, and telemetry that the read paths do not need.
+EXCLUDED = frozenset({'doc_chunks', 'financial_statements', 'llm_calls', 'usage_events',
+                      'api_requests_hourly', 'client_errors', 'image_backfill_docs',
+                      'knowledge_doc_scans', 'cache_meta'})
+
+
+def initialize_supplement(target):
+    _guard(target)
+    if target.execute("SELECT to_regclass('legacy_supplement_rows')").fetchone()[0] is not None:
+        raise ValueError('Legacy supplement already initialized')
+    with target.transaction():
+        target.execute('CREATE TABLE legacy_supplement_tables (table_name TEXT PRIMARY KEY,columns JSONB NOT NULL,'
+                       'schema_sql TEXT NOT NULL,row_count BIGINT NOT NULL)')
+        target.execute('CREATE TABLE legacy_supplement_rows (table_name TEXT NOT NULL REFERENCES legacy_supplement_tables,'
+                       'row_ordinal BIGINT NOT NULL,row_data JSONB NOT NULL,PRIMARY KEY(table_name,row_ordinal))')
+        for view, columns in (('legacy_snapshot_tables', 'table_name,columns,schema_sql,row_count'),
+                              ('legacy_snapshot_rows', 'table_name,row_ordinal,row_data')):
+            definition = target.execute('SELECT pg_get_viewdef(to_regclass(%s),true)', (view,)).fetchone()[0]
+            if definition is None or 'legacy_supplement' in definition:
+                raise ValueError('Unexpected snapshot view')
+            supplement = view.replace('legacy_snapshot', 'legacy_supplement')
+            target.execute(f'CREATE OR REPLACE VIEW {view} AS {definition.rstrip().rstrip(";")} '
+                           f'UNION ALL SELECT {columns} FROM {supplement}')
+
+
+def load_supplement(target, backup_dir):
+    """Copy missing collected tables from the base snapshot's own backup in one transaction."""
+    _guard(target)
+    backup = Path(backup_dir)
+    manifest = json.loads((backup / 'manifest.json').read_text())
+    path = backup / manifest['file']
+    if path.stat().st_size != manifest['size_bytes'] or any(backup.glob(manifest['file'] + '-*')):
+        raise ValueError('Backup file does not match its manifest')
+    source = sqlite3.connect(f'file:{path}?mode=ro&immutable=1', uri=True)
+    source.row_factory = sqlite3.Row
+    try:
+        with target.transaction():
+            target.execute('LOCK TABLE legacy_supplement_tables IN EXCLUSIVE MODE')
+            if target.execute('SELECT 1 FROM legacy_supplement_tables LIMIT 1').fetchone():
+                raise ValueError('Legacy supplement already loaded')
+            documents = target.execute('SELECT document_count FROM snapshot_metadata WHERE singleton').fetchone()[0]
+            if source.execute('SELECT count(*) FROM raw_documents').fetchone()[0] != documents:
+                raise ValueError('Backup is not the base snapshot generation')
+            present = dict(target.execute('SELECT table_name,row_count FROM legacy_snapshot_tables').fetchall())
+            # Every base table must hold the backup's exact row count before rows are mixed.
+            for name, count in present.items():
+                if source.execute(f'SELECT count(*) FROM "{name}"').fetchone()[0] != count:
+                    raise ValueError(f'Backup differs from base snapshot: {name}')
+            native = {row[0] for row in target.execute("SELECT table_name FROM information_schema.tables "
+                                                       "WHERE table_schema=current_schema() AND table_type='BASE TABLE'")}
+            schemas = source.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()
+            virtual = [name for name, ddl in schemas if 'VIRTUAL TABLE' in (ddl or '').upper()]
+            loaded = {}
+            for name, ddl in schemas:
+                if (name in present or name in native or name in EXCLUDED or name in virtual
+                        or any(name.startswith(v + '_') for v in virtual) or not ddl):
+                    continue
+                columns = [r['name'] for r in source.execute(f'PRAGMA table_info("{name}")')]
+                count = source.execute(f'SELECT count(*) FROM "{name}"').fetchone()[0]
+                target.execute('INSERT INTO legacy_supplement_tables VALUES (%s,%s::jsonb,%s,%s)',
+                               (name, json.dumps(columns), ddl, count))
+                def records(name=name):
+                    for ordinal, row in enumerate(source.execute(f'SELECT * FROM "{name}"')):
+                        yield (name, ordinal, json.dumps(dict(row), ensure_ascii=False, allow_nan=False))
+                _insert_batches(target, 'INSERT INTO legacy_supplement_rows VALUES (%s,%s,%s::jsonb)', records())
+                loaded[name] = count
+            return loaded
+    finally:
+        source.close()
+
+
+def load_indexes(target, backup_dir):
+    """Keep the backup's own index DDL so projections answer legacy joins at legacy speed."""
+    _guard(target)
+    backup = Path(backup_dir)
+    manifest = json.loads((backup / 'manifest.json').read_text())
+    path = backup / manifest['file']
+    if path.stat().st_size != manifest['size_bytes']:
+        raise ValueError('Backup file does not match its manifest')
+    source = sqlite3.connect(f'file:{path}?mode=ro&immutable=1', uri=True)
+    try:
+        with target.transaction():
+            if target.execute("SELECT to_regclass('legacy_snapshot_indexes')").fetchone()[0] is not None:
+                raise ValueError('Legacy indexes already loaded')
+            documents = target.execute('SELECT document_count FROM snapshot_metadata WHERE singleton').fetchone()[0]
+            if source.execute('SELECT count(*) FROM raw_documents').fetchone()[0] != documents:
+                raise ValueError('Backup is not the base snapshot generation')
+            tables = {row[0] for row in target.execute('SELECT table_name FROM legacy_snapshot_tables')}
+            target.execute('CREATE TABLE legacy_snapshot_indexes (name TEXT PRIMARY KEY,table_name TEXT NOT NULL,sql TEXT NOT NULL)')
+            rows = [r for r in source.execute("SELECT name,tbl_name,sql FROM sqlite_master WHERE type='index' AND sql IS NOT NULL")
+                    if r[1] in tables]
+            _insert_batches(target, 'INSERT INTO legacy_snapshot_indexes VALUES (%s,%s,%s)', rows)
+            return len(rows)
+    finally:
+        source.close()

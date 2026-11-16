@@ -4,6 +4,7 @@ Never expose this unauthenticated experimental app to a public interface.
 The imported document app validates the disposable fixture DSN and schema.
 """
 import os
+import threading
 
 import uvicorn
 
@@ -24,6 +25,8 @@ from routers.postgres_questions_fixture import create_router as questions_router
 from routers.postgres_video_fixture import create_router as video_router
 from routers.postgres_study_fixture import create_router as study_router
 from routers.postgres_study_projects_fixture import create_router as project_router
+from pipeline.postgres_legacy_projection import LegacyProjection
+from routers.postgres_legacy_read_fixture import install as install_legacy_reads
 
 if os.environ.get('REFACTOR_FEED_POINTER_SCHEMA'):
     raise RuntimeError('Single-path preview does not permit a separate feed pointer')
@@ -95,6 +98,9 @@ app.include_router(questions_router(factory, run_llm=question_model, search=ques
 app.include_router(video_router(factory, search_lock=document_ui.search_lock, invalidate_search=search.close))
 app.include_router(study_router(StudyFixture(factory), turns=turns, actions=actions))
 app.include_router(project_router(StudyProjectsFixture(factory), turns=turns))
+legacy_projection = LegacyProjection(factory, '/projection')
+install_legacy_reads(app, legacy_projection)
+threading.Thread(target=legacy_projection.path, daemon=True).start()  # warm before the first home visit
 
 
 @app.on_event('shutdown')
