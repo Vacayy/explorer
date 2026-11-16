@@ -69,3 +69,42 @@ def stage_plan(connect,text,plan,*,created_by='user',narrative_id=None,source_do
                             ON CONFLICT(table_name) DO UPDATE SET sequence_value=GREATEST(question_capture_sequences.sequence_value,EXCLUDED.sequence_value)''',(table,seq[0]))
                 return {'question_id':qid,'numeric_extraction_needed':has_numeric,'sentiment_extraction_needed':has_sentiment,'rollup_needed':True}
             finally:db.close()
+
+
+def stage_plan_native(connect, text, plan, *, created_by='user', narrative_id=None, source_doc_id=None):
+    """Save a decomposition into the single-path fixture, without starting jobs.
+
+    Extraction and rollup are separate required steps; do not expose this as a
+    completed create operation until those paths use the same PG tables.
+    """
+    if not text.strip() or not isinstance(plan, dict) or not isinstance(plan.get('sub_questions'), list):
+        raise ValueError('Invalid decomposition')
+    with connect() as pg:
+        _guard(pg)
+        pg.execute("SELECT pg_advisory_xact_lock(hashtextextended('native-question-create',0))")
+        now = "to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')"
+        qid = pg.execute("INSERT INTO questions(text,narrative_id,source_doc_id,created_by,status,created_at,updated_at) "
+                         "VALUES(%s,%s,%s,%s,'tracking'," + now + ',' + now + ') RETURNING id',
+                         (text.strip(), narrative_id, source_doc_id, created_by)).fetchone()[0]
+        has_numeric = has_sentiment = False
+        for sub in plan['sub_questions']:
+            sqid = pg.execute('INSERT INTO sub_questions(question_id,text,falsifier,weight,created_at) '
+                              'VALUES(%s,%s,%s,1.0,' + now + ') RETURNING id',
+                              (qid, (sub.get('text') or '').strip(), (sub.get('falsifier') or '').strip() or None)).fetchone()[0]
+            for i, proxy in enumerate(sub.get('proxies', [])):
+                modality = proxy.get('modality') if proxy.get('modality') in ('numeric', 'sentiment', 'stance') else 'numeric'
+                direction = proxy.get('yes_direction') if proxy.get('yes_direction') in ('up', 'down') else 'up'
+                key = questions._slugify(proxy.get('label', ''), qid, i)
+                exists = pg.execute('SELECT 1 FROM proxy_registry WHERE key=%s', (key,)).fetchone()
+                if not exists:
+                    pg.execute('INSERT INTO proxy_registry(key,label,sub_question_id,modality,tickers,unit,extract_hint,yes_direction,active,created_at) '
+                               'VALUES(%s,%s,%s,%s,%s,%s,%s,%s,1,' + now + ')',
+                               (key, (proxy.get('label') or '프록시').strip(), sqid, modality,
+                                (proxy.get('tickers') or '').strip() or None, (proxy.get('unit') or '').strip() or None,
+                                (proxy.get('extract_hint') or '').strip() or None, direction))
+                if modality == 'numeric' and (proxy.get('tickers') or '').strip():
+                    has_numeric = True
+                elif modality == 'sentiment':
+                    has_sentiment = True
+        return {'question_id': qid, 'numeric_extraction_needed': has_numeric,
+                'sentiment_extraction_needed': has_sentiment, 'rollup_needed': True}
