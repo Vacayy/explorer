@@ -14,7 +14,7 @@ def _sort_latest(rows):
 
 
 def search_feed(connection, index, query, *, vector=None, source=None, stock=None,
-                industry=None, topic=None, days=None, sort='relevance', page=1, size=20):
+                industry=None, topic=None, days=None, sort='relevance', page=1, size=20, entity_id=None):
     """Return the existing search feed response shape for a fixture generation.
 
     The caller owns a repeatable-read, read-only transaction. Operation against
@@ -45,6 +45,12 @@ def search_feed(connection, index, query, *, vector=None, source=None, stock=Non
         'ORDER BY array_position(%s::bigint[],d.id),l.ordinal',
         (ranking, *params, ranking),
     ).fetchall()
+    if entity_id is not None and rows:
+        matches = connection.execute("SELECT DISTINCT (row_data->>'doc_id')::bigint FROM legacy_snapshot_rows "
+            "WHERE table_name='entity_links' AND row_data->>'entity_id'=%s AND (row_data->>'doc_id')::bigint=ANY(%s)",
+            (str(entity_id), list({row[0] for row in rows}))).fetchall()
+        allowed = {row[0] for row in matches}
+        rows = [row for row in rows if row[0] in allowed]
     for link_type, field, value in (('stock', 'aliases', stock), ('industry', 'name', industry), ('topic', 'name', topic)):
         if not value or not rows:
             continue

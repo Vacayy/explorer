@@ -14,7 +14,7 @@ class UnsupportedPostgresChatTool(NotImplementedError):
 
 
 class PostgreSQLChatTools:
-    def __init__(self, connect, index, *, query_vector=None, allow_lexical_only=False, chunk_rag=None,
+    def __init__(self, connect, index, *, query_vector=None, allow_lexical_only=False, chunk_rag=None, entity_resolver=None,
                  portfolio_provider=None):
         if query_vector is None and not allow_lexical_only and chunk_rag is None:
             raise ValueError('query embedding provider or explicit lexical-only mode required')
@@ -22,6 +22,7 @@ class PostgreSQLChatTools:
         self.index = index
         self.query_vector = query_vector
         self.chunk_rag = chunk_rag
+        self.entity_resolver = entity_resolver
         self.portfolio_provider = portfolio_provider
         self.reader = PostgreSQLDocumentReader(connect)
 
@@ -148,7 +149,7 @@ class PostgreSQLChatTools:
                                              connection_factory=factory, company_resolver=resolve_company)
         if name != 'search_docs':
             raise UnsupportedPostgresChatTool(f'{name} is not implemented in the PG fixture')
-        if (args.get('entity') or args.get('channel')) and self.chunk_rag is None:
+        if (args.get('channel') or (args.get('entity') and self.entity_resolver is None)) and self.chunk_rag is None:
             raise UnsupportedPostgresChatTool('requested filter is not implemented in the PG fixture')
         query = (args.get('query') or '').strip()
         if not query:
@@ -187,12 +188,18 @@ class PostgreSQLChatTools:
         found = []
         seen = set()
         items = []
+        entity_id = None
+        assumptions = {}
+        if args.get('entity'):
+            entity_id, _, assumptions = self.entity_resolver(args['entity'])
+            if entity_id is None:
+                return ToolResult(name, args, [], '대상을 확인할 수 없어 범위 검색을 수행하지 않았습니다.', assumed=assumptions.get('assumed', []))
         with self.connect() as conn:
             conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
             for q in queries:
                 vector = self.query_vector(q) if self.query_vector else None
                 result = search_feed(conn, self.index, q, vector=vector, source=args.get('source'),
-                                     days=args.get('since_days'), size=limit)
+                                     days=args.get('since_days'), size=limit, entity_id=entity_id)
                 for doc in result.items:
                     if doc.id not in seen:
                         seen.add(doc.id)
@@ -203,4 +210,7 @@ class PostgreSQLChatTools:
                 docs = {row[0]: FeedDocument.model_validate(row[1]) for row in rows}
                 items = [self._item(docs[doc_id]) for doc_id in found[:limit] if doc_id in docs]
         note = '실험용 PG 문서 검색' + (' (키워드만)' if self.query_vector is None else ' (키워드·벡터)')
-        return ToolResult(name, args, items, note)
+        excluded = getattr(self.index, 'excluded_vectors', 0)
+        if excluded:
+            note += f' · 오래된 벡터 {excluded}건 제외'
+        return ToolResult(name, args, items, note, assumed=assumptions.get('assumed', []))

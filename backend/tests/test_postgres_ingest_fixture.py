@@ -244,6 +244,57 @@ class IngestFixtureTests(unittest.TestCase):
         finally:
             index.close()
 
+    def test_partial_hybrid_excludes_stale_document_vectors(self):
+        with self.pg() as conn:
+            a = store_document(conn, source_type='note', source_id='fresh', title='새 자료', markdown='원문')
+            b = store_document(conn, source_type='note', source_id='stale', title='옛 자료', markdown='원문')
+            rebuild(conn)
+            vector = struct.pack('<384f', *([0.1] * 384))
+            conn.execute("UPDATE legacy_snapshot_rows SET row_data=jsonb_set(row_data, '{content_hash}', to_jsonb('fresh-hash'::text)) WHERE table_name='raw_documents' AND row_data->>'id'=%s", (str(a['id']),))
+            conn.execute("UPDATE legacy_snapshot_rows SET row_data=jsonb_set(row_data, '{content_hash}', to_jsonb('current-hash'::text)) WHERE table_name='raw_documents' AND row_data->>'id'=%s", (str(b['id']),))
+            fresh_hash = 'fresh-hash'
+            conn.execute('INSERT INTO document_embeddings(document_id,embedding,content_hash) VALUES(%s,%s,%s),(%s,%s,%s)',
+                         (a['id'], vector, fresh_hash, b['id'], vector, 'stale-hash'))
+            conn.execute('UPDATE document_embedding_metadata SET vector_count=2,stale_count=1,source_hash_missing_count=0')
+        with self.pg() as conn:
+            conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            with self.assertRaises(ValueError):
+                SearchSnapshot.from_postgres(conn)
+            index = SearchSnapshot.from_postgres(conn, allow_stale=True)
+            try:
+                self.assertEqual(index.db.execute('SELECT rowid FROM doc_vec').fetchall(), [(a['id'],)])
+                self.assertEqual(index.db.execute('SELECT count(*) FROM raw_documents').fetchone()[0], 2)
+            finally:
+                index.close()
+
+    def test_chat_search_filters_resolved_entity_without_broadening(self):
+        from psycopg.types.json import Jsonb
+        with self.pg() as conn:
+            a = store_document(conn, source_type='note', source_id='entity-one', title='반도체 첫 자료', markdown='반도체 원문')
+            store_document(conn, source_type='note', source_id='entity-two', title='반도체 둘째 자료', markdown='반도체 원문')
+            rebuild(conn)
+            conn.execute("INSERT INTO legacy_snapshot_tables VALUES('entity_links','[]','fixture',1) ON CONFLICT DO NOTHING")
+            conn.execute("INSERT INTO legacy_snapshot_rows VALUES('entity_links',99999,%s)",
+                         (Jsonb({'doc_id': a['id'], 'entity_id': 42, 'link_type': 'stock'}),))
+        with self.pg() as conn:
+            conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            index = SearchSnapshot.from_postgres(conn, lexical_only=True)
+        try:
+            tools = PostgreSQLChatTools(self.pg, index, allow_lexical_only=True,
+                                       entity_resolver=lambda name: (42, [], {}))
+            result = tools.run_tool({'name': 'search_docs', 'args': {'query': '반도체', 'entity': '시험 기업'}})
+            self.assertEqual([item['doc_id'] for item in result.items], [a['id']])
+        finally:
+            index.close()
+
+    def test_unsupported_chat_tool_is_reported_without_aborting_other_tools(self):
+        from unittest.mock import Mock
+        tools = Mock()
+        tools.run_tool.side_effect = UnsupportedPostgresChatTool('fixture')
+        result = PostgreSQLChatRuntime(Mock(), 1, tools).run_tool({'name': 'get_quote', 'args': {}})
+        self.assertEqual(result.items, [])
+        self.assertIn('지원하지 않습니다', result.note)
+
     def test_ingest_to_existing_feed_and_lexical_search_generation(self):
         with self.pg() as c:
             doc = store_document(c, source_type='note', source_id='test', title='반도체 전망',

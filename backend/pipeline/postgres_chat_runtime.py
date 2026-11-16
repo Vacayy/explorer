@@ -89,7 +89,14 @@ class PostgreSQLChatRuntime:
         return self.run_tool({'name': 'search_docs', 'args': {'query': query, 'k': k}})
 
     def run_tool(self, call):
-        result = self.tools.run_tool(call)
+        from pipeline.postgres_chat_tools import UnsupportedPostgresChatTool
+        try:
+            result = self.tools.run_tool(call)
+        except UnsupportedPostgresChatTool:
+            from pipeline.chat_tools import ToolResult
+            # Keep other supported tools usable while clearly reporting this gap.
+            return ToolResult(call.get('name', ''), call.get('args') or {}, [],
+                              '이 도구는 격리 후보에서 아직 지원하지 않습니다.')
         # A tool may not return a document absent from this PG snapshot or an
         # unresolved imported citation that now points at a different document.
         for item in result.items:

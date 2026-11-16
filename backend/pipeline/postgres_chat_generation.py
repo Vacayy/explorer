@@ -1,5 +1,6 @@
 """Isolated PostgreSQL chat generation; no live service is configured here."""
 import threading
+import logging
 
 from pipeline import chat
 from pipeline.postgres_chat_runtime import PostgreSQLChatRuntime
@@ -45,8 +46,9 @@ def _generate_answer(store, tools, conversation_id, question, *, stream, owner_c
         except Exception:
             pass
         return {'answer': answer, 'citations': turn.citations, 'gaps': turn.gaps, 'model': turn.model}
-    except Exception:
+    except Exception as exc:
         # Do not expose model errors or connection details in a conversation.
+        logging.getLogger(__name__).warning('Isolated chat failed: %s', type(exc).__name__)
         message = '답변 생성에 실패했습니다. 다시 질문해주세요.'
         store.append_assistant(conversation_id, message, owner_chat_id=owner_chat_id)
         return {'answer': None, 'citations': [], 'gaps': [], 'model': None, 'error': message}

@@ -34,7 +34,7 @@ class SearchSnapshot:
             raise
 
     @classmethod
-    def from_postgres(cls, connection, *, lexical_only=False):
+    def from_postgres(cls, connection, *, lexical_only=False, allow_stale=False):
         database, schema = connection.execute('SELECT current_database(), current_schema()').fetchone()
         if database != 'fixture' or not schema or not re.fullmatch(r'refactor_fixture_[0-9a-f]{32}', schema):
             raise ValueError('Only a disposable fixture is supported')
@@ -45,8 +45,11 @@ class SearchSnapshot:
             'SELECT generation_id, document_count FROM snapshot_metadata WHERE singleton').fetchone()
         metadata = connection.execute('SELECT generation_id, vector_count, stale_count, source_hash_missing_count '
                                       'FROM document_embedding_metadata WHERE singleton').fetchone()
-        if not lexical_only and (metadata is None or metadata[0] != generation or metadata[2] or metadata[3]):
-            raise ValueError('Embeddings are missing or do not match the current generation')
+        if not lexical_only:
+            if metadata is None or metadata[0] != generation:
+                raise ValueError('Embeddings are missing or do not match the current generation')
+            if (metadata[2] or metadata[3]) and not allow_stale:
+                raise ValueError('Embeddings are missing or do not match the current generation')
         # Named cursors keep PostgreSQL transfer bounded; the resulting search
         # index itself is intentionally an in-memory prototype.
         with connection.cursor(name='fixture_search_documents') as docs, connection.cursor(name='fixture_search_embeddings') as vecs:
@@ -55,12 +58,20 @@ class SearchSnapshot:
             if lexical_only:
                 index = cls(generation, docs)
             else:
-                vecs.execute('SELECT document_id,embedding FROM document_embeddings ORDER BY document_id')
+                if allow_stale:
+                    vecs.execute("""SELECT e.document_id,e.embedding FROM document_embeddings e
+                        JOIN legacy_snapshot_rows r ON r.table_name='raw_documents' AND r.row_data->>'id'=e.document_id::text
+                        WHERE e.content_hash IS NOT NULL AND r.row_data->>'content_hash' IS NOT NULL
+                          AND e.content_hash=r.row_data->>'content_hash' ORDER BY e.document_id""")
+                else:
+                    vecs.execute('SELECT document_id,embedding FROM document_embeddings ORDER BY document_id')
                 index = cls(generation, docs, ((ident, bytes(blob)) for ident, blob in vecs))
+        expected_vectors = metadata[1] - metadata[2] - metadata[3] if not lexical_only and allow_stale else (metadata[1] if not lexical_only else 0)
         if index.db.execute('SELECT count(*) FROM raw_documents').fetchone()[0] != count or \
-                (not lexical_only and index.db.execute('SELECT count(*) FROM doc_vec').fetchone()[0] != metadata[1]):
+                (not lexical_only and index.db.execute('SELECT count(*) FROM doc_vec').fetchone()[0] != expected_vectors):
             index.close()
             raise ValueError('Incomplete search generation')
+        index.excluded_vectors = metadata[2] + metadata[3] if not lexical_only and allow_stale else 0
         return index
 
     def search(self, query, *, vector=None, k=100):

@@ -275,7 +275,9 @@ def experimental_search_feed(response: Response, q: str | None = Query(None, max
         if generation is None:
             raise HTTPException(503, '검색 자료가 준비되지 않았습니다.')
         if search_index is None or search_index.generation != str(generation[0]):
-            replacement = SearchSnapshot.from_postgres(connection,lexical_only=os.getenv('REFACTOR_LEXICAL_ONLY') == '1')
+            replacement = SearchSnapshot.from_postgres(connection,
+                lexical_only=os.getenv('REFACTOR_LEXICAL_ONLY') == '1',
+                allow_stale=os.getenv('REFACTOR_ALLOW_STALE_VECTORS') == '1')
             previous, search_index = search_index, replacement
             if previous is not None:
                 previous.close()
@@ -287,6 +289,8 @@ def experimental_search_feed(response: Response, q: str | None = Query(None, max
             except Exception:
                 # The original search retains lexical results when the model is unavailable.
                 pass
+        response.headers['X-Explorer-Search-Mode'] = 'hybrid' if vector is not None else 'lexical'
+        response.headers['X-Explorer-Excluded-Vectors'] = str(getattr(search_index, 'excluded_vectors', 0))
         result = search_feed(connection, search_index, q, vector=vector, source=source, stock=stock,
                              industry=industry, topic=topic, days=days, sort=sort, page=page, size=size)
         response.headers['X-Explorer-Generation'] = search_index.generation
