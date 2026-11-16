@@ -21,7 +21,7 @@ except ImportError:
         raise
     psycopg=None
 
-from pipeline.postgres_portfolio_fixture import MemberPortfolioFixture, initialize
+from pipeline.postgres_portfolio_fixture import FixturePortfolioMarket, MemberPortfolioFixture, initialize
 
 
 @unittest.skipUnless(psycopg and os.getenv('REFACTOR_POSTGRES_DSN') and os.getenv('REFACTOR_TEST_DISPOSABLE')=='1',
@@ -39,6 +39,12 @@ class MemberHTTPFixtureTests(unittest.TestCase):
         try:
             with factory() as conn:
                 initialize(conn)
+                conn.execute('CREATE TABLE sector_market_metadata(singleton BOOLEAN)')
+                conn.execute('CREATE TABLE sector_market_companies(stock_code TEXT,corp_name TEXT)')
+                conn.execute('CREATE TABLE sector_market_prices(stock_code TEXT,trade_date TEXT,close BIGINT)')
+                conn.execute('INSERT INTO sector_market_metadata VALUES (TRUE)')
+                conn.execute("INSERT INTO sector_market_companies VALUES ('000001','합성 회사')")
+                conn.execute("INSERT INTO sector_market_prices VALUES ('000001','2026-01-01',10),('000001','2026-01-02',12)")
             with tempfile.TemporaryDirectory() as tmp:
                 identities=IdentityStore(Path(tmp)/'identities.sqlite')
                 identities.initialize()
@@ -52,9 +58,16 @@ class MemberHTTPFixtureTests(unittest.TestCase):
                 app.add_middleware(PublicAccessBoundary,routes=app.router.routes,policies=policies,
                     service_factory=lambda:SimpleNamespace(identities=identities,config=SimpleNamespace(public_origin='https://beta.example')))
                 def service(_source,owner):
-                    return MemberPortfolioFixture(factory,owner,names={'000001':'합성 회사'},
-                        prices=lambda *_:({'000001':[('2026-01-01',10),('2026-01-02',12)]},{}),
-                        last_close=lambda *_:10,unavailable=TransactionUnavailable)
+                    with factory() as conn:
+                        names=FixturePortfolioMarket(conn).names()
+                    def prices(*args):
+                        with factory() as conn:
+                            return FixturePortfolioMarket(conn).prices(*args)
+                    def last_close(*args):
+                        with factory() as conn:
+                            return FixturePortfolioMarket(conn).last_close(*args)
+                    return MemberPortfolioFixture(factory,owner,names=names,prices=prices,
+                        last_close=last_close,unavailable=TransactionUnavailable)
                 def headers(token):
                     return {'Cookie':SESSION_COOKIE+'='+token,'Origin':'https://beta.example','X-CSRF-Token':session_csrf(token)}
                 body={'trade_date':'2026-01-01','kind':'buy','stock_code':'000001','amount':100,'price':10}
@@ -71,6 +84,10 @@ class MemberHTTPFixtureTests(unittest.TestCase):
                     self.assertEqual(result.status_code,200)
                     self.assertEqual(result.headers['cache-control'],'no-store')
                     self.assertNotIn('amount',result.json()[0])
+                    summary=client.get('/api/member/portfolio',headers=headers(tokens[0]))
+                    self.assertEqual(summary.status_code,200)
+                    self.assertEqual(summary.json()['holdings'][0]['return_pct'],20.0)
+                    self.assertEqual(client.get('/api/member/portfolio',headers=headers(tokens[1])).json()['holdings'],[])
         finally:
             with psycopg.connect(dsn) as conn:
                 conn.execute(psycopg.sql.SQL('DROP SCHEMA {} CASCADE').format(psycopg.sql.Identifier(schema)))
