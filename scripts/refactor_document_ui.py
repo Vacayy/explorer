@@ -2,6 +2,7 @@
 import os
 import re
 import threading
+from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 from uuid import UUID
@@ -23,11 +24,11 @@ from pipeline.postgres_search_snapshot import SearchSnapshot
 from pipeline.postgres_search_feed import search_feed
 from pipeline.postgres_document_claims import claims_state
 from pipeline.postgres_signals_fixture import signals_items, signals_summary, mention_momentum
-from routers.spine_signals import SignalsSummary, MomentumResponse
+from routers.spine_signals import SignalsSummary, MomentumResponse as SignalsMomentumResponse
 from pipeline.postgres_narrative_fixture import list_narratives, cached_narrative
 from routers.spine_narrative import NarrativeList, Narrative
 from pipeline.postgres_transcript_fixture import quarters, transcript_detail, recent_calls, follow_list
-from routers.spine_transcript import QuarterRow, Detail, RecentCall, FollowRow, MomentumResponse
+from routers.spine_transcript import QuarterRow, Detail, RecentCall, FollowRow, MomentumResponse as TranscriptMomentumResponse
 from pipeline.postgres_momentum_fixture import momentum
 from routers.spine_doc import DocClaims, RelatedDoc
 from pipeline.postgres_related_documents import CentroidIndex, related_documents
@@ -56,6 +57,8 @@ app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 search_lock = threading.RLock()
 search_index = None
 related_index = None
+follow_cache_lock = threading.Lock()
+follow_cache = {}
 
 
 def local_owner_portfolio():
@@ -115,7 +118,7 @@ def experimental_signals_summary(days: int = Query(7,ge=1,le=90)):
         return signals_summary(connection,days=days)
 
 
-@app.get('/api/spine/signals/momentum', response_model=MomentumResponse)
+@app.get('/api/spine/signals/momentum', response_model=SignalsMomentumResponse)
 def experimental_momentum(limit: int = Query(12,ge=3,le=30)):
     with factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
@@ -139,7 +142,7 @@ def experimental_narrative_detail(topic: str):
         return cached_narrative(connection,topic)
 
 
-@app.get('/api/spine/transcript/momentum', response_model=MomentumResponse)
+@app.get('/api/spine/transcript/momentum', response_model=TranscriptMomentumResponse)
 def experimental_transcript_momentum():
     with factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
@@ -157,7 +160,16 @@ def experimental_recent_calls(days: int = 7, limit: int = 40):
 def experimental_follow_list():
     with factory() as connection:
         connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
-        return follow_list(connection)
+        row = connection.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
+        if row is None:
+            raise HTTPException(503, 'Transcript snapshot unavailable')
+        key = (str(row[0]), date.today())
+        with follow_cache_lock:
+            if key not in follow_cache:
+                result = follow_list(connection)
+                follow_cache.clear()
+                follow_cache[key] = result
+            return deepcopy(follow_cache[key])
 
 
 @app.get('/api/spine/transcript/company/{ticker}', response_model=list[QuarterRow])
