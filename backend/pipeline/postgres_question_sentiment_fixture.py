@@ -79,3 +79,60 @@ def extract_sentiment(connect,question_id,*,search,run_llm,per_proxy_docs=8):
                     extracted+=1
                 finally:db.close()
     return {'extracted':extracted,'stale':stale}
+
+
+def extract_sentiment_native(connect, question_id, *, search, run_llm, per_proxy_docs=8):
+    """Write sentiment to the same disposable PG tables as question reads."""
+    if not isinstance(per_proxy_docs, int) or not 1 <= per_proxy_docs <= 40:
+        raise ValueError('invalid document limit')
+    today = datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d')
+    with connect() as pg:
+        _guard(pg)
+        proxies = pg.execute("SELECT p.id,p.label,p.extract_hint,p.yes_direction FROM proxy_registry p "
+            "JOIN sub_questions s ON s.id=p.sub_question_id WHERE p.active=1 AND p.modality='sentiment' "
+            "AND s.question_id=%s AND NOT EXISTS (SELECT 1 FROM proxy_observations o WHERE o.proxy_id=p.id "
+            "AND o.source_type='corpus' AND o.source_id=%s) ORDER BY p.id", (question_id, today)).fetchall()
+    extracted = stale = 0
+    docs_query = "SELECT d.row_data->>'title',e.row_data->>'summary' FROM legacy_snapshot_rows d " \
+        "LEFT JOIN legacy_snapshot_rows e ON e.table_name='enrichments' AND e.row_data->>'doc_id'=d.row_data->>'id' " \
+        "WHERE d.table_name='raw_documents' AND d.row_data->>'id'=ANY(%s) ORDER BY d.row_ordinal,e.row_ordinal"
+    for proxy_id, label, hint, direction_hint in proxies:
+        search_result = search((label + ' ' + (hint or '')).strip(), k=per_proxy_docs)
+        ids = list(dict.fromkeys(str(i['doc_id']) for i in search_result.items if i.get('doc_id') is not None))
+        if not ids:
+            continue
+        with connect() as pg:
+            _guard(pg)
+            generation = pg.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
+            proxy = pg.execute('SELECT id,label,extract_hint,yes_direction,active FROM proxy_registry WHERE id=%s', (proxy_id,)).fetchone()
+            docs = pg.execute(docs_query, (ids,)).fetchall()
+        if not generation or not proxy:
+            raise ValueError('Missing snapshot or proxy')
+        snippets = '\n'.join(f"- {(title or '')[:80]}: {(summary or '')[:200]}" for title, summary in docs)
+        if not snippets.strip():
+            continue
+        try:
+            raw = run_llm(questions._SENTIMENT_PROMPT.format(label=label, hint=hint or '', snippets=snippets[:8000]),
+                          task='proxy.sentiment').text
+            result = json.loads(raw[raw.find('{'):raw.rfind('}')+1])
+            if not isinstance(result, dict):
+                raise ValueError('invalid extraction')
+        except Exception:
+            continue
+        direction = result.get('direction') if result.get('direction') in ('up', 'down', 'flat') else None
+        with connect() as pg:
+            _guard(pg)
+            pg.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (f'question-sentiment:{proxy_id}:{today}',))
+            current_generation = pg.execute('SELECT generation_id FROM snapshot_metadata WHERE singleton').fetchone()
+            current_proxy = pg.execute('SELECT id,label,extract_hint,yes_direction,active FROM proxy_registry WHERE id=%s FOR UPDATE', (proxy_id,)).fetchone()
+            current_docs = pg.execute(docs_query, (ids,)).fetchall()
+            if current_generation != generation or current_proxy != proxy or current_docs != docs:
+                stale += 1
+                continue
+            if pg.execute("SELECT 1 FROM proxy_observations WHERE proxy_id=%s AND source_type='corpus' AND source_id=%s", (proxy_id, today)).fetchone():
+                continue
+            pg.execute("INSERT INTO proxy_observations(proxy_id,source_type,source_id,observed_at,value_text,direction,created_at) "
+                "VALUES(%s,'corpus',%s,%s,%s,%s,to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS'))",
+                (proxy_id, today, today, result.get('value_text'), direction))
+            extracted += 1
+    return {'extracted': extracted, 'stale': stale}
