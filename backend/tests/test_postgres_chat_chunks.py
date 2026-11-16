@@ -181,6 +181,37 @@ class PostgreSQLChatChunkTests(unittest.TestCase):
         self.assertEqual(result.items[0]['text'], '시험 컨콜 요약')
         self.assertEqual(result.items[0]['href'], '/follow/transcripts?t=3')
         self.assertIn('팔로우 목록에 없는 회사', result.note)
+        class Chunks:
+            connect = self.fixture.pg
+            generation = 'different-generation'
+        mismatch = PostgreSQLChatTools(self.fixture.pg, None, chunk_rag=PostgreSQLChunkRAG(Chunks(), lambda *_: None))
+        with self.assertRaises(ChatChunkImportConflict):
+            mismatch.run_tool({'name': 'get_transcripts', 'args': {'companies': '엔비디아'}})
+
+    def test_worldmodel_tool_uses_pg_snapshot_and_marks_hypotheses(self):
+        from psycopg.types.json import Jsonb
+        from unittest.mock import Mock
+        from pipeline.postgres_chat_tools import PostgreSQLChatTools
+        with self.fixture.pg() as conn:
+            for name, columns, ddl in (
+                ('entities', ['id', 'name'], 'CREATE TABLE entities(id INTEGER,name TEXT)'),
+                ('narratives', ['id', 'topic', 'title'], 'CREATE TABLE narratives(id INTEGER,topic TEXT,title TEXT)'),
+                ('entity_relations', ['src_id', 'dst_id', 'rel_type', 'effect_direction', 'confidence', 'mechanism', 'narrative_id', 'epistemic_type'],
+                 'CREATE TABLE entity_relations(src_id INTEGER,dst_id INTEGER,rel_type TEXT,effect_direction TEXT,confidence REAL,mechanism TEXT,narrative_id INTEGER,epistemic_type TEXT)'),
+            ):
+                conn.execute('INSERT INTO legacy_snapshot_tables VALUES (%s,%s,%s,1)', (name, Jsonb(columns), ddl))
+            for ordinal, row in enumerate(({'id': 3, 'name': '원인'}, {'id': 4, 'name': '결과'})):
+                conn.execute("INSERT INTO legacy_snapshot_rows VALUES ('entities',%s,%s)", (ordinal, Jsonb(row)))
+            conn.execute("INSERT INTO legacy_snapshot_rows VALUES ('entity_relations',0,%s)",
+                         (Jsonb({'src_id': 3, 'dst_id': 4, 'rel_type': 'CAUSES', 'effect_direction': 'positive',
+                                 'confidence': 0.8, 'mechanism': '시험', 'narrative_id': None,
+                                 'epistemic_type': 'hypothesis'}),))
+        rag = Mock()
+        rag.entity_scope.return_value = (3, ['원인'], {})
+        tools = PostgreSQLChatTools(self.fixture.pg, None, chunk_rag=rag)
+        result = tools.run_tool({'name': 'get_worldmodel', 'args': {'entity': '원인'}})
+        self.assertIn('전부 가설', result.items[0]['title'])
+        self.assertIn('원인 → 결과', result.items[0]['text'])
 
     def test_fixture_chat_api_persists_question_and_answer_in_pg(self):
         from fastapi import FastAPI

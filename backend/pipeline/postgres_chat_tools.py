@@ -1,6 +1,6 @@
 """Experimental PG document tools for the isolated chat runtime.
 
-Document opening, search, narratives and saved earnings-call digests are experimental.
+Document opening, search, narratives, causal graphs and earnings-call digests are experimental.
 Other tools fail explicitly; this is not a replacement for the full chat API.
 """
 from pipeline.chat_tools import ToolResult
@@ -44,6 +44,8 @@ class PostgreSQLChatTools:
             from pipeline.postgres_urgent_selection_fixture import open_snapshot
             with self.connect() as pg:
                 pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                if self.chunk_rag is not None:
+                    self.chunk_rag._check(pg)
                 db, uri, _ = open_snapshot(pg, ('transcript_follow', 'transcripts'))
                 try:
                     def connect():
@@ -57,8 +59,11 @@ class PostgreSQLChatTools:
                         ident, _, _ = self.chunk_rag.entity_scope(name, prefer=('company',))
                         return {'id': ident} if ident else None
 
-                    return get_transcripts(args['companies'], args.get('n_per', 1),
-                                           connection_factory=connect, entity_resolver=resolve_entity)
+                    result = get_transcripts(args['companies'], args.get('n_per', 1),
+                                             connection_factory=connect, entity_resolver=resolve_entity)
+                    if self.chunk_rag is not None:
+                        self.chunk_rag._check(pg)
+                    return result
                 finally:
                     db.close()
         if name == 'get_narrative':
@@ -68,6 +73,7 @@ class PostgreSQLChatTools:
                 raise UnsupportedPostgresChatTool('entity resolver is required for narratives')
             with self.connect() as pg:
                 pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                self.chunk_rag._check(pg)
                 def cache_lookup(topic):
                     return cached_narrative(pg, topic).model_dump()
 
@@ -75,7 +81,36 @@ class PostgreSQLChatTools:
                     ident, terms, _ = self.chunk_rag.entity_scope(topic, prefer=('theme', 'sector'))
                     return terms[0] if ident and terms else None
 
-                return get_narrative(args['topic'], cache_lookup=cache_lookup, entity_lookup=entity_lookup)
+                result = get_narrative(args['topic'], cache_lookup=cache_lookup, entity_lookup=entity_lookup)
+                self.chunk_rag._check(pg)
+                return result
+        if name == 'get_worldmodel':
+            import sqlite3
+            from pipeline.chat_tools import get_worldmodel
+            from pipeline.postgres_urgent_selection_fixture import open_snapshot
+            if self.chunk_rag is None:
+                raise UnsupportedPostgresChatTool('entity resolver is required for causal graphs')
+            with self.connect() as pg:
+                pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+                self.chunk_rag._check(pg)
+                db, uri, _ = open_snapshot(pg, ('entities', 'entity_relations', 'narratives'))
+                try:
+                    def connect():
+                        conn = sqlite3.connect(uri, uri=True)
+                        conn.row_factory = sqlite3.Row
+                        return conn
+
+                    def resolve_entity(name, assumptions):
+                        ident, terms, found = self.chunk_rag.entity_scope(name)
+                        assumptions.update(found)
+                        return {'id': ident, 'name': terms[0]} if ident and terms else None
+
+                    result = get_worldmodel(args['entity'], connection_factory=connect,
+                                            entity_resolver=resolve_entity)
+                    self.chunk_rag._check(pg)
+                    return result
+                finally:
+                    db.close()
         if name != 'search_docs':
             raise UnsupportedPostgresChatTool(f'{name} is not implemented in the PG fixture')
         if (args.get('entity') or args.get('channel')) and self.chunk_rag is None:

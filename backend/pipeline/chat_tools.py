@@ -860,12 +860,13 @@ def get_narrative(topic: str, *, cache_lookup=None, entity_lookup=None) -> ToolR
         "stale": r.get("stale")}])
 
 
-def get_worldmodel(entity: str) -> ToolResult:
+def get_worldmodel(entity: str, *, connection_factory=None, entity_resolver=None) -> ToolResult:
     """인과 그래프에서 이 노드의 위치 — 양방향 인과 엣지 + 걸린 내러티브."""
-    conn = get_connection()
+    conn = connection_factory() if connection_factory is not None else get_connection()
     asm: dict = {}
     try:
-        ent = resolve_entity_ex(conn, entity, asm=asm)
+        ent = (entity_resolver(entity, asm) if entity_resolver is not None
+               else resolve_entity_ex(conn, entity, asm=asm))
         if not ent:
             return ToolResult("get_worldmodel", {"entity": entity}, [], asm.get("ambiguous") or f"'{entity}' 엔티티 없음")
         eid = ent["id"]
