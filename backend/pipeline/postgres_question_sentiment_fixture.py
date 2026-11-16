@@ -92,7 +92,7 @@ def extract_sentiment_native(connect, question_id, *, search, run_llm, per_proxy
             "JOIN sub_questions s ON s.id=p.sub_question_id WHERE p.active=1 AND p.modality='sentiment' "
             "AND s.question_id=%s AND NOT EXISTS (SELECT 1 FROM proxy_observations o WHERE o.proxy_id=p.id "
             "AND o.source_type='corpus' AND o.source_id=%s) ORDER BY p.id", (question_id, today)).fetchall()
-    extracted = stale = 0
+    extracted = stale = failed = 0
     docs_query = "SELECT d.row_data->>'title',e.row_data->>'summary' FROM legacy_snapshot_rows d " \
         "LEFT JOIN legacy_snapshot_rows e ON e.table_name='enrichments' AND e.row_data->>'doc_id'=d.row_data->>'id' " \
         "WHERE d.table_name='raw_documents' AND d.row_data->>'id'=ANY(%s) ORDER BY d.row_ordinal,e.row_ordinal"
@@ -118,6 +118,7 @@ def extract_sentiment_native(connect, question_id, *, search, run_llm, per_proxy
             if not isinstance(result, dict):
                 raise ValueError('invalid extraction')
         except Exception:
+            failed += 1
             continue
         direction = result.get('direction') if result.get('direction') in ('up', 'down', 'flat') else None
         with connect() as pg:
@@ -135,4 +136,4 @@ def extract_sentiment_native(connect, question_id, *, search, run_llm, per_proxy
                 "VALUES(%s,'corpus',%s,%s,%s,%s,to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS'))",
                 (proxy_id, today, today, result.get('value_text'), direction))
             extracted += 1
-    return {'extracted': extracted, 'stale': stale}
+    return {'extracted': extracted, 'stale': stale, 'failed': failed}

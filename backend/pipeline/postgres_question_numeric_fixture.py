@@ -105,7 +105,7 @@ def extract_numeric_native(connect, question_id, *, run_llm, limit=40):
         proxies = pg.execute('SELECT p.id,p.label,p.tickers,p.extract_hint FROM proxy_registry p '
             'JOIN sub_questions s ON s.id=p.sub_question_id WHERE p.active=1 AND s.question_id=%s '
             'ORDER BY p.id', (question_id,)).fetchall()
-    scanned = extracted = stale = 0
+    scanned = extracted = stale = failed = 0
     for proxy_id, label, ticker_list, hint in proxies:
         tickers = [t.strip() for t in (ticker_list or '').split(',') if t.strip()]
         if not tickers:
@@ -139,6 +139,7 @@ def extract_numeric_native(connect, question_id, *, run_llm, limit=40):
                 if not isinstance(value, dict):
                     raise ValueError('invalid extraction')
             except Exception:
+                failed += 1
                 continue
             with connect() as pg:
                 _guard(pg)
@@ -162,7 +163,7 @@ def extract_numeric_native(connect, question_id, *, run_llm, limit=40):
                         "VALUES(%s,%s,'transcript',%s,%s,%s,%s,%s,to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS'))",
                         (proxy_id, tid, str(tid), item.get('call_date'), value.get('value_num'), value.get('value_text'), value.get('direction')))
                     extracted += 1
-    return {'extracted': extracted, 'scanned': scanned, 'stale': stale, 'graph_projection_required': True}
+    return {'extracted': extracted, 'scanned': scanned, 'stale': stale, 'failed': failed, 'graph_projection_required': True}
 
 
 def project_numeric_observations(connect):
