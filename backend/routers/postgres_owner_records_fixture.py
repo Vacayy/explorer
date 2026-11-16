@@ -1,11 +1,13 @@
 """Loopback-only owner follows, prediction pins, feed read marks, bookmarks, tracker conditions and
-call-follow pins/additions, knowledge review decisions and trade-item follows on the PG ledger.
+call-follow pins/additions, knowledge review decisions, trade-item follows and narrative-candidate decisions on the PG ledger.
 
 Same request/response shapes and errors as the legacy routes. The follow list
 and feed read marks read the ledger directly; legacy reads (prediction cards)
 see it through the projection's per-connection TEMP shadows, so writes show at once. Never serve beyond the
 private loopback gateway; external exposure needs the owner gate first.
 """
+import json
+
 from fastapi import APIRouter, HTTPException, Path
 from fastapi.routing import APIRoute
 
@@ -17,6 +19,7 @@ from routers.spine_feed import MarkAllReadRequest, MarkReadRequest
 from routers.spine_follows import FollowedEntity, FollowRequest
 from routers.spine_saved import NoteRequest, SavedItem, SaveRequest
 from routers.spine_tracker import Code
+from models.market_today import CandidateAction
 from routers.spine_trade import FollowReq as TradeFollowReq
 from routers.spine_transcript import FollowReq, PinReq
 from models.tracker import TrackerCondition, TrackerConditionIn, TrackerConditionPatch
@@ -150,6 +153,42 @@ def create_router(factory, timeline):
         with connection() as conn:
             records.set_core_pin(conn, ticker, body.pinned)
         return {'ticker': ticker, 'pinned': body.pinned}
+
+    def candidate(tag):
+        import database
+        legacy = database.get_connection()  # the projection, with earlier decisions applied
+        try:
+            row = legacy.execute('SELECT * FROM narrative_candidates WHERE tag=?', (tag,)).fetchone()
+            return dict(row) if row else None
+        finally:
+            legacy.close()
+
+    @router.post('/api/spine/narrative-candidates/{tag}/approve', response_model=CandidateAction)
+    def approve_candidate(tag: str = Path(..., max_length=80)):
+        # Same decision as market_today_links.approve; a merge's re-linking of past sessions happens at the
+        # collector's next Market Today run, which links approved candidates.
+        row = candidate(tag)
+        if not row or row['status'] != 'pending':
+            raise HTTPException(409, '지금 처리할 수 있는 후보가 아닙니다')
+        detail = json.loads(row['detail_json'] or '{}')
+        merge = detail.get('merge_into')
+        mode, aliases = ('merge', detail.get('tags', [])[:2]) if merge else ('new', None)
+        topic = merge['topic'] if merge else (detail.get('tags') or [row['name']])[0]
+        with connection() as conn:
+            records.decide_narrative(conn, tag, 'approved', narrative_topic=topic, mode=mode, alias_tags=aliases)
+        return {'tag': tag, 'status': 'approved', 'mode': mode, 'narrative_topic': topic, 'dismissed_until': None}
+
+    @router.post('/api/spine/narrative-candidates/{tag}/dismiss', response_model=CandidateAction)
+    def dismiss_candidate(tag: str = Path(..., max_length=80)):
+        from datetime import timedelta
+        from pipeline.market_today_links import DISMISS_DAYS, _today_kst
+        row = candidate(tag)
+        if not row or row['status'] not in ('pending', 'watching'):
+            raise HTTPException(409, '지금 처리할 수 있는 후보가 아닙니다')
+        until = (_today_kst() + timedelta(days=DISMISS_DAYS)).isoformat()
+        with connection() as conn:
+            records.decide_narrative(conn, tag, 'dismissed', dismissed_until=until)
+        return {'tag': tag, 'status': 'dismissed', 'mode': None, 'narrative_topic': None, 'dismissed_until': until}
 
     @router.post('/api/spine/trade/follow', status_code=201)
     def upsert_trade_follow(body: TradeFollowReq):

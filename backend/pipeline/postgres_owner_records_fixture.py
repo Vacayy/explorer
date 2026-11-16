@@ -288,3 +288,23 @@ def upsert_trade_follow(conn, hs_code, item_name, group_label, active):
                  'group_label=COALESCE(excluded.group_label,owner_trade_follow.group_label),'
                  "updated_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')",
                  (owner_account(conn), hs_code, item_name, group_label, active))
+
+
+def initialize_narrative_decisions(conn):
+    """Admin approve/dismiss decisions on Market Today narrative candidates; the collector keeps the candidates."""
+    _guard(conn)
+    with conn.transaction():
+        if conn.execute("SELECT to_regclass('owner_narrative_decisions')").fetchone()[0] is not None:
+            raise ValueError('Narrative decisions already initialized')
+        conn.execute("CREATE TABLE owner_narrative_decisions (tag TEXT PRIMARY KEY,status TEXT NOT NULL CHECK(status IN ('approved','dismissed')),"
+                     'narrative_topic TEXT,mode TEXT,alias_tags JSONB,dismissed_until TEXT,'
+                     "decided_at TEXT NOT NULL DEFAULT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'))")
+
+
+def decide_narrative(conn, tag, status, *, narrative_topic=None, mode=None, alias_tags=None, dismissed_until=None):
+    from psycopg.types.json import Jsonb
+    conn.execute('INSERT INTO owner_narrative_decisions(tag,status,narrative_topic,mode,alias_tags,dismissed_until) '
+                 'VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (tag) DO UPDATE SET status=excluded.status,'
+                 'narrative_topic=excluded.narrative_topic,mode=excluded.mode,alias_tags=excluded.alias_tags,'
+                 "dismissed_until=excluded.dismissed_until,decided_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')",
+                 (tag, status, narrative_topic, mode, Jsonb(alias_tags) if alias_tags is not None else None, dismissed_until))

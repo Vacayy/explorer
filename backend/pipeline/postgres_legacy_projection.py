@@ -36,11 +36,11 @@ VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'questio
              'owner_follows', 'owner_kalshi_pins', 'owner_channel_reads',
              'owner_saved_items', 'owner_tracker_conditions', 'owner_legacy_rows',
              'owner_transcript_pins', 'owner_transcript_additions', 'owner_knowledge_reviews', 'owner_trade_follow',
-             'collected_row_revisions')
+             'collected_row_revisions', 'owner_narrative_decisions')
 # Small owner-ledger tables re-derived per connection in TEMP shadows, so writes
 # show at once; the file keeps its own (possibly older) derived copy underneath.
 SHADOWED = ('portfolio_transactions', 'stock_group_members', 'stock_groups', 'watch_rules', 'watch_evaluations', 'portfolio_principles', 'follows', 'kalshi_pins', 'channel_reads',
-            'saved_items', 'tracker_conditions', 'transcript_follow', 'knowledge', 'trade_follow', *NATIVE)
+            'saved_items', 'tracker_conditions', 'transcript_follow', 'knowledge', 'trade_follow', 'narrative_candidates', *NATIVE)
 CHECK_SECONDS = 10
 log = logging.getLogger(__name__)
 
@@ -418,6 +418,18 @@ def _derive_owner_records(root, pg):
         # Operator decisions win over whatever the collector judged for the same knowledge.
         root.executemany('UPDATE knowledge SET review_status=?,epistemic_status=COALESCE(?,epistemic_status) WHERE id=?',
                          pg.execute('SELECT review_status,epistemic_status,knowledge_id FROM owner_knowledge_reviews').fetchall())
+    if pg.execute("SELECT to_regclass('owner_narrative_decisions')").fetchone()[0] is not None:
+        # Admin decisions over the collected candidates; a dismissal lapses after its date (legacy: 14 days).
+        from pipeline.market_today_links import _today_kst
+        today = _today_kst().isoformat()
+        for tag, status, topic, mode, aliases, until in pg.execute(
+                'SELECT tag,status,narrative_topic,mode,alias_tags,dismissed_until FROM owner_narrative_decisions'):
+            if status == 'dismissed' and (until or '') < today:
+                continue
+            patch = {key: value for key, value in (('mode', mode), ('alias_tags', aliases)) if value is not None}
+            root.execute("UPDATE narrative_candidates SET status=?,narrative_topic=?,dismissed_until=?,"
+                         "detail_json=json_patch(COALESCE(detail_json,'{}'),?) WHERE tag=?",
+                         (status, topic, until, json.dumps(patch, ensure_ascii=False), tag))
     if pg.execute("SELECT to_regclass('owner_trade_follow')").fetchone()[0] is not None:
         # The owner's on/off wins (a collector re-seed would switch items back on); names stay the collector's.
         for hs, name, group, active, updated in pg.execute(
