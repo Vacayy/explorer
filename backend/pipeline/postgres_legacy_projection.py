@@ -34,7 +34,8 @@ VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'questio
              'fixture_portfolio_transactions', 'fixture_portfolio_members', 'fixture_portfolio_principles',
              'owner_follows', 'owner_kalshi_pins', 'owner_channel_reads',
              'owner_saved_items', 'owner_tracker_conditions', 'owner_legacy_rows',
-             'owner_transcript_pins', 'owner_transcript_additions', 'owner_knowledge_reviews', 'owner_trade_follow')
+             'owner_transcript_pins', 'owner_transcript_additions', 'owner_knowledge_reviews', 'owner_trade_follow',
+             'collected_row_revisions')
 # Small owner-ledger tables re-derived per connection in TEMP shadows, so writes
 # show at once; the file keeps its own (possibly older) derived copy underneath.
 SHADOWED = ('portfolio_transactions', 'stock_group_members', 'stock_groups', 'watch_rules', 'watch_evaluations', 'portfolio_principles', 'follows', 'kalshi_pins', 'channel_reads',

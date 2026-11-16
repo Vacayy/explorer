@@ -80,7 +80,8 @@ def initialize(conn):
                      'run_id TEXT NOT NULL,document_id BIGINT NOT NULL,before_state JSONB NOT NULL,collected_state JSONB NOT NULL,'
                      "candidate_state JSONB NOT NULL,status TEXT NOT NULL DEFAULT 'pending' "
                      "CHECK(status IN ('pending','merged','needs_review','unsupported')),"
-                     'fields JSONB,reason TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),resolved_at TIMESTAMPTZ)')
+                     "fields JSONB,reason TEXT,target_table TEXT NOT NULL DEFAULT 'raw_documents',"
+                     'created_at TIMESTAMPTZ NOT NULL DEFAULT now(),resolved_at TIMESTAMPTZ)')
 
 
 def _sqlite_state(db, ident):
@@ -242,9 +243,22 @@ def reprocess_conflicts(conn):
     merged, review, waiting = [], [], []
     with conn.transaction():
         conn.execute('SELECT pg_advisory_xact_lock(%s)', (GRAPH_LOCK,))
-        for cid, ident, before, collected in conn.execute(
-                "SELECT id,document_id,before_state,collected_state FROM collected_change_conflicts WHERE status='pending' "
-                'ORDER BY id FOR UPDATE').fetchall():
+        for cid, ident, table, before, collected in conn.execute(
+                "SELECT id,document_id,target_table,before_state,collected_state FROM collected_change_conflicts "
+                "WHERE status='pending' ORDER BY id FOR UPDATE").fetchall():
+            if table != 'raw_documents':  # one graph row: field-wise merge onto its current version
+                fields = []
+                ordinal, current = _pg_graph_row(conn, table, ident)
+                row = _merge_rows(before, collected, current, table, fields)
+                if fields:
+                    conn.execute("UPDATE collected_change_conflicts SET status='needs_review',fields=%s,resolved_at=now() "
+                                 'WHERE id=%s', (Jsonb(fields), cid))
+                    review.append((cid, ident, fields))
+                    continue
+                _apply_graph(conn, table, ident, ordinal, row)
+                conn.execute("UPDATE collected_change_conflicts SET status='merged',resolved_at=now() WHERE id=%s", (cid,))
+                merged.append((cid, ident))
+                continue
             ordinal, reason = _base_ordinal(conn, ident)
             if reason:
                 conn.execute('UPDATE collected_change_conflicts SET reason=%s WHERE id=%s', (reason, cid))
@@ -266,19 +280,131 @@ def reprocess_conflicts(conn):
     return {'merged': merged, 'needs_review': review, 'waiting': waiting}
 
 
-def publish_run(conn, work, origin, before, *, document_floor, entity_floor, keyword_floor, relation_floor, run_id):
-    """One collection run in one transaction: new rows first (so new entities exist), then revisions."""
+def publish_run(conn, work, origin, before, *, document_floor, entity_floor, keyword_floor, relation_floor, run_id,
+                graph=None):
+    """One collection run in one transaction: new rows first (so new entities exist), then revisions.
+
+    `graph` is `capture_graph(work)` taken with `before`; without it existing graph rows are not compared.
+    """
     from pipeline.postgres_collected_documents_fixture import publish
     _require_oneshot()
     changed, removed = changed_documents(work, before, document_floor)
     with conn.transaction():
         added = publish(conn, work, document_floor=document_floor, entity_floor=entity_floor,
                         keyword_floor=keyword_floor, relation_floor=relation_floor)
+        graph_result = publish_graph_revisions(conn, work, origin, *graph, run_id=run_id) if graph else None
         revised = publish_revisions(conn, work, origin, [*changed, *removed], run_id=run_id)
-    return {'added': [doc['id'] for doc in added], 'revised': revised['published'], 'kept': revised['kept']}
+    return {'added': [doc['id'] for doc in added], 'revised': revised['published'], 'kept': revised['kept'],
+            'graph': graph_result}
 
 
 def unprocessed(conn):
     """What collector changes are still not in the candidate, by status."""
-    return conn.execute("SELECT status,count(*),array_agg(document_id ORDER BY id) FROM collected_change_conflicts "
-                        "WHERE status<>'merged' GROUP BY status ORDER BY status").fetchall()
+    return conn.execute("SELECT target_table,status,count(*),array_agg(document_id ORDER BY id) FROM collected_change_conflicts "
+                        "WHERE status<>'merged' GROUP BY 1,2 ORDER BY 1,2").fetchall()
+
+
+# Graph rows the narrative/causal/curation jobs rewrite in place. Entities and keywords are
+# replaced through `collected_row_revisions`; relations and edge evidence already live in the
+# candidate's writable graph ledger (rows view + source table must stay identical).
+GRAPH = ('entities', 'entity_keywords', 'entity_relations', 'narrative_edge_evidence')
+LEDGER = {'entity_relations': 'question_graph_overlay_relations', 'narrative_edge_evidence': 'question_graph_overlay_evidence'}
+
+
+def initialize_graph_revisions(conn):
+    """Let collected versions replace (or remove) visible entity and keyword rows; record graph conflicts too."""
+    from pipeline.postgres_legacy_projection import ensure_projection_triggers
+    _guard(conn)
+    with conn.transaction():
+        if conn.execute("SELECT to_regclass('collected_row_revisions')").fetchone()[0] is not None:
+            raise ValueError('Graph revisions already initialized')
+        conn.execute("CREATE TABLE collected_row_revisions (table_name TEXT NOT NULL CHECK(table_name IN ('entities','entity_keywords')),"
+                     'row_ordinal BIGINT NOT NULL,row_data JSONB,PRIMARY KEY(table_name,row_ordinal))')
+        definition = conn.execute("SELECT pg_get_viewdef(to_regclass('legacy_snapshot_rows'),true)").fetchone()[0]
+        conn.execute(f'''CREATE OR REPLACE VIEW legacy_snapshot_rows AS
+            SELECT v.table_name,v.row_ordinal,v.row_data FROM ({definition.rstrip().rstrip(";")}) v
+            WHERE NOT EXISTS (SELECT 1 FROM collected_row_revisions r WHERE r.table_name=v.table_name AND r.row_ordinal=v.row_ordinal)
+            UNION ALL SELECT table_name,row_ordinal,row_data FROM collected_row_revisions WHERE row_data IS NOT NULL''')
+        conn.execute("ALTER TABLE collected_change_conflicts ADD COLUMN IF NOT EXISTS target_table TEXT NOT NULL DEFAULT 'raw_documents'")
+    ensure_projection_triggers(conn)
+
+
+def _graph_rows(db, table, ids=None, *, floor=None):
+    sql = f'SELECT * FROM {table}' + (' WHERE id <= ?' if floor is not None else ' WHERE id = ?')
+    out = {}
+    for value in ([floor] if floor is not None else ids):
+        cursor = db.execute(sql, (value,))
+        columns = [c[0] for c in cursor.description]
+        out.update({row[0]: dict(zip(columns, row)) for row in cursor})
+    return out
+
+
+def capture_graph(work):
+    """Per graph table: id -> row hash of the work copy's rows before the collector runs."""
+    _require_oneshot()
+    floors = {table: work.execute(f'SELECT COALESCE(max(id),0) FROM {table}').fetchone()[0] for table in GRAPH}
+    return {table: {ident: _digest(row) for ident, row in _graph_rows(work, table, floor=floors[table]).items()}
+            for table in GRAPH}, floors
+
+
+def _pg_graph_row(conn, table, ident):
+    rows = conn.execute("SELECT row_ordinal,row_data FROM legacy_snapshot_rows WHERE table_name=%s AND row_data->>'id'=%s",
+                        (table, str(ident))).fetchall()
+    if len(rows) > 1:
+        raise ValueError(f'Duplicate visible {table} row {ident}')
+    return rows[0] if rows else (None, None)
+
+
+def _apply_graph(conn, table, ident, ordinal, row):
+    """Write one graph row's new version (None removes it)."""
+    if table in LEDGER:
+        if row is None:
+            conn.execute('DELETE FROM question_graph_overlay_rows WHERE table_name=%s AND row_data->>\'id\'=%s', (table, str(ident)))
+            conn.execute(f'DELETE FROM {LEDGER[table]} WHERE id=%s', (ident,))
+        elif ordinal is None:  # new in this run
+            position = conn.execute('SELECT COALESCE(max(row_ordinal),-1)+1 FROM question_graph_overlay_rows WHERE table_name=%s',
+                                    (table,)).fetchone()[0]
+            conn.execute('INSERT INTO question_graph_overlay_rows VALUES (%s,%s,%s)', (table, position, Jsonb(row)))
+            conn.execute(f'INSERT INTO {LEDGER[table]}(id,source_row) VALUES (%s,%s)', (ident, Jsonb(row)))
+        else:
+            conn.execute("UPDATE question_graph_overlay_rows SET row_data=%s WHERE table_name=%s AND row_data->>'id'=%s",
+                         (Jsonb(row), table, str(ident)))
+            conn.execute(f'UPDATE {LEDGER[table]} SET source_row=%s WHERE id=%s', (Jsonb(row), ident))
+    else:
+        conn.execute('INSERT INTO collected_row_revisions VALUES (%s,%s,%s) ON CONFLICT (table_name,row_ordinal) '
+                     'DO UPDATE SET row_data=excluded.row_data', (table, ordinal, Jsonb(row) if row is not None else None))
+
+
+def publish_graph_revisions(conn, work, origin, before, floors, *, run_id):
+    """Apply changed/removed existing graph rows (and new edge evidence) unless the candidate changed them meanwhile."""
+    _require_oneshot()
+    _guard(conn)
+    applied, kept, added = [], [], []
+    with conn.transaction():
+        conn.execute('SELECT pg_advisory_xact_lock(%s)', (GRAPH_LOCK,))
+        for table in GRAPH:
+            after = {ident: _digest(row) for ident, row in _graph_rows(work, table, floor=floors[table]).items()}
+            changed = sorted(ident for ident, digest in after.items() if before[table].get(ident) not in (None, digest))
+            removed = sorted(set(before[table]) - set(after))
+            for ident in [*changed, *removed]:
+                start = _graph_rows(origin, table, [ident]).get(ident)
+                collected = _graph_rows(work, table, [ident]).get(ident)
+                ordinal, current = _pg_graph_row(conn, table, ident)
+                if current != start:
+                    conn.execute('INSERT INTO collected_change_conflicts(run_id,document_id,target_table,before_state,collected_state,'
+                                 "candidate_state,status,reason) VALUES (%s,%s,%s,%s,%s,%s,'pending','changed in the candidate meanwhile')",
+                                 (run_id, ident, table, Jsonb(start), Jsonb(collected), Jsonb(current)))
+                    kept.append((table, ident))
+                    continue
+                _apply_graph(conn, table, ident, ordinal, collected)
+                applied.append((table, ident))
+        # New edge evidence (the publish of new rows covers entities, keywords and relations).
+        cursor = work.execute('SELECT * FROM narrative_edge_evidence WHERE id > ? ORDER BY id', (floors['narrative_edge_evidence'],))
+        columns = [c[0] for c in cursor.description]
+        for values in cursor.fetchall():
+            row = dict(zip(columns, values))
+            if _pg_graph_row(conn, 'narrative_edge_evidence', row['id'])[1] is not None:
+                raise RuntimeError('narrative_edge_evidence IDs were taken while collecting; nothing published')
+            _apply_graph(conn, 'narrative_edge_evidence', row['id'], None, row)
+            added.append(row['id'])
+    return {'applied': applied, 'kept': kept, 'evidence_added': added}
