@@ -8,24 +8,24 @@ _generation_lock = threading.Lock()
 
 
 def generate_answer(store, tools, conversation_id, question, *, owner_chat_id=None,
-                    quote=None, page_context=None):
+                    quote=None, page_context=None, study_context=None):
     """Queue one local generation per worker to bound model memory."""
     stream = chat._open(conversation_id)
     stream.set_status('앞선 답변 생성 대기 중')
     with _generation_lock:
         return _generate_answer(store, tools, conversation_id, question, stream=stream,
-                                owner_chat_id=owner_chat_id, quote=quote, page_context=page_context)
+                                owner_chat_id=owner_chat_id, quote=quote, page_context=page_context, study_context=study_context)
 
 
 def _generate_answer(store, tools, conversation_id, question, *, stream, owner_chat_id=None,
-                     quote=None, page_context=None):
+                     quote=None, page_context=None, study_context=None):
     """Complete a previously stored question, keeping conversation data in PG."""
     runtime = PostgreSQLChatRuntime(store, conversation_id, tools, owner_chat_id=owner_chat_id)
     try:
         context = store.load_context(conversation_id, question, owner_chat_id=owner_chat_id)
         turn = chat.run_turn(question, conversation_id=conversation_id, ctx=context, runtime=runtime,
                              on_text=stream.push, on_status=stream.set_status,
-                             quote=quote, page_context=page_context)
+                             quote=quote, page_context=page_context, study_context=study_context)
         answer = turn.answer or chat._no_evidence_text(turn)
         store.append_assistant(conversation_id, answer, owner_chat_id=owner_chat_id,
                                citations=turn.citations or None, gaps=turn.gaps or None,

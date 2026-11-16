@@ -660,8 +660,6 @@ def run_turn(question: str, *, conversation_id: int | None = None, ctx: dict | N
     from pipeline.chat_memory import load_context
     if runtime is not None and ctx is None:
         raise ValueError('an injected runtime requires an explicit conversation context')
-    if runtime is not None and study_context:
-        raise NotImplementedError('study context is not implemented for an injected runtime')
     status = on_status or (lambda _: None)
     turn = Turn(question=question.strip(), conversation_id=conversation_id, quote=quote or None,
                 page_context=page_context or None, runtime=runtime,

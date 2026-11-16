@@ -3,6 +3,8 @@
 The supplied tool backend must implement the original chat tool contracts;
 there is intentionally no fallback to SQLite. This is not a deployed API.
 """
+import json
+
 from pipeline import llm
 from pipeline.expectation_reading import _attachment_excerpt
 
@@ -40,6 +42,29 @@ class PostgreSQLChatRuntime:
 
     def gather_attached_refs(self, refs):
         return self.tools.gather_attached_refs(refs)
+
+    def base_study_context(self, context):
+        if not context.get('context_ref'):
+            return context
+        project = context.get('project_id')
+        table, key, owner = ('study_project_turns', 'project_id', project) if project else ('study_turns', 'study_id', context['study_id'])
+        with self.store.connect() as c:
+            from pipeline.postgres_graph_fixture import _guard
+            _guard(c)
+            row = c.execute(f'SELECT context_json FROM {table} WHERE id=%s AND {key}=%s',
+                            (context['context_ref'], owner)).fetchone()
+            return json.loads(row[0]) if row else context
+
+    def study_document_ids(self, ids):
+        if not ids:
+            return set()
+        with self.store.connect() as c:
+            from pipeline.postgres_graph_fixture import _guard
+            _guard(c)
+            return {row[0] for row in c.execute('SELECT document_id FROM study_sessions WHERE id=ANY(%s)', (ids,)) if row[0] is not None}
+
+    def study_search(self, query, *, k):
+        return self.run_tool({'name': 'search_docs', 'args': {'query': query, 'k': k}})
 
     def run_tool(self, call):
         result = self.tools.run_tool(call)

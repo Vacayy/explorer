@@ -61,13 +61,13 @@ def focus(base):
     return '\n'.join(titles+notes+quotes)[:2200]
 
 
-def plan(question, background, recent, mode):
+def plan(question, background, recent, mode, *, run_llm=None):
     related=bool(re.search(r'관련.*(더|다른|자료|소스)|다른.*(자료|소스|글|영상)|읽을.*추천',question))
     verify=bool(re.search(r'웹|검색해서.*확인|팩트.?체크|진위|사실.*확인|검증해',question))
     fallback='web' if mode=='web' or (mode=='auto' and verify) else 'library' if mode=='library' or related else 'coach'
     if mode=='off':return {'intent':'coach','queries':[]}
     try:
-        result=llm.run(json.dumps({'question':question,'study_focus':background,'recent_dialogue':recent,'mode':mode},ensure_ascii=False), task='study.plan', system='''너는 스터디 코파일럿의 읽기 전용 검색 계획자다. JSON만 출력한다:
+        result=(run_llm or llm.run)(json.dumps({'question':question,'study_focus':background,'recent_dialogue':recent,'mode':mode},ensure_ascii=False), task='study.plan', system='''너는 스터디 코파일럿의 읽기 전용 검색 계획자다. JSON만 출력한다:
 {"intent":"coach|library|web","queries":["구체적인 검색어 최대 3개"]}.
 현재 질문과 대화를 연결해 지시어를 해석한다. '관련해서 다룬 내용이 더 있나?'는 같은 문서의 추가 설명이 아니라 다른 출처 탐색(library)이다.
 코멘트의 개념 설명이나 가정 점검에 읽을 자료가 도움되면 library. 최신 사실·진위 확인에는 web.
@@ -90,11 +90,11 @@ def web_fetch_failed(text):
     return bool(re.match(r'\s*(?:The server returned HTTP [45]\d\d|Error fetching|Failed to fetch|Unable to fetch|Access denied)', text, re.I))
 
 
-def web_evidence(query):
+def web_evidence(query, *, run_llm=None):
     if llm.llm_engine()!='claude-code':
         return [],'현재 모델 연결에서는 웹 검색을 지원하지 않습니다.'
     try:
-        result=llm.run('WebSearch를 한 번 사용해 다음 공개 주제를 검색하세요. 공식 문서·기업 발표·논문 같은 1차 출처를 우선하세요. 검색 결과 중 가장 직접 관련된 1~2개 URL을 WebFetch로 열어 질문 관련 근거와 발행일을 확인하세요. 각 도구 결과만 확보하고 짧게 종료하세요. 검색어: '+query, task='study.web')
+        result=(run_llm or llm.run)('WebSearch를 한 번 사용해 다음 공개 주제를 검색하세요. 공식 문서·기업 발표·논문 같은 1차 출처를 우선하세요. 검색 결과 중 가장 직접 관련된 1~2개 URL을 WebFetch로 열어 질문 관련 근거와 발행일을 확인하세요. 각 도구 결과만 확보하고 짧게 종료하세요. 검색어: '+query, task='study.web')
         links={};search_text=[]
         for entry in result.tool_results:
             if entry.get('name')!='WebSearch' or entry.get('is_error'):continue
@@ -129,10 +129,13 @@ def web_evidence(query):
 
 
 def augment(turn, context, status):
+    runtime = turn.runtime
+    if context.get('study_intent') and runtime is not None:
+        raise NotImplementedError('study annotation actions are not implemented for an injected runtime')
     if context.get('study_intent'):
         from pipeline.study_intents import augment as augment_intent
         return augment_intent(turn, context, status)
-    base=base_context(context)
+    base=runtime.base_study_context(context) if runtime is not None else base_context(context)
     background=focus(base)
     recent='\n'.join(f"{m.get('role')}: {m.get('content','')[:1200]}" for m in turn.ctx.get('recent',turn.ctx.get('messages',[]))[-4:])
     research=context.get('research_mode','off')
@@ -144,7 +147,7 @@ def augment(turn, context, status):
     if research=='off':decision={'intent':'coach','queries':[]}
     else:
         status('질문에 맞는 학습 방향을 정하는 중')
-        decision=plan(turn.question,background,recent,research)
+        decision=plan(turn.question,background,recent,research,run_llm=runtime.run_llm) if runtime is not None else plan(turn.question,background,recent,research)
     context['research']={**decision,'results':[]}
     requested_related=bool(re.search(r'관련.*(더|다른|자료|소스)|다른.*(자료|소스|글|영상)|읽을.*추천',turn.question))
     turn.route['study_task']='library' if decision['intent']=='library' and (requested_related or research=='library') else 'web' if decision['intent']=='web' else 'coach'
@@ -153,18 +156,22 @@ def augment(turn, context, status):
         from pipeline.chat_tools import search_docs
         excluded=set()
         ids=[s['study_id'] for s in base.get('sources',[])] or ([base['study_id']] if base.get('study_id') else [])
-        c=get_connection()
-        try:
-            for sid in ids:
-                r=c.execute('SELECT document_id FROM study_sessions WHERE id=?',(sid,)).fetchone()
-                if r:excluded.add(r['document_id'])
-        finally:c.close()
+        if runtime is not None:
+            excluded.update(runtime.study_document_ids(ids))
+        else:
+            c=get_connection()
+            try:
+                for sid in ids:
+                    r=c.execute('SELECT document_id FROM study_sessions WHERE id=?',(sid,)).fetchone()
+                    if r:excluded.add(r['document_id'])
+            finally:c.close()
         for query in decision['queries'][:(1 if decision['intent']=='web' else 3)]:
             status('웹에서 근거를 확인하는 중' if decision['intent']=='web' else '관련 수집 자료를 찾는 중')
             try:
-                if decision['intent']=='web':items,note=web_evidence(query)
+                if decision['intent']=='web':
+                    items,note=web_evidence(query,run_llm=runtime.run_llm) if runtime is not None else web_evidence(query)
                 else:
-                    result=search_docs(query,k=5)
+                    result=runtime.study_search(query,k=5) if runtime is not None else search_docs(query,k=5)
                     items=[e for e in result.items if e.get('doc_id') not in excluded];note=result.note
                 fresh=[]
                 for item in items:
