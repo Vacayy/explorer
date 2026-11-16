@@ -24,3 +24,7 @@ ag-ui-protocol==0.1.22
 # anthropic  # LLM enrich 활성화 시 주석 해제 (ANTHROPIC_API_KEY 확보 후)
 
 psycopg[binary]==3.2.13  # 격리된 PostgreSQL 읽기 어댑터
+
+cryptography==50.0.2  # authenticated opaque publication-search cursors
+
+google-auth[requests]==2.62.2  # Google OIDC ID token signature/audience/issuer verification
