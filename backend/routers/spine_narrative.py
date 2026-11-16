@@ -1,7 +1,7 @@
 """주제 내러티브 API — theme_surge 고도화 (pipeline/narrative). 2단 게으른 패턴."""
 import json
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from database import get_connection
@@ -127,11 +127,8 @@ def mega_list():
 
 
 @router.get("/list", response_model=NarrativeList)
-def list_narratives(request: Request):
+def list_narratives():
     """생성된 내러티브 모음 — 급증 주제 먼저, 나머지 최신순 (LLM 호출 없음)."""
-    if getattr(request.state, "public_access", False):
-        from security import public_narratives
-        return public_narratives.index()
     from pipeline.narrative import list_narratives as _list
     conn = get_connection()
     items = _list(conn)
@@ -140,11 +137,8 @@ def list_narratives(request: Request):
 
 
 @router.get("", response_model=Narrative)
-def get_narrative(request: Request, topic: str):
+def get_narrative(topic: str):
     """캐시된 내러티브 + stale 플래그 — LLM 호출 없음."""
-    if getattr(request.state, "public_access", False):
-        from security import public_narratives
-        return public_narratives.stored_body(topic)
     from pipeline.narrative import cached_meta
     conn = get_connection()
     r = cached_meta(conn, topic)
@@ -248,11 +242,8 @@ def scenario_compute(topic: str, refresh: bool = False):
 
 
 @router.get("/{narrative_id}/causal", response_model=CausalGraph)
-def get_causal(request: Request, narrative_id: int):
+def get_causal(narrative_id: int):
     """한 내러티브의 인과 서브그래프 (구조 뷰용) — LLM 없음."""
-    if getattr(request.state, "public_access", False):
-        from security import public_narratives
-        return public_narratives.graph(narrative_id)
     from pipeline.narrative import causal_subgraph
     conn = get_connection()
     g = causal_subgraph(conn, narrative_id)
@@ -298,11 +289,8 @@ def get_grounding(narrative_id: int):
 
 
 @router.get("/{narrative_id}/related", response_model=Related)
-def get_related(narrative_id: int, request: Request):
+def get_related(narrative_id: int):
     """인과 노드를 공유하는 다른 내러티브(주제별 최신 버전) — 공유 수 랭킹, LLM 없음 (Phase 2 §2-4)."""
-    if getattr(request.state, "public_access", False):
-        from security import public_narratives
-        return Related(**public_narratives.related(narrative_id))
     from pipeline.narrative import related_narratives
     conn = get_connection()
     r = related_narratives(conn, narrative_id)
@@ -311,12 +299,9 @@ def get_related(narrative_id: int, request: Request):
 
 
 @router.get("/{narrative_id}/diff", response_model=VersionDiff)
-def get_diff(request: Request, narrative_id: int, summarize: bool = True):
+def get_diff(narrative_id: int, summarize: bool = True):
     """직전 버전 대비 인과 그래프 변화 — added/removed 노드·엣지(LLM 없음) + 게으른 haiku
     한 줄 요약(캐시) (Phase 2 §2-3). summarize=false면 저장된 요약만 쓰고 새로 만들지 않는다(내러티브 상세 오른쪽 칸)."""
-    if getattr(request.state, "public_access", False):
-        from security import public_narratives
-        return public_narratives.diff(narrative_id)
     from pipeline.narrative import narrative_diff
     conn = get_connection()
     r = narrative_diff(conn, narrative_id, summarize=summarize)
@@ -325,11 +310,8 @@ def get_diff(request: Request, narrative_id: int, summarize: bool = True):
 
 
 @router.get("/versions", response_model=list[NarrativeVersion])
-def versions(request: Request, topic: str):
+def versions(topic: str):
     """주제의 내러티브 버전 목록 (드리프트 추적 기초) — 최신순."""
-    if getattr(request.state, "public_access", False):
-        from security import public_narratives
-        return public_narratives.versions(topic)
     conn = get_connection()
     rows = conn.execute(
         "SELECT id, version, title, category, created_at, superseded_at FROM narratives "
@@ -339,12 +321,9 @@ def versions(request: Request, topic: str):
 
 
 @router.get("/version", response_model=Narrative)
-def get_version(request: Request, id: int):
+def get_version(id: int):
     """특정 버전 본문 by id — 히스토리 타임라인 도트 클릭 시 열람 (D-060). LLM 없음.
     supersede가 이전 버전 body를 지우지 않으므로 모든 버전 본문이 보존된다."""
-    if getattr(request.state, "public_access", False):
-        from security import public_narratives
-        return public_narratives.stored_body(version_id=id)
     conn = get_connection()
     r = conn.execute(
         "SELECT id, title, body, category, version, created_at FROM narratives WHERE id=?",

@@ -6,26 +6,18 @@
 import threading
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
-from typing import Any, Literal
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from typing import Any
 
 from pydantic import BaseModel
 
 from database import get_connection
 from pipeline.transcript import cy_label
 from models.earnings_chain import ChainDetail, UpcomingChain
-from models.earnings_season import SeasonOverview, SectorDetail
+from models.earnings_season import SeasonOverview
 from models.kr_season import KrSeasonOverview
 
 router = APIRouter(prefix="/api/spine/transcript", tags=["spine"])
-
-
-def _public_read(action):
-    from routers.public_documents import perform
-    try:
-        return perform(action)
-    except LookupError:
-        raise HTTPException(404, "Public transcript data unavailable") from None
 
 
 class LatestCall(BaseModel):
@@ -73,10 +65,6 @@ class Detail(BaseModel):
     call_date: str | None
     digest: str | None
     body: str
-    content_status: Literal["published", "source_only"] = "published"
-    source_url: str | None = None
-    source_name: str | None = None
-    source_link_kind: Literal["provider", "article"] | None = None
     proxies: list = []   # stage 4에서 채움 (proxy_observations 델타)
     nodes: list = []          # 이 콜이 언급한 엔티티(노드) — 온톨로지 딥링크 (D-089)
     causal_edges: list = []   # 이 콜에서 추출된 인과 엣지 (source_doc_id, D-089)
@@ -90,10 +78,7 @@ class FollowReq(BaseModel):
 
 
 @router.get("/follow", response_model=list[FollowRow])
-def list_follow(request: Request):
-    if getattr(request.state, "public_access", False):
-        from security.public_us_season import stored_companies
-        return _public_read(stored_companies)
+def list_follow():
     conn = get_connection()
     try:
         return list_follow_from_connection(conn)
@@ -274,47 +259,29 @@ def compute_reaction(transcript_id: int, force: bool = False):
 
 
 @router.get("/season", response_model=SeasonOverview)
-def season(request: Request, season: str | None = Query(None, pattern=r"^[0-9]{4}Q[1-4]$")):
+def season(season: str | None = None):
     """실적 시즌 화면 — 요약 숫자·오늘 바뀐 것·섹터 목록·엇갈린 반응·곧 발표·기대 채점·핵심 종목(기준 포함). LLM 0."""
-    if getattr(request.state, "public_access", False):
-        from security.public_us_season import stored_season
-        from routers.public_documents import perform
-        return perform(lambda: stored_season(season))
     from pipeline.earnings_chain import season_overview
     return season_overview(season)
 
 
 @router.get("/season/kr", response_model=KrSeasonOverview)
-def season_kr(request: Request, season: str | None = Query(None, pattern=r"^\d{4}Q[1-4]$")):
+def season_kr(season: str | None = Query(None, pattern=r"^\d{4}Q[1-4]$")):
     """국내 실적 시즌 — 잠정실적 공시·DB 시세만으로 발표·첫 반응·5일·업종 대비·업종별·아직 발표 전(ia-redesign §4.22). LLM 0·외부 호출 0."""
-    if getattr(request.state, "public_access", False):
-        from security.public_kr_season import stored_season
-        from routers.public_documents import perform
-        return perform(lambda: stored_season(season))
     from pipeline.kr_season import overview
     return overview(season)
 
 
-@router.get("/season/sector/{key}", response_model=SectorDetail, response_model_exclude_unset=True)
-def season_sector(request: Request, key: str, season: str | None = Query(None, pattern=r"^[0-9]{4}Q[1-4]$")):
+@router.get("/season/sector/{key}")
+def season_sector(key: str, season: str | None = None):
     """섹터 상세 — 발표일 정렬 반응 경로·종목별·섹터 요약 이력·지난 시즌 비교. LLM 0."""
-    if getattr(request.state, "public_access", False):
-        from security.public_us_season import stored_sector
-        from routers.public_documents import perform
-        try:
-            return perform(lambda: stored_sector(key, season))
-        except LookupError:
-            raise HTTPException(404, "Public sector unavailable") from None
     from pipeline.earnings_chain import sector_detail
     return sector_detail(key, season)
 
 
 @router.get("/chain/upcoming/{ticker}", response_model=UpcomingChain)
-def chain_upcoming(request: Request, ticker: str):
+def chain_upcoming(ticker: str):
     """콜 상세의 다가오는 분기 — 발표 전 기대·오늘까지의 주가·최근 30일 목표가 변경·분기별 기록. 저장된 행만 읽는다(LLM 0). 없으면 404."""
-    if getattr(request.state, "public_access", False):
-        from security.public_us_season import stored_upcoming
-        return _public_read(lambda: stored_upcoming(ticker))
     from pipeline.earnings_chain import upcoming_detail
     try:
         return upcoming_detail(ticker.upper())
@@ -323,11 +290,8 @@ def chain_upcoming(request: Request, ticker: str):
 
 
 @router.get("/chain/{transcript_id}", response_model=ChainDetail)
-def chain(request: Request, transcript_id: int):
+def chain(transcript_id: int):
     """콜 상세의 체인 — 발표 전 기대·반응 구조화·주가/거래량/언급량 시계열·분기별 기록. LLM 0."""
-    if getattr(request.state, "public_access", False):
-        from security.public_us_season import stored_chain
-        return _public_read(lambda: stored_chain(transcript_id))
     from pipeline.earnings_chain import chain_detail
     try:
         return chain_detail(transcript_id)
@@ -377,10 +341,7 @@ def refresh_earnings_calendar():
 
 
 @router.get("/company/{ticker}", response_model=list[QuarterRow])
-def list_quarters(request: Request, ticker: str):
-    if getattr(request.state, "public_access", False):
-        from security.public_us_season import stored_quarters
-        return _public_read(lambda: stored_quarters(ticker))
+def list_quarters(ticker: str):
     conn = get_connection()
     rows = conn.execute(
         "SELECT id, fiscal_year, fiscal_period, call_date, digest FROM transcripts "
@@ -425,11 +386,8 @@ def _build_detail(conn, row) -> "Detail":
 
 
 @router.get("/detail/{transcript_id}", response_model=Detail)
-def detail(request: Request, transcript_id: int):
+def detail(transcript_id: int):
     """빠른 조회 — 원문+메타+저장된 정리(없으면 null). 정리 생성은 POST /digest로 분리(수 분 소요)."""
-    if getattr(request.state, "public_access", False):
-        from security.public_us_season import stored_detail
-        return _public_read(lambda: stored_detail(transcript_id))
     conn = get_connection()
     row = _detail_row(conn, transcript_id)
     if not row:
@@ -558,12 +516,8 @@ class MomentumResponse(BaseModel):
 
 
 @router.get("/momentum", response_model=MomentumResponse)
-def momentum(request: Request):
+def momentum():
     """실적 발언 새 모멘텀(D-217) — 이번 실적 시즌 후보는 전면, 지난 시즌은 history로. 판정은 매일 07:20 call_momentum --daily."""
-    if getattr(request.state, "public_access", False):
-        from security.public_us_season import stored_momentum
-        from routers.public_documents import perform
-        return perform(stored_momentum)
     import os
     from database import get_connection
     from pipeline import call_momentum as cm
@@ -591,12 +545,8 @@ class RecentCall(BaseModel):
 
 
 @router.get("/recent", response_model=list[RecentCall])
-def recent_calls(request: Request, days: int = Query(7, ge=1, le=3650), limit: int = Query(40, ge=1, le=200)):
+def recent_calls(days: int = 7, limit: int = 40):
     """최근 받은 컨콜(D-218) — 수집 시각 최신순. Fool·AV 어느 출처로 들어왔는지 함께."""
-    if getattr(request.state, "public_access", False):
-        from security.public_us_season import stored_recent
-        from routers.public_documents import perform
-        return perform(lambda: stored_recent(days, limit))
     conn = get_connection()
     try:
         rows = conn.execute(

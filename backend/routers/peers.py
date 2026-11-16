@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from models.peers import PeerRuntime
 
 router = APIRouter(prefix='/api/peers', tags=['peers'])
@@ -46,10 +46,7 @@ def read_runtime(root=ROOT, data=DATA, now=None):
 
 
 @router.get('/runtime', response_model=PeerRuntime)
-def runtime(request: Request):
-    if getattr(request.state, 'public_access', False):
-        from security.public_industry import stored_peer_runtime
-        return stored_peer_runtime()
+def runtime():
     try:
         return read_runtime(ROOT, DATA)
     except (OSError, ValueError, KeyError, TypeError) as exc:

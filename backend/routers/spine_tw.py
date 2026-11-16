@@ -1,5 +1,5 @@
 """대만 월매출 API — 홈 위젯용 (pipeline/tw_revenue, LLM·네트워크 0)."""
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 
 from models.tw import KrConfirm, TwLinksResponse, TwRevenueResponse
 from models.value_chain import ChainPreview, ChainReport, ChainReportItem, ExpectationsResponse, FlowResponse, PropagationResponse, ValueChainResponse
@@ -8,37 +8,28 @@ router = APIRouter(prefix="/api/spine/tw", tags=["spine"])
 
 
 @router.get("/revenue", response_model=TwRevenueResponse)
-def tw_revenue(request: Request, months: int = Query(36, ge=3, le=120)):
-    if getattr(request.state, 'public_access', False):
-        from security.public_tw_revenue import stored_revenue
-        return stored_revenue(months)
+def tw_revenue(months: int = Query(36, ge=3, le=120)):
     from pipeline.tw_revenue import read
     return read(months)
 
 
 @router.get("/links", response_model=TwLinksResponse)
-def tw_links(request: Request, kr: str | None = None):
+def tw_links(kr: str | None = None):
     """대만 → 한국 연결 — 연결별 대만 신호(3개월 YoY·가속/둔화)와 숫자 근거(시차별 상관)"""
-    if getattr(request.state, 'public_access', False):
-        return _public_snapshot('links', kr)
     from pipeline.tw_links import read_links
     return read_links(kr)
 
 
 @router.get("/value-chain", response_model=ValueChainResponse)
-def value_chain(request: Request):
+def value_chain():
     """밸류체인 지도 — 노드별 대만 신호, 엣지별 측정 시차·위약 보정 판정 (docs/specs/value-chain.md)"""
-    if getattr(request.state, 'public_access', False):
-        return _public_snapshot('value-chain')
     from pipeline.value_chain import read_map
     return read_map()
 
 
 @router.get("/confirm", response_model=list[KrConfirm])
-def kr_confirm(request: Request, kr: str | None = None):
+def kr_confirm(kr: str | None = None):
     """한국 확인 신호 — 대만·수출(HS)·공시 세 원천의 방향 (docs/specs/value-chain.md §4)"""
-    if getattr(request.state, 'public_access', False):
-        return _public_snapshot('confirm', kr)
     from pipeline.kr_confirm import confirm
     from pipeline.tw_links import LINKS
     codes = [kr] if kr else sorted({link[0] for link in LINKS})
@@ -46,41 +37,24 @@ def kr_confirm(request: Request, kr: str | None = None):
 
 
 @router.get("/propagation", response_model=PropagationResponse)
-def propagation(request: Request):
+def propagation():
     """번지는 중 — 한국 확인 전·엇갈림·선행 경보 (docs/specs/value-chain.md §5)"""
-    if getattr(request.state, 'public_access', False):
-        return _public_snapshot('propagation')
     from pipeline.value_chain import propagation as compute
     return compute()
 
 
 @router.get("/flow", response_model=FlowResponse)
-def value_chain_flow(request: Request):
+def value_chain_flow():
     """돈의 흐름·다음 스포트라이트 가설 (docs/specs/value-chain.md §11) — 예측이 아니라 반증 조건이 붙은 가설"""
-    if getattr(request.state, 'public_access', False):
-        return _public_snapshot('flow')
     from pipeline.value_chain_flow import compute
     return compute()
 
 
 @router.get("/expectations", response_model=ExpectationsResponse)
-def value_chain_expectations(request: Request):
+def value_chain_expectations():
     """시장 기대치 (docs/specs/value-chain.md §15) — 칸 구성 회사 컨센서스·리서치 전망, 관측과 나란히(섞지 않음)"""
-    if getattr(request.state, 'public_access', False):
-        return _public_snapshot('expectations')
     from pipeline.vc_expectations import with_observed
     return with_observed()
-
-
-def _public_snapshot(name, kr=None):
-    import sqlite3
-    from security.public_value_chain import stored
-    try:
-        return stored(name, kr)
-    except LookupError:
-        raise HTTPException(404, '준비된 자료가 없습니다') from None
-    except (sqlite3.Error, OSError, ValueError):
-        raise HTTPException(503, '자료를 불러올 수 없습니다') from None
 
 
 def _valid_root(root: str) -> None:
@@ -109,16 +83,7 @@ def chain_report_create(root: str, background: BackgroundTasks, outline: str = Q
 
 
 @router.get("/chain-report/{rid}", response_model=ChainReport)
-def chain_report_get(request: Request, rid: int):
-    if getattr(request.state, 'public_access', False):
-        import sqlite3
-        from security.public_value_chain import report
-        try:
-            return report(rid)
-        except LookupError:
-            raise HTTPException(404, '보고서 없음') from None
-        except (sqlite3.Error, OSError, ValueError):
-            raise HTTPException(503, '보고서를 불러올 수 없습니다') from None
+def chain_report_get(rid: int):
     from pipeline.chain_report import read
     r = read(rid)
     if not r:
@@ -127,13 +92,6 @@ def chain_report_get(request: Request, rid: int):
 
 
 @router.get("/chain-reports", response_model=list[ChainReportItem])
-def chain_report_list(request: Request, root: str):
-    if getattr(request.state, 'public_access', False):
-        import sqlite3
-        from security.public_value_chain import reports
-        try:
-            return reports(root)
-        except (sqlite3.Error, OSError, ValueError):
-            raise HTTPException(503, '보고서를 불러올 수 없습니다') from None
+def chain_report_list(root: str):
     from pipeline.chain_report import history
     return history(root)

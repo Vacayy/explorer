@@ -8,7 +8,7 @@ import json
 from urllib.parse import quote
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Path, Query, Request
+from fastapi import APIRouter, HTTPException, Path, Query
 from database import get_connection
 from pipeline.watch_rules import WATCHED_CODES_SQL, watched
 from models.kalshi import KalshiDetail, KalshiPinBody, KalshiPinResult, KalshiPredictions
@@ -27,25 +27,16 @@ SIGNAL_LABEL = {
 
 
 @router.get("/predictions", response_model=KalshiPredictions)
-def predictions(request: Request):
+def predictions():
     """Kalshi 예측시장 인기 이벤트(금융·경제·테크·정치) — 마지막 수집분. 수집은 정기 작업(scripts/kalshi.py)."""
-    if getattr(request.state, "public_access", False):
-        from security.public_predictions import predictions as stored
-        return stored()
     from pipeline.kalshi import latest
     return latest()
 
 
 @router.get("/predictions/{event_ticker}", response_model=KalshiDetail)
-def prediction_detail(request: Request, event_ticker: str = Path(..., pattern=r"^[A-Za-z0-9._-]{1,80}$"),
+def prediction_detail(event_ticker: str = Path(..., pattern=r"^[A-Za-z0-9._-]{1,80}$"),
                       range: str = Query("3m", pattern=r"^(1m|3m|1y)$")):
     """예측시장 상세 창 — Kalshi 공식 v2 이벤트(결과 전부·규칙)와 결과별 일봉. 외부 호출은 TTL(이벤트 10분·봉 30분) 안에서 한 번."""
-    if getattr(request.state, "public_access", False):
-        from security.public_predictions import prediction_detail as stored
-        try:
-            return stored(event_ticker, range)
-        except LookupError:
-            raise HTTPException(404, "저장된 상세 자료가 없습니다.") from None
     from pipeline.kalshi import detail
     try:
         return detail(event_ticker, range)

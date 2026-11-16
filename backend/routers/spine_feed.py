@@ -3,13 +3,12 @@ import json
 from typing import Literal
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query
 from database import get_connection
 from pydantic import BaseModel, Field
 from datetime import date
 from models.spine import EntityTag, FeedDocument, FeedFacetEntity, FeedFacets, FeedResponse
 from models.company_evidence import CompanyEvidenceResponse
-from models.stock_price import CompanyPriceResponse
 from models.timeline import MarkAllReadRequest, MarkAllReadResponse, MarkReadRequest, TimelineResponse, TimelineChannelsResponse
 
 router = APIRouter(prefix="/api/spine/feed", tags=["spine"])
@@ -81,15 +80,9 @@ def resolve_channels(conn, rows) -> dict[int, dict | None]:
     return source_names(conn, rows)
 
 
-@router.get("/company-prices", response_model=CompanyPriceResponse)
-def get_company_prices(request: Request, company: str = Query(..., min_length=1, max_length=200),
+@router.get("/company-prices")
+def get_company_prices(company: str = Query(..., min_length=1, max_length=200),
                        market: Literal["kr", "us"] = "kr"):
-    if getattr(request.state, "public_access", False):
-        if market != 'us':
-            raise HTTPException(404, 'Public market unavailable at this endpoint')
-        from security.public_us_dossier import stored_prices
-        from routers.spine_transcript import _public_read
-        return _public_read(lambda: stored_prices(company))
     # Table name is chosen from a fixed allowlist; company stays a SQL parameter.
     table = "stock_prices" if market == "kr" else "us_prices"
     conn = get_connection()
@@ -131,7 +124,6 @@ def summarize_evidence(body: CompanySummaryRequest):
 
 @router.get("/company-evidence", response_model=CompanyEvidenceResponse)
 def get_company_evidence(
-    request: Request,
     company: str = Query(..., min_length=1, max_length=200),
     start: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
     end: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
@@ -145,18 +137,6 @@ def get_company_evidence(
 ):
     from fastapi import HTTPException
     from pipeline.company_evidence import company_evidence
-    if getattr(request.state, "public_access", False):
-        from security.public_company_evidence import stored_evidence
-        from routers.spine_transcript import _public_read
-        try:
-            start_day = date.fromisoformat(start) if start else None
-            end_day = date.fromisoformat(end) if end else None
-            if start_day and end_day and start_day > end_day:
-                raise ValueError('시작일은 종료일보다 늦을 수 없습니다.')
-        except ValueError as exc:
-            raise HTTPException(422, str(exc)) from exc
-        return _public_read(lambda: stored_evidence(company, market=market, start=start, end=end, cutoff=cutoff,
-            after=after, source=source, q=q, page=page, size=size))
     conn = get_connection()
     try:
         conn.execute("PRAGMA query_only=ON")

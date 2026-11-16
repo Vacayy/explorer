@@ -4,7 +4,7 @@
 """
 import json
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query
 from typing import Literal
 
 from pydantic import BaseModel
@@ -69,10 +69,7 @@ class HighlightRow(BaseModel):
 class HighlightGroup(BaseModel):
     group_label: str
     count: int
-    observed_count: int | None = None
-    total_count: int | None = None
-    partial: bool = False
-    value: float | None
+    value: float
     surge: int
     plunge: int
 
@@ -80,11 +77,7 @@ class HighlightGroup(BaseModel):
 class Highlights(BaseModel):
     period: str | None
     periods: list[str] = []
-    total_usd: float | None
-    scope: Literal['followed', 'public_catalog'] = 'followed'
-    observed_count: int | None = None
-    total_count: int | None = None
-    partial: bool = False
+    total_usd: float
     surge: list[HighlightRow]
     plunge: list[HighlightRow]
     groups: list[HighlightGroup]   # 수출 규모 순, 판정 수는 전 품목 기준
@@ -202,12 +195,9 @@ def by_stock(stock_code: str):
 
 
 @router.get("/highlights", response_model=Highlights)
-def highlights(request: Request, period: str | None = None, flow: str = "export", limit: int = 8, rank: str = "contribution",
+def highlights(period: str | None = None, flow: str = "export", limit: int = 8, rank: str = "contribution",
                mode: str = "zscore", metric: str = "yoy", z_threshold: float | None = None, min_usd: float | None = None):
     """급등·급감 랭킹(D-140) — 기본 기여도 순. `/{hs_code}`보다 먼저 선언(경로 충돌 방지)."""
-    if getattr(request.state, "public_access", False):
-        from security.public_trade import stored_highlights
-        return stored_highlights(period,flow,limit,rank,mode=mode,metric=metric,z_threshold=z_threshold,min_usd=min_usd)
     from pipeline.trade_metrics import highlights as _hl
     return _hl(period, flow, limit=limit, rank=rank, mode=mode, metric=metric, z_threshold=z_threshold, min_usd=min_usd)
 

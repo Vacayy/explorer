@@ -5,22 +5,15 @@ POST /api/spine/market-regime/snapshot — 일별 스냅샷 적재 (EOD 배치·
 
 첫 조회 시 스냅샷이 비어 있으면 lazy 1회 수집(외부 fetch ~수 초).
 """
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 
-from pipeline.market_regime import get_regime, read_regime, snapshot_market
+from pipeline.market_regime import get_regime, snapshot_market
 
 router = APIRouter(prefix="/api/spine/market-regime", tags=["spine"])
 
 
 @router.get("")
-def market_regime(request: Request):
-    if getattr(request.state, "public_access", False):
-        from security.public_market import market_connection
-        conn = market_connection()
-        try:
-            return read_regime(conn)
-        finally:
-            conn.close()
+def market_regime():
     data = get_regime()
     if data["as_of"] is None:      # 첫 진입 — lazy 스냅샷
         snapshot_market()

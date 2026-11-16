@@ -9,14 +9,13 @@ POST /api/spine/indices/snapshot — 강제 재수집(수동 갱신, 동기)
 그래서 지수별 '수집 시각'을 화면에 노출한다 — 지금 보는 값이 언제 것인지 사용자가 알아야 한다.
 개장 중엔 TTL 10분(프론트 폴링 주기와 맞춤), 전 시장 휴장이면 60분.
 """
-from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi import APIRouter, BackgroundTasks
 
 import time
 
 from database import get_connection
 from models.spine import KrBreadth
-from pipeline.indices import any_market_open, get_indices, read_indices, kr_breadth, minutes_to_next_open, snapshot_indices
-from security.public_market import market_connection
+from pipeline.indices import any_market_open, get_indices, kr_breadth, minutes_to_next_open, snapshot_indices
 from services.cache_service import invalidate_cache, is_cached, set_cache
 
 router = APIRouter(prefix="/api/spine/indices", tags=["spine"])
@@ -42,13 +41,7 @@ def _refresh_bg():
 
 
 @router.get("")
-def api_indices(background: BackgroundTasks, request: Request):
-    if getattr(request.state, "public_access", False):
-        conn = market_connection()
-        try:
-            return read_indices(conn)
-        finally:
-            conn.close()
+def api_indices(background: BackgroundTasks):
     if not is_cached(CACHE_KEY):
         set_cache(CACHE_KEY, _ttl())      # 먼저 선점 — 동시 요청이 갱신을 중복 예약하지 않게
         background.add_task(_refresh_bg)  # 응답을 먼저 보내고 그 다음 수집
@@ -60,13 +53,7 @@ BREADTH_TTL = 10 * 60  # 전 종목 스캔(~0.4s)을 홈 방문마다 하지 않
 
 
 @router.get("/breadth", response_model=KrBreadth | None)
-def api_breadth(request: Request):
-    if getattr(request.state, "public_access", False):
-        conn = market_connection()
-        try:
-            return kr_breadth(conn)
-        finally:
-            conn.close()
+def api_breadth():
     global _breadth_memo
     if _breadth_memo and time.monotonic() - _breadth_memo[0] < BREADTH_TTL:
         return _breadth_memo[1]
