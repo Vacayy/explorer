@@ -133,7 +133,7 @@ def _place(conn, pending):
                                    'JOIN collected_document_list_projection l ON l.ordinal=o.list_ordinal'):
         keys[ident].append(key)
     collected = conn.execute('SELECT c.document_id,d.published_at FROM collected_document_list_projection c '
-                             'JOIN collected_document_projection d ON d.id=c.document_id').fetchall()
+                             'JOIN document_projection d ON d.id=c.document_id').fetchall()
     base = conn.execute('SELECT l.ordinal,d.published_at FROM document_list_projection l JOIN document_projection d '
                         'ON d.id=l.document_id WHERE NOT EXISTS (SELECT 1 FROM collected_document_list_projection c '
                         'WHERE c.document_id=l.document_id) ORDER BY l.ordinal').fetchall()
@@ -204,7 +204,8 @@ def publish(conn, work, *, document_floor, entity_floor, keyword_floor, relation
         for row in docs:
             ident = row['id']
             channel, groups, visible, timeline = _new_source_details(conn, ident, row['source_type'], row['source_id'],
-                                                                     row['url'], row['published_at'], row['fetched_at'])
+                                                                     row['url'], row['published_at'], row['fetched_at'],
+                                                                     apply_mutes=False)  # all collected rows are shown
             doc_links = [link for link in links if link['doc_id'] == ident]
             for position, link in enumerate(doc_links):
                 conn.execute('INSERT INTO collected_document_entity_order VALUES (%s,%s,%s,%s,%s,0)',
@@ -272,3 +273,68 @@ def withdraw(conn, document_id):
         if conn.execute("SELECT to_regclass('document_embedding_overrides')").fetchone()[0] is not None:
             conn.execute('DELETE FROM document_embedding_overrides WHERE document_id=%s', (document_id,))
         conn.execute('DELETE FROM collected_publications WHERE document_id=%s', (document_id,))
+
+
+def include_muted_documents(conn):
+    """Add base documents the snapshot left out of the feed because their source was muted.
+
+    The legacy mute is the owner's personal display setting; without per-user identity the candidate
+    does not apply it to anyone, so these documents take their time slot in the list, filters and
+    timeline like any collected document. Recorded in `collected_included_documents` (see `exclude_included`).
+    """
+    from pipeline.postgres_note_overlay_fixture import _new_source_details
+    _guard(conn)
+    with conn.transaction():
+        conn.execute('SELECT pg_advisory_xact_lock(%s)', (GRAPH_LOCK,))
+        if conn.execute("SELECT to_regclass('collected_included_documents')").fetchone()[0] is None:
+            conn.execute('CREATE TABLE collected_included_documents (document_id BIGINT PRIMARY KEY,'
+                         'included_at TIMESTAMPTZ NOT NULL DEFAULT now())')
+            definition = conn.execute("SELECT pg_get_viewdef(to_regclass('document_projection'),true)").fetchone()[0]
+            conn.execute(f"""CREATE OR REPLACE VIEW document_projection AS
+                SELECT v.id,v.source_type,v.published_at,v.detail_document,
+                       v.feed_visible OR EXISTS (SELECT 1 FROM collected_included_documents i WHERE i.document_id=v.id) AS feed_visible,
+                       v.source_groups
+                FROM ({definition.rstrip().rstrip(";")}) v""")
+        hidden = conn.execute('SELECT d.id,d.source_type,d.source_groups,d.detail_document FROM document_projection d '
+                              'WHERE NOT d.feed_visible AND NOT EXISTS (SELECT 1 FROM document_list_projection l '
+                              'WHERE l.document_id=d.id) ORDER BY d.id').fetchall()
+        pending = {}
+        for ident, source, groups, detail in hidden:
+            raw = conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='raw_documents' AND row_data->>'id'=%s",
+                               (str(ident),)).fetchone()[0]
+            listed = {**detail, 'digest_status': None, 'digest_error': None, 'video_digest': None, 'transcript': None}
+            conn.execute('INSERT INTO collected_document_list_projection VALUES (NULL,%s,%s)', (ident, Jsonb(listed)))
+            pending[ident] = groups if source == 'blog' else [source, *(['people'] if 'people' in groups else [])]
+            _, _, _, timeline = _new_source_details(conn, ident, source, raw['source_id'], raw['url'], raw['published_at'],
+                                                    raw.get('fetched_at'), apply_mutes=False)
+            if timeline and not conn.execute('SELECT 1 FROM timeline_source_projection WHERE document_id=%s', (ident,)).fetchone():
+                key, occurred, millis, label = timeline
+                enrichment = conn.execute("SELECT max((row_data->>'id')::bigint) FROM legacy_snapshot_rows WHERE table_name='enrichments' "
+                                          "AND row_data->>'doc_id'=%s", (str(ident),)).fetchone()[0]
+                links = [row for (row,) in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entity_links' "
+                                                        "AND row_data->>'doc_id'=%s ORDER BY (row_data->>'id')::bigint", (str(ident),))]
+                conn.execute('INSERT INTO collected_timeline_source_projection VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+                             (f'source:{ident}', ident, occurred, millis, f'{source}:{key}', source,
+                              sorted({tag['name'] for tag in detail.get('entities') or []}), label,
+                              (raw.get('title') or raw.get('markdown') or '')[:180], Jsonb({**detail, 'published_at': occurred})))
+                conn.execute('INSERT INTO collected_timeline_source_metadata VALUES (%s,%s,%s)',
+                             (ident, enrichment, Jsonb([{'entity_id': l['entity_id'], 'link_type': l['link_type'],
+                                                        'confidence': l['confidence']} for l in links])))
+            conn.execute('INSERT INTO collected_included_documents(document_id) VALUES (%s)', (ident,))
+        if pending:
+            _place(conn, pending)
+        return len(pending)
+
+
+def exclude_included(conn):
+    """Undo `include_muted_documents` (rows recorded there only) and re-space the remaining collected rows."""
+    _guard(conn)
+    with conn.transaction():
+        conn.execute('SELECT pg_advisory_xact_lock(%s)', (GRAPH_LOCK,))
+        ids = [row[0] for row in conn.execute('SELECT document_id FROM collected_included_documents')]
+        conn.execute('DELETE FROM collected_document_filter_order o USING collected_document_list_projection l '
+                     'WHERE l.ordinal=o.list_ordinal AND l.document_id=ANY(%s)', (ids,))
+        for table in ('collected_document_list_projection', 'collected_timeline_source_projection',
+                      'collected_timeline_source_metadata', 'collected_included_documents'):
+            conn.execute(f'DELETE FROM {table} WHERE document_id=ANY(%s)', (ids,))
+        return len(ids)

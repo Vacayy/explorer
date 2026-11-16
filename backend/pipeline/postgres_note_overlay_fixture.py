@@ -20,11 +20,15 @@ from pipeline.timeline import utc
 from pipeline.urls import blog_category, is_feedlike, norm_domain, url_belongs
 
 
-def _new_source_details(conn, ident, source, source_id, url, published, fetched=None, youtube_names=None):
-    """Reproduce existing source registry, visibility, and timeline rules."""
-    blogs = [r[0] for r in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='blog_sources'")]
-    youtube = [r[0] for r in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='youtube_channels'")]
-    telegram = [r[0] for r in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='telegram_channels'")]
+def _new_source_details(conn, ident, source, source_id, url, published, fetched=None, youtube_names=None, *, apply_mutes=True):
+    """Reproduce existing source registry, visibility, and timeline rules.
+
+    `apply_mutes=False` treats every registered source as unmuted: the owner's personal mute is not
+    applied to a shared feed without per-user identity (the single-path candidate shows all collected rows).
+    """
+    rows = lambda table: [r[0] if apply_mutes else {**r[0], 'is_active': 1}
+                          for r in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name=%s", (table,))]
+    blogs, youtube, telegram = rows('blog_sources'), rows('youtube_channels'), rows('telegram_channels')
     blog_names = sorted(((r['url'],r['blog_name'] or r['url']) for r in blogs), key=lambda x: len(x[0] or ''), reverse=True)
     yt_names = {r['channel_id']:r['title'] for r in youtube}
     if youtube_names:
