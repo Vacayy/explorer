@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import database
-from routers import spine_ask, spine_conversations
+from routers import spine_ask, spine_conversations, spine_study, spine_study_projects
 from security.access_boundary import PUBLIC_ROUTE_POLICIES, PublicAccessBoundary
 from security.identity_store import IdentityStore
 from security.login_flow import SESSION_COOKIE, session_csrf
@@ -44,8 +44,11 @@ class OperatorConversationBoundary(unittest.TestCase):
         app = FastAPI()
         app.include_router(spine_conversations.router)
         app.include_router(spine_ask.router)
+        app.include_router(spine_study.router)
+        app.include_router(spine_study_projects.router)
         policies = {k: v for k, v in PUBLIC_ROUTE_POLICIES.items()
-                    if k[1].startswith('/api/spine/conversations') or k[1] == '/api/spine/ask'}
+                    if k[1].startswith(('/api/spine/conversations', '/api/spine/studies', '/api/spine/study-projects'))
+                    or k[1] == '/api/spine/ask'}
         service = SimpleNamespace(identities=self.identities, config=SimpleNamespace(public_origin='https://example.test'))
         app.add_middleware(PublicAccessBoundary, routes=app.router.routes,
                            policies=policies, service_factory=lambda: service)
@@ -96,6 +99,18 @@ class OperatorConversationBoundary(unittest.TestCase):
             self.assertEqual(conn.execute('SELECT count(*) FROM chat_messages').fetchone()[0], 1)
         finally:
             conn.close()
+
+    def test_legacy_study_is_operator_only_and_requires_csrf(self):
+        path = '/api/spine/study-projects'
+        self.assertEqual(self.client.get(path).status_code, 401)
+        self.assertEqual(self.client.get(path, headers=self.headers(self.member_token)).status_code, 403)
+        self.assertEqual(self.client.post(path, json={'title': 'fixture'},
+                                          headers=self.headers(self.operator_token, csrf=False)).status_code, 403)
+        response = self.client.post(path, json={'title': 'fixture'}, headers=self.headers(self.operator_token))
+        self.assertEqual(response.status_code, 200)
+        project_id = response.json()['id']
+        self.assertEqual(self.client.get(f'{path}/{project_id}', headers=self.headers(self.operator_token)).status_code, 200)
+        self.assertEqual(self.client.get(f'{path}/{project_id}', headers=self.headers(self.member_token)).status_code, 403)
 
 
 if __name__ == '__main__':

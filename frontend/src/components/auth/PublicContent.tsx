@@ -31,10 +31,29 @@ import { PublicDocumentListPage } from '@/components/doc/PublicDocumentListPage'
 import { PublicTrialChatPage } from '@/components/chat/PublicTrialChatPage'
 import ChatPage from '@/components/chat/ChatPage'
 import { useMemberAccess } from '@/components/auth/MemberAccess'
+import ProjectsPage from '@/components/study/ProjectsPage'
+import ProjectPage from '@/components/study/ProjectPage'
+import StudyPage from '@/components/study/StudyPage'
 
 export function PublicChatRoute() {
   const access = useMemberAccess()
   return access.status === 'operator' ? <ChatPage /> : <PublicTrialChatPage />
+}
+
+function OperatorStudyRoute({ kind }: { kind: 'list' | 'project' | 'study' }) {
+  const access = useMemberAccess()
+  if (access.status !== 'operator') return <PublicUnavailable />
+  if (kind === 'list') return <ProjectsPage />
+  return kind === 'project' ? <ProjectPage /> : <StudyPage />
+}
+
+function PublicUnavailable() {
+  return <PageContainer><h1 className="text-xl font-medium">아직 공개되지 않은 화면입니다</h1>
+    <p className="text-sm text-ink-2">현재 공개된 시장 정보와 미국 산업 지도를 둘러보세요.</p>
+    <Button asChild variant="outline"><Link to="/home/kr">시장으로 이동</Link></Button>
+    <Button asChild variant="outline"><Link to="/industry">한국 산업 지도</Link></Button>
+    <Button asChild variant="outline"><Link to="/industry?market=us">미국 산업 지도</Link></Button>
+  </PageContainer>
 }
 
 /** Incremental public coverage. Never mount a private page behind a hidden UI. */
@@ -49,6 +68,8 @@ export function PublicContent() {
   const financial = useMatch('/analyze/:stockCode/financials')
   const trade = useMatch('/follow/trade/:hs')
   const taiwanCompany = useMatch('/follow/taiwan/:code')
+  const studyProject = useMatch('/study/projects/:id')
+  const study = useMatch('/study/:id')
   const params = new URLSearchParams(search)
   if (pathname === '/follow/transcripts' && params.get('view') === 'season') {
     if (params.get('market') === 'kr') return <PageContainer><KrSeasonView tabs={null} /></PageContainer>
@@ -71,6 +92,9 @@ export function PublicContent() {
   if (pathname === '/financials') return <PublicFinancialSearch />
   if (financial?.params.stockCode) return <PublicFinancialsPage stockCode={financial.params.stockCode} />
   if (pathname === '/chat') return <PublicChatRoute />
+  if (pathname === '/study') return <OperatorStudyRoute kind="list" />
+  if (studyProject) return <OperatorStudyRoute kind="project" />
+  if (study) return <OperatorStudyRoute kind="study" />
   if (pathname === '/feed/saved') return <MemberSavedPage />
   if (pathname === '/feed') return isSearchView(search) || new URLSearchParams(search).has('cursor') ? <PublicDocumentListPage /> : <PublicFeedPage />
   if (pathname === '/portfolio/principles') return <MemberPrinciplesPage />
@@ -82,10 +106,5 @@ export function PublicContent() {
   if (pathname === '/retail') return <RetailHeatPage />
   if (pathname === '/home/kr') return <HomeKrPage />
   if (pathname === '/home/us') return <HomeUsPage />
-  return <PageContainer><h1 className="text-xl font-medium">아직 공개되지 않은 화면입니다</h1>
-    <p className="text-sm text-ink-2">현재 공개된 시장 정보와 미국 산업 지도를 둘러보세요.</p>
-    <Button asChild variant="outline"><Link to="/home/kr">시장으로 이동</Link></Button>
-    <Button asChild variant="outline"><Link to="/industry">한국 산업 지도</Link></Button>
-    <Button asChild variant="outline"><Link to="/industry?market=us">미국 산업 지도</Link></Button>
-  </PageContainer>
+  return <PublicUnavailable />
 }
