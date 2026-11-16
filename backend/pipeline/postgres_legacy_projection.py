@@ -71,8 +71,9 @@ def ensure_projection_triggers(target):
 
 
 class LegacyProjection:
-    def __init__(self, factory, directory):
+    def __init__(self, factory, directory, *, on_change=None):
         self.factory = factory
+        self.on_change = on_change  # called after a rebuild caused by a ledger/overlay change
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         for stale in (*self.directory.glob('projection-*.db'), *self.directory.glob('current*')):
@@ -154,6 +155,11 @@ class LegacyProjection:
                 # Open readers keep the unlinked file until they close.
                 if previous:
                     previous[0].unlink(missing_ok=True)
+        if built and self.on_change is not None:
+            try:
+                self.on_change()
+            except Exception as exc:
+                log.warning('Legacy projection change hook failed (%s)', type(exc).__name__)
 
     @property
     def stable_path(self):
