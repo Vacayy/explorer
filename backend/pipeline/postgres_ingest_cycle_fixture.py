@@ -80,7 +80,10 @@ def run_periodic_sources(sources, factory, *, enrich, stop, interval_seconds, pu
         raise ValueError('Sources require unique names and connector factories')
     if interval_seconds <= 0:
         raise ValueError('interval_seconds must be positive')
-    needs_publish = False
+    # The publisher's active generation/index is process-local. A restarted
+    # process must rebuild from the durable source even when every connector
+    # reports "unchanged"; an earlier publish may have failed before exit.
+    needs_publish = True
     while not stop.is_set():
         results = {}
         changed = False

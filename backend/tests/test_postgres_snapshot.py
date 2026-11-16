@@ -1349,10 +1349,34 @@ finally:
         def target(schema): return psycopg.connect(self.dsn,options=f'-c search_path={schema}')
         publisher=FixturePublisher(self.pg,self.schema,target)
         try:
-            publisher.publish()
+            # A restarted process has no in-memory active generation. Existing
+            # committed source changes must publish even if no connector finds
+            # anything new on the first post-restart cycle.
+            stop=threading.Event()
+            published=[]
+            restart_errors=[]
+            attempts=[]
+            def publish_after_restart():
+                attempts.append(1)
+                if len(attempts)==1:
+                    raise RuntimeError('synthetic interrupted publication')
+                return publisher.publish()
+            def after_restart(results, did_publish):
+                published.append(did_publish)
+                if len(published)==2:
+                    stop.set()
+            with patch('pipeline.postgres_ingest_cycle_fixture.run_exclusive_cycle',
+                       return_value={'new':0,'updated':0,'enriched':0}):
+                run_periodic_sources([('blog',lambda:object())],self.pg,
+                    enrich=lambda *_:None,stop=stop,interval_seconds=0.01,
+                    publish=publish_after_restart,on_round=after_restart,
+                    on_error=lambda name,exc:restart_errors.append((name,type(exc).__name__)))
+            self.assertEqual(published,[False,True])
+            self.assertEqual(restart_errors,[('publish','RuntimeError')])
             reader=PostgreSQLDocumentReader(lambda:target(publisher.active[0]))
             for name in ('blog','telegram','youtube'):
                 self.assertTrue(any(doc.summary=='기존 요약 함수 결과' for doc in reader.list(source=name).items))
+            self.assertTrue(any(doc.summary=='기존 요약 함수 결과' for doc in publisher.search('블로그').items))
             videos=reader.list(source='youtube').items
             self.assertEqual({doc.channel for doc in videos},{'수동 이름'})
             self.assertEqual(reader.get(10).channel,'수동 이름')
