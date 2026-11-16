@@ -20,6 +20,10 @@ def initialize(conn):
         trade_date TEXT NOT NULL, kind TEXT NOT NULL,
         stock_code TEXT, amount DOUBLE PRECISION NOT NULL CHECK(amount > 0),
         price DOUBLE PRECISION, note TEXT NOT NULL DEFAULT '')''')
+    conn.execute('''CREATE TABLE fixture_portfolio_members (
+        account_id BIGINT NOT NULL REFERENCES fixture_portfolio_accounts(id),
+        stock_code TEXT NOT NULL, bought_at TEXT NOT NULL,
+        PRIMARY KEY(account_id,stock_code))''')
 
 
 def _account(conn, principal, *, create=False):
@@ -36,6 +40,15 @@ def _transactions(conn, account):
     return [dict(zip(('id','trade_date','kind','stock_code','amount','price'),row)) for row in
             conn.execute('SELECT id,trade_date,kind,stock_code,amount,price FROM fixture_portfolio_transactions '
                          'WHERE account_id=%s ORDER BY trade_date,id',(account,))]
+
+
+def _sync_members(conn, account, ledger):
+    for code,position in ledger.positions.items():
+        conn.execute('INSERT INTO fixture_portfolio_members(account_id,stock_code,bought_at) VALUES (%s,%s,%s) '
+                     'ON CONFLICT(account_id,stock_code) DO UPDATE SET bought_at=excluded.bought_at',
+                     (account,code,position.entry_date))
+    conn.execute('DELETE FROM fixture_portfolio_members WHERE account_id=%s AND NOT (stock_code=ANY(%s))',
+                 (account,list(ledger.positions)))
 
 
 def list_transactions(conn, principal, *, names):
@@ -130,11 +143,12 @@ def add_transaction(conn, principal, raw, *, companies, last_close):
                             'trade_date':tx['trade_date'],'note':'매수 부족분 자동 입금'})
     pending.append(tx)
     next_id=max((row['id'] for row in existing),default=0)+1
-    replay(existing+[{**item,'id':next_id+i} for i,item in enumerate(pending)])
+    ledger=replay(existing+[{**item,'id':next_id+i} for i,item in enumerate(pending)])
     for item in pending:
         ident=conn.execute('INSERT INTO fixture_portfolio_transactions(account_id,trade_date,kind,stock_code,amount,price,note) '
             'VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id',
             (account,item['trade_date'],item['kind'],item['stock_code'],item['amount'],item['price'],item.get('note') or '')).fetchone()[0]
+    _sync_members(conn,account,ledger)
     return ident
 
 
@@ -145,8 +159,9 @@ def delete_transaction(conn, principal, ident):
     rows=_transactions(conn,account)
     if not any(row['id']==ident for row in rows):
         return False
-    replay([row for row in rows if row['id'] != ident])
+    ledger=replay([row for row in rows if row['id'] != ident])
     conn.execute('DELETE FROM fixture_portfolio_transactions WHERE account_id=%s AND id=%s',(account,ident))
+    _sync_members(conn,account,ledger)
     return True
 
 

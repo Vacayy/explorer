@@ -802,3 +802,5 @@ fixture snapshot 교체는 호출자가 공간 점검 함수를 명시하지 않
 격리 회원 포트폴리오 fixture의 시세 provider는 기존 섹터 snapshot에 저장된 국내 기업명·종가를 읽으며 외부 조회를 하지 않는다. 장중 quote, 실제 회원 HTTP 서비스 설정 및 다른 시장 시세는 미연결이다.
 
 격리 회원 포트폴리오 app factory는 기존 member router·access boundary와 명시적으로 주입한 identity service를 사용하며 지원하지 않는 원칙 API는 닫는다. 이 factory는 서버를 자동 실행하거나 운영 설정을 바꾸지 않는다.
+
+격리 회원 원장의 거래 추가·삭제는 같은 트랜잭션에서 보유 종목과 편입일을 동기화한다. 이 보유 목록은 격리 fixture 전용이며 기존 묶음 API와는 아직 연결되지 않았다.

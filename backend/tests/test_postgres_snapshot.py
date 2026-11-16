@@ -138,6 +138,9 @@ class SnapshotReplacementTests(unittest.TestCase):
                 portfolio.add_transaction(c,'member-a',{'trade_date':'2026-01-03','kind':'withdraw','amount':1},companies=set(),last_close=lambda *_:None)
         with self.pg() as c:
             self.assertEqual(len(portfolio.list_transactions(c,'member-a',names={})),2)
+            self.assertEqual(c.execute('SELECT stock_code,bought_at FROM fixture_portfolio_members').fetchall(),[('000001','2026-01-02')])
+            portfolio.add_transaction(c,'member-a',{'trade_date':'2026-01-04','kind':'sell','stock_code':'000001','sell_all':True,'price':12},companies={'000001'},last_close=lambda *_:None)
+            self.assertEqual(c.execute('SELECT count(*) FROM fixture_portfolio_members').fetchone()[0],0)
 
     def test_portfolio_snapshot_keeps_group_relationships_and_amounts(self):
         with closing(self.fixture.connect()) as source:
