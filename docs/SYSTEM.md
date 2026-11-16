@@ -800,3 +800,5 @@ fixture snapshot 교체는 호출자가 공간 점검 함수를 명시하지 않
 격리 회원 포트폴리오 어댑터는 기존 member router와 access boundary에 테스트에서 주입할 수 있다. 합성 세션·CSRF 및 별도 PG를 사용하는 실험이며 애플리케이션의 실제 인증/저장 설정이나 운영 라우터를 변경하지 않는다.
 
 격리 회원 포트폴리오 fixture의 시세 provider는 기존 섹터 snapshot에 저장된 국내 기업명·종가를 읽으며 외부 조회를 하지 않는다. 장중 quote, 실제 회원 HTTP 서비스 설정 및 다른 시장 시세는 미연결이다.
+
+격리 회원 포트폴리오 app factory는 기존 member router·access boundary와 명시적으로 주입한 identity service를 사용하며 지원하지 않는 원칙 API는 닫는다. 이 factory는 서버를 자동 실행하거나 운영 설정을 바꾸지 않는다.

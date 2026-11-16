@@ -21,7 +21,8 @@ except ImportError:
         raise
     psycopg=None
 
-from pipeline.postgres_portfolio_fixture import FixturePortfolioMarket, MemberPortfolioFixture, initialize
+from pipeline.postgres_portfolio_fixture import initialize
+from pipeline.postgres_member_app_fixture import create_app
 
 
 @unittest.skipUnless(psycopg and os.getenv('REFACTOR_POSTGRES_DSN') and os.getenv('REFACTOR_TEST_DISPOSABLE')=='1',
@@ -52,26 +53,11 @@ class MemberHTTPFixtureTests(unittest.TestCase):
                 for name in ('a','b'):
                     user=identities.get_or_create_google_user('accounts.google.com',name)
                     tokens.append(identities.issue_session(user.id,ttl_seconds=3600))
-                app=FastAPI()
-                app.include_router(routes.router)
-                policies={k:v for k,v in PUBLIC_ROUTE_POLICIES.items() if k[1].startswith('/api/member/portfolio')}
-                app.add_middleware(PublicAccessBoundary,routes=app.router.routes,policies=policies,
-                    service_factory=lambda:SimpleNamespace(identities=identities,config=SimpleNamespace(public_origin='https://beta.example')))
-                def service(_source,owner):
-                    with factory() as conn:
-                        names=FixturePortfolioMarket(conn).names()
-                    def prices(*args):
-                        with factory() as conn:
-                            return FixturePortfolioMarket(conn).prices(*args)
-                    def last_close(*args):
-                        with factory() as conn:
-                            return FixturePortfolioMarket(conn).last_close(*args)
-                    return MemberPortfolioFixture(factory,owner,names=names,prices=prices,
-                        last_close=last_close,unavailable=TransactionUnavailable)
+                app=create_app(factory,identity_service=SimpleNamespace(identities=identities,config=SimpleNamespace(public_origin='https://beta.example')))
                 def headers(token):
                     return {'Cookie':SESSION_COOKIE+'='+token,'Origin':'https://beta.example','X-CSRF-Token':session_csrf(token)}
                 body={'trade_date':'2026-01-01','kind':'buy','stock_code':'000001','amount':100,'price':10}
-                with patch.object(routes,'MemberPortfolio',side_effect=service), TestClient(app,base_url='https://beta.example') as client:
+                with TestClient(app,base_url='https://beta.example') as client:
                     path='/api/member/portfolio/transactions'
                     self.assertEqual(client.get(path).status_code,401)
                     self.assertEqual(client.post(path,headers={'Cookie':SESSION_COOKIE+'='+tokens[0]},json=body).status_code,403)
