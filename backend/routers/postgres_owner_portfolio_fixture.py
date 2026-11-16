@@ -1,7 +1,8 @@
 """Loopback-only owner portfolio writes on the PG ledger for the single-path preview.
 
-The preview has no authentication: the principal is the one explicitly mapped
-to the archived owner group and is fixed here. Never serve this router beyond the
+The preview has no authentication: the owner is whichever principal the data
+explicitly maps to the archived owner group (one `fixture_portfolio_legacy_mapping`
+row); nothing is hard-coded or inferred, so a production cut-over remaps data. Never serve this router beyond the
 private loopback gateway; external exposure needs the member/owner gate first.
 Responses keep the legacy owner routes' shapes and errors. Quote refresh,
 principle parsing (model call) and thesis writes stay unavailable.
@@ -17,9 +18,6 @@ from pipeline import portfolio_principles as pp
 from pipeline import postgres_portfolio_fixture as ledger
 from pipeline.portfolio import LedgerError
 
-OWNER = 'local-preview-owner'
-
-
 def _rules(body):
     clean = pp.validate([rule.model_dump(exclude={'summary'}) for rule in body.rules])
     notes = pp._clean_notes(body.notes)
@@ -31,18 +29,22 @@ def _rules(body):
 def create_router(factory):
     router = APIRouter(prefix='/api/portfolio')
 
-    def account(conn):
-        ident = ledger._account(conn, OWNER, lock=False)
-        if ident is None:
+    def owner(conn):
+        rows = conn.execute('SELECT a.id,a.principal FROM fixture_portfolio_legacy_mapping m '
+                            'JOIN fixture_portfolio_accounts a ON a.id=m.account_id').fetchall()
+        if len(rows) != 1:
             raise HTTPException(503, 'Owner portfolio ledger unavailable')
-        return ident
+        return rows[0]
+
+    def account(conn):
+        return owner(conn)[0]
 
     def read():
         with factory() as conn:
             conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
-            account(conn)
+            principal = owner(conn)[1]
             market = ledger.FixturePortfolioMarket(conn, captured_quotes=True)
-            return ledger.read_portfolio(conn, OWNER, names=market.names(), prices=market.prices)
+            return ledger.read_portfolio(conn, principal, names=market.names(), prices=market.prices)
 
     @router.get('', response_model=PortfolioSummary)
     def summary():
@@ -59,10 +61,10 @@ def create_router(factory):
     @router.post('/transactions')
     def create_transaction(body: TransactionCreate):
         with factory() as conn:
-            account(conn)
+            principal = owner(conn)[1]
             market = ledger.FixturePortfolioMarket(conn)
             try:
-                ident = ledger.add_transaction(conn, OWNER, body.model_dump(), companies=set(market.names()),
+                ident = ledger.add_transaction(conn, principal, body.model_dump(), companies=set(market.names()),
                                                last_close=market.last_close)
             except LedgerError as exc:
                 conn.rollback()
@@ -72,9 +74,9 @@ def create_router(factory):
     @router.delete('/transactions/{tx_id}')
     def remove_transaction(tx_id: int):
         with factory() as conn:
-            account(conn)
+            principal = owner(conn)[1]
             try:
-                ledger.delete_transaction(conn, OWNER, tx_id)  # a missing id is not an error, as before
+                ledger.delete_transaction(conn, principal, tx_id)  # a missing id is not an error, as before
             except LedgerError as exc:
                 conn.rollback()
                 raise HTTPException(409, str(exc)) from exc
