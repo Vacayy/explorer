@@ -79,3 +79,30 @@ def set_pin(conn, event_ticker, series_ticker, on):
     else:
         conn.execute('DELETE FROM owner_kalshi_pins WHERE account_id=%s AND event_ticker=%s', (account, event_ticker))
     return on
+
+
+def initialize_channel_reads(conn):
+    """Move the owner's feed read marks to a writable ledger, keeping times."""
+    _guard(conn)
+    with conn.transaction():
+        if conn.execute("SELECT to_regclass('owner_channel_reads')").fetchone()[0] is not None:
+            raise ValueError('Channel reads already initialized')
+        account = owner_account(conn)
+        conn.execute('CREATE TABLE owner_channel_reads (account_id BIGINT NOT NULL REFERENCES fixture_portfolio_accounts(id),'
+                     'channel TEXT NOT NULL,read_until TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(account_id,channel))')
+        rows = [row for (row,) in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name='channel_reads'")]
+        for row in rows:
+            conn.execute('INSERT INTO owner_channel_reads VALUES (%s,%s,%s,%s)',
+                         (account, row['channel'], row['read_until'], row['updated_at']))
+        return len(rows)
+
+
+def mark_read(conn, channel, stamp):
+    """Legacy rule: a mark never moves back; an earlier read_until keeps the later one."""
+    account = owner_account(conn)
+    conn.execute("INSERT INTO owner_channel_reads VALUES (%s,%s,%s,to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')) "
+                 'ON CONFLICT(account_id,channel) DO UPDATE SET read_until=CASE WHEN excluded.read_until::timestamptz > '
+                 'owner_channel_reads.read_until::timestamptz THEN excluded.read_until ELSE owner_channel_reads.read_until END,'
+                 'updated_at=excluded.updated_at', (account, channel, stamp))
+    return conn.execute('SELECT read_until FROM owner_channel_reads WHERE account_id=%s AND channel=%s',
+                        (account, channel)).fetchone()[0]

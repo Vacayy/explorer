@@ -94,14 +94,18 @@ class PostgreSQLTimelineSources:
             generation_where = 'WHERE generation_id=%s' if archived else ''
             generation_params = (requested,) if archived else ()
             registries = conn.execute(f"SELECT table_name,row_data FROM {legacy_table} WHERE table_name IN ('telegram_channels','blog_sources','youtube_channels') {generation_filter} ORDER BY row_ordinal", generation_params).fetchall()
+            reads = (f"SELECT row_data->>'channel' AS channel, (row_data->>'read_until')::timestamptz AS read_until "
+                     f"FROM {legacy_table} WHERE table_name='channel_reads' AND %s {generation_filter}")
+            if not archived and conn.execute("SELECT to_regclass('owner_channel_reads')").fetchone()[0] is not None:
+                # The owner's read marks moved to a writable ledger (single-path preview).
+                reads = 'SELECT channel, read_until::timestamptz AS read_until FROM owner_channel_reads WHERE %s'
             rows = conn.execute(f"""
                 WITH updates AS (
                   SELECT id,occurred_at,sort_millis,channel,platform,''::text AS name,preview FROM {source_table} {generation_where}
                   UNION ALL
                   SELECT id,occurred_at,sort_millis,channel,'system'::text,name,preview FROM {system_table} {generation_where}
                 ), reads AS (
-                  SELECT row_data->>'channel' AS channel, (row_data->>'read_until')::timestamptz AS read_until
-                  FROM {legacy_table} WHERE table_name='channel_reads' AND %s {generation_filter}
+                  {reads}
                 ), ranked AS (
                   SELECT u.*, count(*) OVER (PARTITION BY u.channel) AS count,
                     sum(CASE WHEN %s AND u.sort_millis > FLOOR(EXTRACT(EPOCH FROM COALESCE(r.read_until,

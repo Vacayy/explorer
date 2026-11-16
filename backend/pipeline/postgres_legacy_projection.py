@@ -25,10 +25,10 @@ NATIVE = ('study_projects', 'questions')
 VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'question_graph_overlay_rows',
              'legacy_supplement_tables', 'legacy_supplement_rows', *NATIVE,
              'fixture_portfolio_transactions', 'fixture_portfolio_members', 'fixture_portfolio_principles',
-             'owner_follows', 'owner_kalshi_pins')
+             'owner_follows', 'owner_kalshi_pins', 'owner_channel_reads')
 # Small owner-ledger tables re-derived per connection in TEMP shadows, so writes
 # show at once; the file keeps its own (possibly older) derived copy underneath.
-SHADOWED = ('portfolio_transactions', 'stock_group_members', 'portfolio_principles', 'follows', 'kalshi_pins')
+SHADOWED = ('portfolio_transactions', 'stock_group_members', 'portfolio_principles', 'follows', 'kalshi_pins', 'channel_reads')
 CHECK_SECONDS = 10
 log = logging.getLogger(__name__)
 
@@ -236,3 +236,7 @@ def _derive_owner_records(root, pg):
     root.execute('DELETE FROM kalshi_pins')
     root.executemany('INSERT INTO kalshi_pins (event_ticker,series_ticker,pinned_at) VALUES (?,?,?)',
                      pg.execute('SELECT event_ticker,series_ticker,pinned_at FROM owner_kalshi_pins').fetchall())
+    if pg.execute("SELECT to_regclass('owner_channel_reads')").fetchone()[0] is not None:
+        root.execute('DELETE FROM channel_reads')
+        root.executemany('INSERT INTO channel_reads (channel,read_until,updated_at) VALUES (?,?,?)',
+                         pg.execute('SELECT channel,read_until,updated_at FROM owner_channel_reads').fetchall())
