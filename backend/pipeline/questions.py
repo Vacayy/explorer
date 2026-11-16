@@ -439,10 +439,10 @@ def _confirm_edges(conn, qid: int, narrative_id: int) -> int:
     return cur.rowcount
 
 
-def rollup(question_id: int) -> dict:
+def rollup(question_id: int, *, connection_factory=None, summarizer=None, confirm_edges=None) -> dict:
     """프록시 관측을 pace layer 2층으로 결정적 롤업. 판정이 바뀌면 haiku 한 줄 종합(게으르게).
     confirm=leaning_yes+aligned 진입 시 딛고 선 내러티브 엣지에 관측 확증 주석(D-087)."""
-    conn = get_connection()
+    conn = (connection_factory or get_connection)()
     q = conn.execute("SELECT * FROM questions WHERE id=?", (question_id,)).fetchone()
     if not q:
         conn.close()
@@ -475,7 +475,7 @@ def rollup(question_id: int) -> dict:
     changed = (lead_v, confirm_v, div) != (q["lead_verdict"], q["confirm_verdict"], q["divergence"])
     summary = q["verdict_summary"]
     if changed:
-        summary = _summarize(conn, q, lead_v, confirm_v, div)
+        summary = (summarizer or _summarize)(conn, q, lead_v, confirm_v, div)
     conviction = (abs(sum(confirm)) / len(confirm)) if confirm else None
 
     # 관측→엣지 환류 (D-087) — confirm 확증(leaning_yes+aligned) 상태 진입 시 1회 발화(멱등 가드)
@@ -484,7 +484,7 @@ def rollup(question_id: int) -> dict:
     confirmed = 1 if now_ok else 0
     edges_confirmed = 0
     if now_ok and not was:
-        edges_confirmed = _confirm_edges(conn, question_id, q["narrative_id"])
+        edges_confirmed = (confirm_edges or _confirm_edges)(conn, question_id, q["narrative_id"])
 
     conn.execute(
         "UPDATE questions SET lead_verdict=?, confirm_verdict=?, divergence=?, verdict_summary=?, "

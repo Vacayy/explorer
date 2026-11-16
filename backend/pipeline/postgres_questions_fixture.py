@@ -12,7 +12,7 @@ from psycopg.types.json import Jsonb
 from pipeline import questions, question_report
 from pipeline.postgres_graph_fixture import _guard
 
-TABLES=('questions','sub_questions','proxy_registry','proxy_observations','question_reports','proxy_scans','scenarios','transcripts','raw_documents','entity_relations','knowledge','knowledge_falsifiers')
+TABLES=('questions','sub_questions','proxy_registry','proxy_observations','question_reports','proxy_scans','scenarios','transcripts','raw_documents','entity_relations','knowledge','knowledge_falsifiers','observations','transcript_follow')
 FILTERS={
     'scenarios': 'WHERE question_id IS NOT NULL',
     'transcripts': 'WHERE id IN (SELECT transcript_id FROM proxy_observations WHERE transcript_id IS NOT NULL)',

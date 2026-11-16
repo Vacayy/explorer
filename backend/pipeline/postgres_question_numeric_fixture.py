@@ -94,3 +94,36 @@ def extract_numeric(connect,question_id,*,run_llm,limit=40):
                         if obs_rows:extracted+=1
                     finally:db.close()
     return {'extracted':extracted,'scanned':scanned,'stale':stale,'graph_projection_required':True}
+
+
+def project_numeric_observations(connect):
+    """Apply the original entity-observation projection inside this candidate.
+
+    The complete observations table and transcript-follow mapping are captured
+    with the questions, and callers must route future readers to this PG copy.
+    """
+    with connect() as pg:
+        _guard(pg)
+        pg.execute('LOCK TABLE question_capture_rows, question_capture_tables, question_capture_sequences IN SHARE ROW EXCLUSIVE MODE')
+        with _projection(connect,writable=True) as factory:
+            db=factory()
+            try:
+                existing={r[0] for r in db.execute('SELECT id FROM observations')}
+                db.execute('''INSERT OR IGNORE INTO observations(entity_id,date,metric,value,unit,source)
+                    SELECT tf.entity_id,po.observed_at,pr.key,po.value_num,pr.unit,'proxy:transcript'
+                    FROM proxy_observations po JOIN transcripts t ON t.id=po.transcript_id
+                    JOIN transcript_follow tf ON tf.ticker=t.ticker JOIN proxy_registry pr ON pr.id=po.proxy_id
+                    WHERE po.source_type='transcript' AND po.value_num IS NOT NULL
+                    AND tf.entity_id IS NOT NULL AND po.observed_at IS NOT NULL''')
+                rows=[r for r in db.execute('SELECT * FROM observations ORDER BY id') if r['id'] not in existing]
+                db.commit();_append(pg,db,'observations',rows)
+                return {'projected':len(rows)}
+            finally:db.close()
+
+
+def entity_observations(connect,entity_id):
+    """Read the same candidate observation records used by projection."""
+    with _projection(connect) as factory:
+        db=factory()
+        try:return [dict(r) for r in db.execute('SELECT * FROM observations WHERE entity_id=? ORDER BY date,id',(entity_id,))]
+        finally:db.close()
