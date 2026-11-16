@@ -42,8 +42,10 @@ def legacy_retrieval(chunks_path, projection_path):
 
     for module in (database, chunks, rag, search):  # each bound get_connection at import
         module.get_connection = connection
-    # The owner's personal mute is not applied without per-user identity (all collected material shows).
+    # The owner's personal mute is not applied without per-user identity (all collected material shows),
+    # and retrieval shown to users does not drop unverified sources (scrap) either (PM decision).
     visibility.get_muted = lambda conn: {'telegram': set(), 'blog': []}
+    visibility.UNVERIFIED_SOURCES = frozenset()
     return connection
 
 
