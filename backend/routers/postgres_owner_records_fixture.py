@@ -1,5 +1,5 @@
 """Loopback-only owner follows, prediction pins, feed read marks, bookmarks, tracker conditions and
-call-follow pins/additions, knowledge review decisions, trade-item follows, narrative-candidate decisions and source switches on the PG ledger.
+call-follow pins/additions, knowledge review decisions, trade-item follows, narrative-candidate decisions and source switches/additions on the PG ledger.
 
 Same request/response shapes and errors as the legacy routes. The follow list
 and feed read marks read the ledger directly; legacy reads (prediction cards)
@@ -21,7 +21,7 @@ from routers.spine_saved import NoteRequest, SavedItem, SaveRequest
 from routers.spine_tracker import Code
 from models.market_today import CandidateAction
 from routers.blog_feed import ToggleSourceRequest
-from routers.spine_sources import CollectToggle
+from routers.spine_sources import AddBlogRequest, AddTelegramRequest, AddYouTubeRequest, CollectToggle
 from routers.telegram_feed import ToggleChannelRequest
 from routers.spine_trade import FollowReq as TradeFollowReq
 from routers.spine_transcript import FollowReq, PinReq
@@ -233,6 +233,69 @@ def create_router(factory, timeline):
             with connection() as conn:
                 records.set_source(conn, 'youtube', channel_id, is_active=int(is_active))
         return {'channel_id': channel_id, 'is_active': is_active}
+
+    # Adding a source: the same validation and external checks as the legacy routes, recorded in the
+    # owner ledger. The legacy background collection is not started here (single writer): the source is
+    # collected by the next collector run, and the response says so.
+    NEXT_RUN = '다음 수집 회차에 수집'
+
+    @router.post('/api/spine/sources/telegram', status_code=201)
+    def add_telegram(body: AddTelegramRequest):
+        import re
+        from services.telegram_service import get_channel_display_name, scrape_channel
+        channel = re.sub(r'^https?://t\.me/(s/)?', '', body.channel.strip()).lstrip('@').strip('/')
+        if not re.fullmatch(r'[A-Za-z0-9_]{3,64}', channel):
+            raise HTTPException(400, '채널명 형식이 올바르지 않습니다 (예: cahier_de_market)')
+        messages = scrape_channel(channel)
+        if not messages:
+            raise HTTPException(422, '공개 프리뷰를 읽을 수 없는 채널입니다 (비공개이거나 프리뷰 비활성)')
+        display_name = get_channel_display_name(channel)
+        if source_row('telegram_channels', 'channel_name', channel):
+            raise HTTPException(409, '이미 등록된 채널입니다')
+        with connection() as conn:
+            records.add_source(conn, 'telegram', channel, {'channel_name': channel, 'display_name': display_name})
+        return {'channel': channel, 'preview_messages': len(messages), 'note': NEXT_RUN}
+
+    @router.post('/api/spine/sources/blog', status_code=201)
+    def add_blog(body: AddBlogRequest):
+        from routers.spine_sources import normalize_naver_blog
+        from services.blog_service import detect_platform_and_feed_url, fetch_blog_author, verify_and_fetch
+        url = body.url.strip().rstrip('/')
+        if 'youtube.com' in url or 'youtu.be' in url:
+            raise HTTPException(422, '유튜브 주소는 유튜브 카드에서 추가해 주세요 (채널 @handle·URL 또는 영상 URL).')
+        if not url.startswith('http'):
+            url = f'https://{url}'
+        url = normalize_naver_blog(url.replace('://m.blog.naver.com/', '://blog.naver.com/'))
+        platform, feed_url = detect_platform_and_feed_url(url)
+        try:
+            posts, blog_name = verify_and_fetch(feed_url)
+        except Exception as e:
+            raise HTTPException(422, f'RSS 피드를 읽을 수 없습니다: {e}')
+        author = fetch_blog_author(url, posts)
+        if source_row('blog_sources', 'url', url):
+            raise HTTPException(409, '이미 등록된 블로그입니다')
+        with connection() as conn:
+            records.add_source(conn, 'blog', url, {'url': url, 'platform': platform, 'blog_name': blog_name, 'author': author})
+        return {'url': url, 'blog_name': blog_name, 'author': author, 'platform': platform,
+                'preview_posts': len(posts), 'note': NEXT_RUN}
+
+    @router.post('/api/spine/sources/youtube', status_code=201)
+    def add_youtube(body: AddYouTubeRequest):
+        from pipeline.connectors.youtube import parse_video_id, resolve_channel_id
+        s = body.input.strip()
+        if parse_video_id(s) if ('watch' in s or 'youtu.be' in s or '/live/' in s or '/shorts/' in s or len(s) == 11) else None:
+            # A single video is collected on the spot in the legacy route; the candidate does not collect.
+            raise HTTPException(405, '영상 단건 수집은 후보에서 하지 않습니다')
+        resolved = resolve_channel_id(s)
+        if not resolved:
+            raise HTTPException(422, '채널을 찾을 수 없습니다 (채널 URL 또는 @handle을 입력하세요)')
+        channel_id, title = resolved
+        if source_row('youtube_channels', 'channel_id', channel_id):
+            raise HTTPException(409, '이미 구독 중인 채널입니다')
+        with connection() as conn:
+            records.add_source(conn, 'youtube', channel_id, {'channel_id': channel_id,
+                               'handle': s if s.startswith('@') else None, 'title': title})
+        return {'kind': 'channel', 'channel_id': channel_id, 'title': title, 'note': f'구독 완료 — {NEXT_RUN}'}
 
     @router.post('/api/spine/sources/collect')
     def set_collect(body: CollectToggle):

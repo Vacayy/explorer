@@ -36,7 +36,8 @@ VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'questio
              'owner_follows', 'owner_kalshi_pins', 'owner_channel_reads',
              'owner_saved_items', 'owner_tracker_conditions', 'owner_legacy_rows',
              'owner_transcript_pins', 'owner_transcript_additions', 'owner_knowledge_reviews', 'owner_trade_follow',
-             'collected_row_revisions', 'owner_narrative_decisions', 'owner_source_settings')
+             'collected_row_revisions', 'owner_narrative_decisions', 'owner_source_settings',
+             'owner_source_additions')
 # Small owner-ledger tables re-derived per connection in TEMP shadows, so writes
 # show at once; the file keeps its own (possibly older) derived copy underneath.
 SHADOWED = ('portfolio_transactions', 'stock_group_members', 'stock_groups', 'watch_rules', 'watch_evaluations', 'portfolio_principles', 'follows', 'kalshi_pins', 'channel_reads',
@@ -419,6 +420,16 @@ def _derive_owner_records(root, pg):
         # Operator decisions win over whatever the collector judged for the same knowledge.
         root.executemany('UPDATE knowledge SET review_status=?,epistemic_status=COALESCE(?,epistemic_status) WHERE id=?',
                          pg.execute('SELECT review_status,epistemic_status,knowledge_id FROM owner_knowledge_reviews').fetchall())
+    if pg.execute("SELECT to_regclass('owner_source_additions')").fetchone()[0] is not None:
+        # Sources the operator added that the collected rows do not have yet.
+        from pipeline.postgres_owner_records_fixture import SOURCE_TABLES
+        for kind, key, data in pg.execute('SELECT kind,key,row_data FROM owner_source_additions ORDER BY added_at,key'):
+            table, column = SOURCE_TABLES[kind]
+            if root.execute(f'SELECT 1 FROM {table} WHERE {column}=?', (key,)).fetchone():
+                continue
+            columns = [row[1] for row in root.execute(f'PRAGMA table_info({table})') if row[1] in data]
+            root.execute(f'INSERT INTO {table} ({",".join(columns)}) VALUES ({",".join("?" * len(columns))})',
+                         [data[column] for column in columns])
     if pg.execute("SELECT to_regclass('owner_source_settings')").fetchone()[0] is not None:
         # The operator's mute/collection switches over the collected source rows.
         from pipeline.postgres_owner_records_fixture import SOURCE_TABLES

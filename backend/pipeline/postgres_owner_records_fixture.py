@@ -333,3 +333,33 @@ def set_source(conn, kind, key, *, is_active=None, collect_enabled=None):
                  'collect_enabled=COALESCE(excluded.collect_enabled,owner_source_settings.collect_enabled),'
                  "updated_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')",
                  (kind, key, is_active, collect_enabled))
+
+
+def initialize_source_additions(conn):
+    """Sources the operator added; the collector reads them from the export and fills the rest."""
+    _guard(conn)
+    with conn.transaction():
+        if conn.execute("SELECT to_regclass('owner_source_additions')").fetchone()[0] is not None:
+            raise ValueError('Source additions already initialized')
+        conn.execute("CREATE TABLE owner_source_additions (kind TEXT NOT NULL CHECK(kind IN ('telegram','blog','youtube')),"
+                     'key TEXT NOT NULL,row_data JSONB NOT NULL,'
+                     "added_at TEXT NOT NULL DEFAULT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'),"
+                     'PRIMARY KEY(kind,key))')
+
+
+def add_source(conn, kind, key, row):
+    """Record one added source; telegram/blog rows get the next id above every id already shown."""
+    from psycopg.types.json import Jsonb
+    table, _ = SOURCE_TABLES[kind]
+    conn.execute('LOCK TABLE owner_source_additions IN EXCLUSIVE MODE')
+    if kind != 'youtube':
+        visible = conn.execute("SELECT COALESCE(max((row_data->>'id')::bigint),0) FROM legacy_snapshot_rows WHERE table_name=%s",
+                               (table,)).fetchone()[0]
+        added = conn.execute("SELECT COALESCE(max((row_data->>'id')::bigint),0) FROM owner_source_additions WHERE kind=%s",
+                             (kind,)).fetchone()[0]
+        row = {'id': max(visible, added) + 1, **row}
+    stamp = conn.execute("SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')").fetchone()[0]
+    row = {'is_active': 1, 'added_at': stamp, **row}
+    conn.execute('INSERT INTO owner_source_additions(kind,key,row_data,added_at) VALUES (%s,%s,%s,%s)',
+                 (kind, key, Jsonb(row), stamp))
+    return row
