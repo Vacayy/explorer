@@ -3,7 +3,8 @@
 The base snapshot leaves chunks out; this copies them, unchanged, from the base generation's own
 backup into a SQLite file beside the projection, so the legacy chunk search and reranked retrieval
 (`pipeline.rag.retrieve_docs`) run as they are, with the projection attached for document rows.
-Chunks of documents published after the base generation are not in it yet.
+Documents published or revised after the base generation are chunked by the projection builder
+after each build (`refresh`, the legacy content-hash-idempotent `build_chunk_index`).
 """
 import json
 import sqlite3
@@ -58,3 +59,23 @@ def build_from_backup(backup_dir, target, *, batch=2000):
         out.close()
     partial.replace(target)
     return counts
+
+
+def refresh(chunks_path, projection_path):
+    """Chunk new and revised documents and drop withdrawn ones: the unchanged legacy build_chunk_index on the
+    chunk index with the projection attached for document rows; the embedding model is local only."""
+    from pipeline import chunks, search
+
+    def connection():
+        conn = sqlite3.connect(chunks_path, timeout=60)
+        conn.execute('ATTACH DATABASE ? AS projection', (f'file:{projection_path}?mode=ro',))
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    saved = chunks.get_connection, search.get_connection, chunks._get_model
+    chunks.get_connection = search.get_connection = connection  # search._vec_conn opens the chunk index
+    chunks._get_model = lambda: search._get_model(local_files_only=True)
+    try:
+        return chunks.build_chunk_index()
+    finally:
+        chunks.get_connection, search.get_connection, chunks._get_model = saved

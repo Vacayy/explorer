@@ -35,6 +35,7 @@ def run(directory):
         return False
     path, version, legacy_version = build_projection(factory, directory)
     refreshed = _reembed(factory)
+    chunked = _rechunk(directory, path)
     for name, target in (('current.db', path.name), ('current.json', None)):
         temporary = directory / f'{name}-{uuid.uuid4().hex}'
         if target:
@@ -45,7 +46,7 @@ def run(directory):
         os.replace(temporary, directory / name)
     for old in sorted(directory.glob('projection-*.db'), key=lambda item: item.stat().st_mtime)[:-KEEP]:
         old.unlink(missing_ok=True)
-    print(json.dumps({'built': path.name, 'version': version, 'reembedded': len(refreshed)}), flush=True)
+    print(json.dumps({'built': path.name, 'version': version, 'reembedded': len(refreshed), 'chunked': chunked}), flush=True)
     return True
 
 
@@ -57,6 +58,15 @@ def _reembed(factory):
         if not stale_documents(pg):
             return []  # no model load when nothing changed
         return refresh(pg, _get_model(local_files_only=True), _serialize)
+
+
+def _rechunk(directory, path):
+    """New and revised documents into the chunk index the compute worker searches (AI-answer evidence)."""
+    from pipeline.postgres_chunk_index import refresh
+    if not (directory / 'chunks.db').exists():
+        return None
+    result = refresh(directory / 'chunks.db', path)
+    return {key: result.get(key) for key in ('docs', 'chunks', 'orphans')}
 
 
 if __name__ == '__main__':

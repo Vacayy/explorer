@@ -958,4 +958,16 @@ Peer 번들은 SQLite가 아니라 별도 수집 파일에서 오므로 보충 �
 
 새 수집 문서 제자리 게시(경과 경로): `postgres_collected_documents_fixture`. 기존 수집기는 현재 투영 파일의 쓰기 사본에서 실행해(게시된 영상·overlay 엔티티·개인 원장을 봄) 그 사본의 시작 최고 id보다 큰 문서·엔티티·관계만 고르고, 노트 overlay 게시와 같은 규칙(`_new_source_details`, 상세 reader)으로 `collected_*` 표(상세·목록·필터·타임라인·메타·엔티티 순서)와 기존 overlay 표에 한 트랜잭션으로 넣는다. 해당 VIEW에는 UNION으로 붙고 `snapshot_metadata`의 문서·목록 수에 더해진다(base 불변). GRAPH_LOCK 아래 ID가 이미 쓰였으면 전체 취소. 발행 시각과 관계없이 제 위치에 들어간다: `scale_orders`가 base 목록 순번·필터 위치를 VIEW에서 2^20배로 벌리고(실제 순서 해시 불변 확인), 게시마다 `_place`가 모든 수집 문서를 base 이웃 사이 빈칸에 고르게 다시 배치한다(18000과 같은 published_at DESC, 같은 시각이면 base 뒤·수집 문서끼리는 id 순). 한 빈칸은 2^20-1건까지 받으며 넘치면 게시 전체를 취소한다. 정리본이 게시된 수집 영상은 `collected_*` 행을 직접 갱신하고, base 영상 override는 배율을 뺀 base 순번을 저장한다. 대표 확인: RSS 1소스에서 새 글 1건(요약 Codex 1회) → 상세·피드 목록 1위·타임라인 1위·채널·키워드 검색·/feed 화면, 기존 영상 보존 확인 후 시험 문서는 ID로 정리했다(MacBook이 같은 ID를 쓸 수 있으므로 후보 수집 문서는 최종 동기화 전 정리·재매핑 필요). 합성 텔레그램(기존 미디어 경로 첨부)·유튜브(정리 대기·자막) 문서로 외부 요청 없이 게시 경로를 확인하고 `withdraw`(게시 원장 `collected_publications` 기준)로 정리했다. 미완: 새 첨부 파일 수집이 있는 소스, 텔레그램·유튜브 실제 수집(공인 IP 공유: 유튜브 자막 요청 과다로 차단을 일으킨 적 있음 — 외부 시험은 소스 1개·요청 1~2회), 일정 실행.
 
-게시로 본문이 바뀐 문서의 벡터: `postgres_embedding_refresh_fixture`가 레거시 `build_index`와 같은 입력(제목 + 본문 앞 2000자, 같은 로컬 모델)으로 다시 임베딩해 `document_embedding_overrides`에 넣고, `document_embeddings` VIEW에서 같은 문서의 base 행을 대체한다(벡터 수 불변, base 불변). 미리보기에서는 투영의 변경 감지 후 훅(`LegacyProjection(on_change=...)`)이 stale 벡터를 재임베딩하고 바뀐 것이 있으면 검색 색인을 닫는다. 영상 29425·29427 등 4건을 재임베딩해 다른 표현의 질의에서 의미 검색 1위를 확인했다. 새로 게시된 문서처럼 벡터가 없는 문서도 같은 훅이 임베딩하고, `document_embedding_metadata.vector_count`는 VIEW의 실제 벡터 수를 센다(`count_new_vectors`); `withdraw`는 그 벡터도 지운다. 미완: 청크 hybrid/rerank.
+게시로 본문이 바뀐 문서의 벡터: `postgres_embedding_refresh_fixture`가 레거시 `build_index`와 같은 입력(제목 + 본문 앞 2000자, 같은 로컬 모델)으로 다시 임베딩해 `document_embedding_overrides`에 넣고, `document_embeddings` VIEW에서 같은 문서의 base 행을 대체한다(벡터 수 불변, base 불변). 미리보기에서는 투영의 변경 감지 후 훅(`LegacyProjection(on_change=...)`)이 stale 벡터를 재임베딩하고 바뀐 것이 있으면 검색 색인을 닫는다. 영상 29425·29427 등 4건을 재임베딩해 다른 표현의 질의에서 의미 검색 1위를 확인했다. 새로 게시된 문서처럼 벡터가 없는 문서도 같은 훅이 임베딩하고, `document_embedding_metadata.vector_count`는 VIEW의 실제 벡터 수를 센다(`count_new_vectors`); `withdraw`는 그 벡터도 지운다. 청크 색인(`/projection/chunks.db`, AI 답변 근거·주장 관련 문서용): 빌더가 투영을 만들고 재임베딩한 뒤 `postgres_chunk_index.refresh`로 레거시 `build_chunk_index`를 그대로 실행한다. 투영을 붙인 청크 색인 위에서 content_hash가 바뀐 문서·새 문서를 다시 청킹·임베딩하고(로컬 모델만), 투영에 없는 문서의 청크는 지운다. 본문이 빈 문서는 청크가 없어 매번 대상에 남는다(레거시와 같다). 첫 실행: 실제 처리 5건(청크 21), 3초. 개정된 영상 29424는 새 해시로 청크 4개, 제목 질의 근거 검색 1위.
+
+**단일 경로 후보 미완 목록(2026-11-16 재집계, 프론트 쓰기 호출 107곳/고유 96)**
+
+| 상태 | 항목 |
+|---|---|
+| 연결됨(모의만) | 질문 approve, 리서치 후보 승인(실제 승인은 소유자 판단) |
+| Claude 로그인 대기 | 회사 프로필(company.profile 웹), TW 체인 리포트(chain.analyze 웹), 스터디 웹 조사(study.web), 질문 시나리오·synthesis 실제 확인(질문 19) |
+| not_run(수집, 단일 writer) | 매크로·리스크·레짐 스냅샷, 재무·가격·컨콜 수집, 출처 새로고침, trade seed, 트래커 수급 준비 |
+| 미착수: 모델 계산(웹 없음) | 증거 요약, 레짐 해설, Thesis 감사, 큰 그림 재생성, 포트폴리오 논지 |
+| 미착수: 외부 조회 포함 | 컨콜 반응, 기대치(저장값 응답 + 모델 계산, 외부 조회 부분만 not_run) |
+| 설계 확정·미구현 | 별칭 승인 소급 링크(문서 개정 경로로 게시, 일회성 컨테이너), 컨콜 프록시 추출(레거시 의미: 전체 40, 스캔 원장으로 멱등) |
+| 기타 | 텔레그램 알림 발송(전환 후 단일 writer), 운영 전환 뒤 실제 수집 버튼 |
