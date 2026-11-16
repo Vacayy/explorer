@@ -247,3 +247,22 @@ def upsert_transcript_follow(conn, ticker, company_name, group_label, active):
                  'company_name=COALESCE(excluded.company_name,owner_transcript_additions.company_name),'
                  'group_label=COALESCE(excluded.group_label,owner_transcript_additions.group_label)',
                  (owner_account(conn), ticker, company_name, group_label, active))
+
+
+def initialize_knowledge_reviews(conn):
+    """Operator approve/reject decisions on knowledge, kept apart from the collector's own judgments."""
+    _guard(conn)
+    with conn.transaction():
+        if conn.execute("SELECT to_regclass('owner_knowledge_reviews')").fetchone()[0] is not None:
+            raise ValueError('Knowledge reviews already initialized')
+        conn.execute('CREATE TABLE owner_knowledge_reviews (knowledge_id BIGINT PRIMARY KEY,review_status TEXT NOT NULL,'
+                     'epistemic_status TEXT,'
+                     "decided_at TEXT NOT NULL DEFAULT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS'))")
+
+
+def review_knowledge(conn, knowledge_id, status, epistemic=None):
+    conn.execute("INSERT INTO owner_knowledge_reviews(knowledge_id,review_status,epistemic_status) VALUES (%s,%s,%s) "
+                 "ON CONFLICT (knowledge_id) DO UPDATE SET review_status=excluded.review_status,"
+                 "epistemic_status=COALESCE(excluded.epistemic_status,owner_knowledge_reviews.epistemic_status),"
+                 "decided_at=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD HH24:MI:SS')",
+                 (knowledge_id, status, epistemic))

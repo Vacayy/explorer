@@ -1,5 +1,5 @@
 """Loopback-only owner follows, prediction pins, feed read marks, bookmarks, tracker conditions and
-call-follow pins/additions on the PG ledger.
+call-follow pins/additions and knowledge review decisions on the PG ledger.
 
 Same request/response shapes and errors as the legacy routes. The follow list
 and feed read marks read the ledger directly; legacy reads (prediction cards)
@@ -149,6 +149,37 @@ def create_router(factory, timeline):
         with connection() as conn:
             records.set_core_pin(conn, ticker, body.pinned)
         return {'ticker': ticker, 'pinned': body.pinned}
+
+    @router.post('/api/spine/knowledge/items/{knowledge_id}/approve')
+    def approve_knowledge(knowledge_id: int):
+        import database
+        legacy = database.get_connection()  # the projection, with earlier decisions applied
+        try:
+            if not legacy.execute("SELECT id FROM knowledge WHERE id=? AND review_status IN ('proposed','held')",
+                                  (knowledge_id,)).fetchone():
+                raise HTTPException(404, '대기 중인 지식이 없습니다')
+            independent = legacy.execute("SELECT count(*) FROM knowledge_evidence WHERE knowledge_id=? AND stance='support' "
+                                         "AND independent=1", (knowledge_id,)).fetchone()[0]
+        finally:
+            legacy.close()
+        epistemic = 'corroborated' if independent >= 2 else 'observed'
+        # Falsifier generation (a model call in the legacy route) is not connected yet.
+        with connection() as conn:
+            records.review_knowledge(conn, knowledge_id, 'active', epistemic)
+        return {'id': knowledge_id, 'epistemic_status': epistemic}
+
+    @router.post('/api/spine/knowledge/items/{knowledge_id}/reject')
+    def reject_knowledge(knowledge_id: int):
+        import database
+        legacy = database.get_connection()
+        try:
+            known = legacy.execute('SELECT 1 FROM knowledge WHERE id=?', (knowledge_id,)).fetchone()
+        finally:
+            legacy.close()
+        if known:  # the legacy UPDATE also answers 200 for an unknown id
+            with connection() as conn:
+                records.review_knowledge(conn, knowledge_id, 'rejected')
+        return {'id': knowledge_id}
 
     @router.post('/api/spine/transcript/follow', status_code=201)
     def upsert_follow(body: FollowReq):

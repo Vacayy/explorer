@@ -34,11 +34,11 @@ VERSIONED = ('video_digest_overlay_rows', 'video_projection_overrides', 'questio
              'fixture_portfolio_transactions', 'fixture_portfolio_members', 'fixture_portfolio_principles',
              'owner_follows', 'owner_kalshi_pins', 'owner_channel_reads',
              'owner_saved_items', 'owner_tracker_conditions', 'owner_legacy_rows',
-             'owner_transcript_pins', 'owner_transcript_additions')
+             'owner_transcript_pins', 'owner_transcript_additions', 'owner_knowledge_reviews')
 # Small owner-ledger tables re-derived per connection in TEMP shadows, so writes
 # show at once; the file keeps its own (possibly older) derived copy underneath.
 SHADOWED = ('portfolio_transactions', 'stock_group_members', 'stock_groups', 'watch_rules', 'watch_evaluations', 'portfolio_principles', 'follows', 'kalshi_pins', 'channel_reads',
-            'saved_items', 'tracker_conditions', 'transcript_follow', *NATIVE)
+            'saved_items', 'tracker_conditions', 'transcript_follow', 'knowledge', *NATIVE)
 CHECK_SECONDS = 10
 log = logging.getLogger(__name__)
 
@@ -362,6 +362,10 @@ def _derive_owner_records(root, pg):
                          pg.execute('SELECT id,stock_code,role,kind,level,ma,label,note,done,created_at,updated_at '
                                     'FROM owner_tracker_conditions ORDER BY id').fetchall())
     derive_owner_transcript_follow(root, pg)
+    if pg.execute("SELECT to_regclass('owner_knowledge_reviews')").fetchone()[0] is not None:
+        # Operator decisions win over whatever the collector judged for the same knowledge.
+        root.executemany('UPDATE knowledge SET review_status=?,epistemic_status=COALESCE(?,epistemic_status) WHERE id=?',
+                         pg.execute('SELECT review_status,epistemic_status,knowledge_id FROM owner_knowledge_reviews').fetchall())
 
 
 def derive_owner_transcript_follow(root, pg):
