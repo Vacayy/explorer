@@ -25,7 +25,7 @@ from security.login_flow import SESSION_COOKIE, session_csrf
 
 POLICIES = {'auth', 'public', 'compute', 'member', 'operator'}
 
-_MEMBER = re.compile(r'^/api/portfolio(/|$)|^/api/spine/(saved|follows)(/|$)|^/api/spine/feed/channels/read'
+_MEMBER = re.compile(r'^/api/portfolio(/|$)|^/api/spine/(saved|follows)(/|$)|^/api/spine/feed/channels/read|^/api/spine/thesis/audit$'
                      r'|^/api/spine/home/predictions/[^/]+/pin$|^/api/spine/tracker/(conditions/|[^/]+/conditions$)')
 # A member's own groups (pipeline.postgres_owner_legacy_fixture.member_rows); evaluation and reasons stay the operator's.
 _MEMBER_GROUPS = re.compile(r'^/api/spine/groups(/default-watch|/[^/]+(/members(/[^/]+(/tracked)?)?|/rules)?)?$')  # each member's own ledger

@@ -8,9 +8,9 @@ Enforced in the public mode by `CandidateAccessBoundary`; the private (loopback)
 
 | policy | count |
 |---|---|
-| member | 56 |
+| member | 57 |
 | operator | 57 |
-| compute | 22 |
+| compute | 21 |
 | public | 169 |
 
 | method | path | policy |
@@ -69,6 +69,7 @@ Enforced in the public mode by `CandidateAccessBoundary`; the private (loopback)
 | POST | `/api/spine/study-projects/{pid}/documents` | member |
 | DELETE | `/api/spine/study-projects/{pid}/documents/{sid}` | member |
 | POST | `/api/spine/study-projects/{pid}/turns/{tid}/recover` | member |
+| POST | `/api/spine/thesis/audit` | member |
 | PATCH | `/api/spine/tracker/conditions/{cid}` | member |
 | POST | `/api/spine/tracker/{code}/conditions` | member |
 | POST | `/api/analysis/discovery/cases` | operator |
@@ -144,7 +145,6 @@ Enforced in the public mode by `CandidateAccessBoundary`; the private (loopback)
 | POST | `/api/spine/report/compute` | compute |
 | POST | `/api/spine/sources/dossier/summary` | compute |
 | POST | `/api/spine/stock/{stock_code}/lens/compute` | compute |
-| POST | `/api/spine/thesis/audit` | compute |
 | POST | `/api/spine/trade/{hs_code}/beneficiaries` | compute |
 | POST | `/api/spine/transcript/detail/{transcript_id}/digest` | compute |
 | POST | `/api/spine/transcript/detail/{transcript_id}/reaction` | compute |

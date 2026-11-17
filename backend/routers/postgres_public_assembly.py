@@ -47,6 +47,8 @@ def install_public(app, factory):
         per_network_day_limit=int(os.environ['EXPLORER_TRIAL_NETWORK_DAY_LIMIT']),
         global_day_limit=int(os.environ['EXPLORER_TRIAL_GLOBAL_DAY_LIMIT']),
         max_in_flight=int(os.environ['EXPLORER_TRIAL_MAX_IN_FLIGHT'])))
+    from routers import postgres_member_thesis_fixture
+    postgres_member_thesis_fixture.install(app, factory)  # thesis audits: the requester's own
     gate.install(llm, quota)
     gate.add_middleware(app, identity=identity, factory=factory)
     app.add_middleware(CandidateAccessBoundary, routes=app.router.routes, service_factory=lambda: service)
