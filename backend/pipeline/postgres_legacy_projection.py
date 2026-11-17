@@ -117,7 +117,7 @@ def build_projection(factory, directory):
                     'SELECT a.attname FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=ANY(i.indkey) '
                     'WHERE i.indrelid=to_regclass(%s) AND i.indisprimary ORDER BY array_position(i.indkey,a.attnum)', (name,)))
                 root.execute(f'CREATE TABLE "{name}" ({quoted}, PRIMARY KEY({key}))')
-                rows = pg.execute(f'SELECT {quoted} FROM {name}').fetchall()
+                rows = pg.execute(f'SELECT {quoted} FROM {name} WHERE {_operator_rows(pg, name)}').fetchall()
                 root.executemany(f'INSERT INTO "{name}" ({quoted}) VALUES ({",".join("?" for _ in columns)})', rows)
             legacy_version = None
             if pg.execute("SELECT to_regclass('owner_legacy_rows')").fetchone()[0] is not None:
@@ -411,6 +411,23 @@ def _scope_to_requester(conn, pg):
         conn.execute(statement)
 
 
+_MEMBER_QUESTION = "SELECT question_id FROM question_principals"
+_MEMBER_ROWS = {  # a member's tracked questions stay out of the operator's legacy tables
+    'questions': f'id NOT IN ({_MEMBER_QUESTION})',
+    'sub_questions': f'question_id NOT IN ({_MEMBER_QUESTION})',
+    'proxy_registry': f'sub_question_id IS NULL OR sub_question_id NOT IN (SELECT id FROM sub_questions WHERE question_id IN ({_MEMBER_QUESTION}))',
+    'proxy_observations': ('proxy_id NOT IN (SELECT p.id FROM proxy_registry p JOIN sub_questions s ON s.id=p.sub_question_id '
+                           f'WHERE s.question_id IN ({_MEMBER_QUESTION}))'),
+}
+
+
+def _operator_rows(pg, name):
+    """The rows of a PG-native ledger the projection (the operator's legacy view) shows."""
+    if name in _MEMBER_ROWS and pg.execute("SELECT to_regclass('question_principals')").fetchone()[0] is not None:
+        return _MEMBER_ROWS[name]
+    return 'true'
+
+
 def _derive_native(root, pg):
     """Current rows of the PG-native ledgers (questions, study projects), so new ones show at once."""
     for name in NATIVE:
@@ -418,7 +435,7 @@ def _derive_native(root, pg):
         quoted = ','.join('"' + column + '"' for column in columns)
         root.execute(f'DELETE FROM "{name}"')
         root.executemany(f'INSERT INTO "{name}" ({quoted}) VALUES ({",".join("?" for _ in columns)})',
-                         pg.execute(f'SELECT {quoted} FROM {name}').fetchall())
+                         pg.execute(f'SELECT {quoted} FROM {name} WHERE {_operator_rows(pg, name)}').fetchall())
 
 
 def _derive_owner_legacy(root, pg, rows, *, skip=()):

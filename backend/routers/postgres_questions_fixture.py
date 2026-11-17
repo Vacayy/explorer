@@ -1,7 +1,7 @@
 """Read existing question-tracker data from a disposable PG fixture."""
 import json
 from uuid import UUID
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from psycopg.rows import dict_row
 from pipeline.postgres_graph_fixture import _guard
 from routers.spine_questions import AskRequest, FromDocRequest, ScenarioRequest
@@ -11,6 +11,39 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
     # projection: returns the LegacyProjection (it is created after this router is included)
     router = APIRouter(prefix='/api/spine/questions')
 
+    def member():
+        """The signed-in member's owner key, or None for the operator (and the private mode)."""
+        from pipeline.postgres_principals import conversation_owner
+        return conversation_owner(None)
+
+    def visible(alias='q'):
+        """Questions the requester may see: a member's own (question_principals); the operator's are the rest
+        (all of them before the table exists)."""
+        owner = member()
+        with connect() as conn:
+            mapped = conn.execute("SELECT to_regclass('question_principals')").fetchone()[0] is not None
+        if owner is not None:
+            if not mapped:
+                return 'false', ()
+            return f'EXISTS (SELECT 1 FROM question_principals p WHERE p.question_id={alias}.id AND p.principal=%s)', (owner,)
+        if not mapped:
+            return 'true', ()
+        return f'NOT EXISTS (SELECT 1 FROM question_principals p WHERE p.question_id={alias}.id)', ()
+
+    def owned(question_id: int):
+        with connect() as conn:
+            _guard(conn)
+            predicate, params = visible()
+            if conn.execute(f'SELECT 1 FROM questions q WHERE q.id=%s AND {predicate}', (question_id, *params)).fetchone() is None:
+                raise HTTPException(404, '질문 없음')
+
+    def claim(question_id):
+        owner = member()
+        if owner is not None:
+            with connect() as conn:
+                _guard(conn)
+                conn.execute('INSERT INTO question_principals(question_id,principal) VALUES (%s,%s)', (question_id, owner))
+
     @router.get('/creation-runs/{run_id}')
     def creation_run(run_id: UUID):
         with connect() as conn, conn.cursor(row_factory=dict_row) as cur:
@@ -19,7 +52,9 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
             row = cur.fetchone()
             if not row:
                 raise HTTPException(404, '질문 생성 작업을 찾을 수 없습니다')
-            return row
+        if row['question_id'] is not None:
+            owned(row['question_id'])  # a run reads as its question does (only step states before it has one)
+        return row
 
     @router.post('', status_code=201)
     def create(body: AskRequest, request: Request):
@@ -46,7 +81,7 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
             result = create_question_native(connect, body.text, run_llm=model, search=search,
                 created_by=body.created_by if body.created_by in ('user', 'thesis') else 'user',
                 narrative_id=body.narrative_id, source_doc_id=body.source_doc_id,
-                numeric_limit=1 if test_limit is not None else 40)
+                numeric_limit=1 if test_limit is not None else 40, on_staged=claim)
         except QuestionRunUnresolved as exc:
             raise HTTPException(409, {'message': str(exc), 'run_id': exc.run_id}) from exc
         except QuestionModelUncertain as exc:
@@ -70,10 +105,12 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
     def index(narrative_id: int | None = None, status: str | None = None):
         with connect() as conn, conn.cursor(row_factory=dict_row) as cur:
             _guard(conn)
+            predicate, params = visible()
             cur.execute("SELECT q.*,(SELECT count(*) FROM sub_questions s WHERE s.question_id=q.id) AS sub_count "
                         "FROM questions q WHERE q.status != 'dismissed' "
                         "AND (%s::bigint IS NULL OR q.narrative_id=%s) AND (%s::text IS NULL OR %s='' OR q.status=%s) "
-                        "ORDER BY q.updated_at DESC NULLS LAST,q.id ASC", (narrative_id, narrative_id, status, status, status))
+                        f"AND {predicate} ORDER BY q.updated_at DESC NULLS LAST,q.id ASC",
+                        (narrative_id, narrative_id, status, status, status, *params))
             return cur.fetchall()
 
     @router.get('/proxy/{proxy_id}')
@@ -85,6 +122,8 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
                         'FROM proxy_registry p LEFT JOIN sub_questions s ON s.id=p.sub_question_id '
                         'LEFT JOIN questions q ON q.id=s.question_id WHERE p.id=%s', (proxy_id,))
             proxy = cur.fetchone()
+            if proxy and proxy['question_id'] is not None:
+                owned(proxy['question_id'])  # a question's proxy is as private as the question (seed proxies are shared)
             if not proxy:
                 raise HTTPException(404, '프록시 없음')
             cur.execute("SELECT o.observed_at,o.value_num,o.value_text,o.direction,o.confidence,o.source_type, "
@@ -107,7 +146,7 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
             return {**proxy, 'observations': observations}
 
     @router.get('/{question_id}')
-    def detail(question_id: int):
+    def detail(question_id: int, _owned: None = Depends(owned)):
         with connect() as conn, conn.cursor(row_factory=dict_row) as cur:
             _guard(conn)
             cur.execute('SELECT * FROM questions WHERE id=%s', (question_id,))
@@ -175,7 +214,7 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
         return {'q': question, 'subs': subs, 'grounding': grounding}
 
     @router.get('/{question_id}/synthesis')
-    def synthesis(question_id: int):
+    def synthesis(question_id: int, _owned: None = Depends(owned)):
         from pipeline.question_report import _hash
         with connect() as conn, conn.cursor(row_factory=dict_row) as cur:
             conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
@@ -236,14 +275,14 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
             _offline.reset(offline)
 
     @router.post('/{question_id}/scenario')
-    def question_scenario(question_id: int, body: ScenarioRequest):
+    def question_scenario(question_id: int, body: ScenarioRequest, _owned: None = Depends(owned)):
         result = build_scenario(question_id, body.event)
         if 'error' in result:
             raise HTTPException(503, result['error'])
         return result
 
     @router.post('/{question_id}/synthesis/compute')
-    def synthesis_compute(question_id: int, refresh: bool = False):
+    def synthesis_compute(question_id: int, refresh: bool = False, _owned: None = Depends(owned)):
         # Legacy compute_synthesis: report (current settlement) -> scenario chained on it, each only when needed.
         from database import get_connection
         from pipeline import question_report
@@ -327,7 +366,7 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
         return {'proposed': proposed}
 
     @router.post('/{question_id}/approve')
-    def approve(question_id: int):
+    def approve(question_id: int, _owned: None = Depends(owned)):
         from pipeline.postgres_question_orchestration_fixture import create_question_native, QuestionRunUnresolved, QuestionModelUncertain
         with connect() as conn:
             _guard(conn)
@@ -368,7 +407,7 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
         return result
 
     @router.post('/{question_id}/rollup')
-    def rollup(question_id: int):
+    def rollup(question_id: int, _owned: None = Depends(owned)):
         # The legacy re-judgement on the PG ledger: judgement fields only, dropped if inputs changed meanwhile.
         from pipeline.postgres_question_rollup_fixture import rollup_question_native
         if run_llm is None:
@@ -381,7 +420,7 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
         return {key: result[key] for key in ('lead_verdict', 'confirm_verdict', 'divergence', 'changed', 'edges_confirmed')}
 
     @router.delete('/{question_id}', status_code=204)
-    def dismiss(question_id: int):
+    def dismiss(question_id: int, _owned: None = Depends(owned)):
         with connect() as conn:
             _guard(conn)
             conn.execute("UPDATE questions SET status='dismissed' WHERE id=%s", (question_id,))
@@ -407,3 +446,14 @@ def create_proxy_router(connect, *, run_llm=None):
         return {'extracted': result['extracted'], 'scanned': result['scanned']}
 
     return router
+
+
+def initialize_question_principals(conn):
+    """Members' tracked questions: a question with no row is the operator's (every question before members)."""
+    _guard(conn)
+    with conn.transaction():
+        if conn.execute("SELECT to_regclass('question_principals')").fetchone()[0] is not None:
+            raise ValueError('Question principals already initialized')
+        conn.execute('CREATE TABLE question_principals (question_id BIGINT PRIMARY KEY REFERENCES questions(id) ON DELETE CASCADE,'
+                     'principal TEXT NOT NULL)')
+        conn.execute('CREATE INDEX question_principals_principal ON question_principals(principal)')

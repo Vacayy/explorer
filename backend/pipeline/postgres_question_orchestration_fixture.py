@@ -67,7 +67,8 @@ def _record_run(connect, run_id, steps, status='running'):
 
 
 def create_question_native(connect, text, *, run_llm, search, created_by='user', narrative_id=None,
-                           source_doc_id=None, numeric_limit=40, stock_code=None, hint='', question_id=None):
+                           source_doc_id=None, numeric_limit=40, stock_code=None, hint='', question_id=None,
+                           on_staged=None):
     """stock_code ties a thesis/watch question to a stock; hint is added to the decomposition prompt only (as legacy).
     question_id decomposes an existing proposed question (approve) instead of adding one."""
     if not text.strip():
@@ -93,6 +94,8 @@ def create_question_native(connect, text, *, run_llm, search, created_by='user',
         _record_run(connect, run_id, {'decompose': {'status': 'failed'}}, 'failed')
         raise
     qid = stage['question_id']
+    if on_staged is not None:
+        on_staged(qid)  # e.g. its owner, before the long extraction steps
     steps = {'decompose': {'status': 'ok'}}
     _record_run(connect, run_id, steps)
 
