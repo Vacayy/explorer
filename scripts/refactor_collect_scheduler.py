@@ -19,7 +19,6 @@ collection source until then, so nothing is enabled by default.
 import argparse
 import fcntl
 import os
-import subprocess
 import sys
 import time
 from collections import Counter
@@ -29,6 +28,7 @@ from zoneinfo import ZoneInfo
 
 SEOUL = ZoneInfo('Asia/Seoul')
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'scripts'))  # refactor_collect_engine, refactor_collect_job
 LOCK = Path(os.environ.get('COLLECT_SCHEDULER_LOCK', Path.home() / 'server-data/review/refactor-single/collect-scheduler.lock'))
 JOB_SECONDS = int(os.environ.get('COLLECT_JOB_SECONDS', '3600'))  # one job's time limit (the MacBook chain step limit)
 TICK_SECONDS = 20
@@ -83,32 +83,32 @@ def plan(hours, now=None):
 
 def run_job(label, log=print):
     """One job in its one-shot container; the job harness records the outcome in collect_runs."""
+    import refactor_collect_engine as engine
     started = time.monotonic()
     started_utc = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
-    name = f'explorer-collect-{label}-{os.getpid()}'  # removed at the time limit (stopping the shell leaves the container)
-    try:
-        done = subprocess.run([str(ROOT / 'scripts/refactor_collect_trial.sh'), 'job', label], capture_output=True,
-                              text=True, timeout=JOB_SECONDS,
-                              env={**os.environ, 'CONTAINER_NAME': name, 'JOB_MEMORY': JOB_MEMORY.get(label, '2g'),
-                                   **({'TRIAL_HOST_CAPS': JOB_HOST_CAPS[label]} if label in JOB_HOST_CAPS else {})})
-        lines = [line for line in done.stdout.splitlines() if line.startswith('{')]
-        log(f'{label} rc={done.returncode} {time.monotonic() - started:.0f}s {lines[-1] if lines else "(no record line)"}')
-    except subprocess.TimeoutExpired:
-        subprocess.run(['docker', 'rm', '-f', name], capture_output=True)
-        subprocess.run([str(ROOT / 'scripts/refactor_collect_trial.sh'), 'stopped', label, started_utc,
-                        f'stopped at the {JOB_SECONDS}s limit'], capture_output=True, timeout=300)
+    code, output = engine.run(['python', '/app/scripts/refactor_collect_job.py', label],
+                              name=f'explorer-collect-{label}-{os.getpid()}', memory=JOB_MEMORY.get(label, '2g'),
+                              internet=os.environ.get('NO_INTERNET') != '1', limit=JOB_SECONDS,
+                              extra_env={'TRIAL_HOST_CAPS': JOB_HOST_CAPS[label]} if label in JOB_HOST_CAPS else None)
+    if code is None:  # stopped at the limit (the container is removed): recorded as failed, nothing applied
+        engine.run(['python', '/app/scripts/refactor_collect_job.py', '--stopped', label, started_utc,
+                    f'stopped at the {JOB_SECONDS}s limit'], internet=False, limit=300)
         log(f'{label} stopped at the {JOB_SECONDS}s limit (recorded as failed, nothing applied)')
+        return
+    lines = [line for line in output.splitlines() if line.startswith('{')]
+    log(f'{label} rc={code} {time.monotonic() - started:.0f}s {lines[-1] if lines else "(no record line)"}')
 
 
 def catchup_due(enabled, log=print):
     """Enabled calendar jobs whose latest due run has no applied record yet (judged in a one-shot container)."""
     import json
+    import refactor_collect_engine as engine
     try:
-        done = subprocess.run([str(ROOT / 'scripts/refactor_collect_trial.sh'), 'catchup', ','.join(sorted(enabled))],
-                              capture_output=True, text=True, timeout=300)
-        lines = [line for line in done.stdout.splitlines() if line.startswith('[')]
-        return json.loads(lines[-1]) if lines else []
-    except (subprocess.TimeoutExpired, ValueError) as exc:
+        code, output = engine.run(['python', '/app/scripts/refactor_collect_job.py', '--catchup', ','.join(sorted(enabled))],
+                                  internet=False, limit=300)
+        lines = [line for line in output.splitlines() if line.startswith('[')]
+        return json.loads(lines[-1]) if code == 0 and lines else []
+    except (RuntimeError, OSError, ValueError) as exc:
         log(f'catch-up check failed: {exc}')
         return []
 
