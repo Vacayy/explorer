@@ -6,7 +6,8 @@ series, observations: rows only ever added) a candidate row whose natural key th
 the replacement and added back after it, under a band id where the table has an integer id (map: candidate_id_remap,
 kind 'supplement:<table>'); a key both sides have keeps the MacBook's row. For a state table (rewritten or pruned as a
 whole) the MacBook's rows stand; candidate-only rows are archived and counted. A table is accumulating when its
-natural key carries a date or time (the list below, derived from the base's keys); anything unclear is a state table.
+natural key carries a date or time (the list below, derived from the base's keys) or it records collected or derived
+items (added below); configuration, lists and current state are state tables.
 job_runs is an operation record and is never carried (the candidate's own runs are in candidate_job_runs).
 """
 import json
@@ -54,6 +55,27 @@ ACCUMULATING = {'business_segments': ('corp_code', 'bsns_year', 'reprt_code', 's
                 'us_movers': ('trade_date', 'rank'),
                 'us_prices': ('stock_code', 'trade_date'),
                 'watch_evaluations': ('rule_id', 'stock_code', 'as_of')}
+# Record tables without a date in their key (PM #3 6945939798: collected and derived records are kept): their writers
+# only add or refresh rows by a source key (no table is ever wiped whole), so they accumulate too. With a source key:
+ACCUMULATING.update({'agent_proposals': ('kind', 'dedup_key'), 'capital_raise_details': ('rcp_no',),
+                     'chain_node_notes': ('node_key', 'inputs_hash'), 'corporate_actions': ('rcp_no',),
+                     'disclosures': ('rcp_no',), 'earnings_releases': ('accession', 'exhibit_type'),
+                     'era_commentary': ('input_hash',),
+                     'expectation_claims': ('source', 'url', 'node_key', 'subject', 'metric', 'target_period'),
+                     'image_readings': ('image_key',), 'macro_news': ('url',), 'media_analysis': ('image_path',),
+                     'research_candidates': ('stock_code', 'detected_date'), 'scrap_links': ('url',),
+                     'telegram_group_marks': ('channel', 'msg_id'),
+                     'us_customer_concentration': ('ticker', 'period_end', 'period_kind', 'customer', 'benchmark'),
+                     'us_pt_changes': ('ticker', 'graded_at', 'firm'), 'us_quarterly': ('ticker', 'q', 'metric'),
+                     'us_segments': ('ticker', 'q', 'segment_name'), 'us_ticker_news': ('ticker', 'url'),
+                     'narratives': ('topic', 'version'), 'company_profiles': ('stock_code', 'version'),
+                     'retail_snapshots': ('episode',)})
+# keyed by the document or transcript they are about:
+ACCUMULATING.update({'call_extracts': ('doc_id',), 'exp_feed_docs': ('doc_id',), 'image_backfill_docs': ('doc_id',),
+                     'knowledge_doc_scans': ('doc_id',), 'transcript_reactions': ('transcript_id',)})
+# and keyed by their own id (candidate rows carry band ids; an earlier one is added back under band + old id):
+ACCUMULATING.update({table: ('id',) for table in (
+    'catalysts', 'knowledge_evidence', 'lens_readings', 'chain_reports', 'stock_briefs', 'thesis_audits')})
 NEVER = {'job_runs'}
 
 
