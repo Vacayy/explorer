@@ -3,7 +3,7 @@
 Same safeguards as the isolated trial (scripts/refactor_collect_trial.py): source requests counted per host, a
 403/429 or a host reaching TRIAL_MAX_REQUESTS aborts with nothing applied, and collect → check → apply is one
 function. Every run, whatever its outcome, is recorded in PG collect_runs. Before the cutover the target is the
-disposable clone schema only (the trial's guard refuses the live candidate schema).
+disposable clone schema by default; the explicit live target must match the running API's schema.
 
 Refused here, whatever the scheduler asks: jobs that send (Telegram) and the uncapped overnight tagging backfill.
 Jobs not connected yet are recorded as 'unsupported' and not run.

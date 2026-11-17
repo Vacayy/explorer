@@ -58,7 +58,8 @@ def _pg():
     import psycopg
     dsn, schema = os.environ['REFACTOR_POSTGRES_DSN'], os.environ['REFACTOR_FIXTURE_SCHEMA']
     live = os.environ.get('TRIAL_LIVE_SCHEMA')
-    if not re.fullmatch(r'refactor_fixture_[0-9a-f]{32}', schema) or schema == live:
+    production = os.environ.get('COLLECT_TARGET') == 'live'
+    if not re.fullmatch(r'refactor_fixture_[0-9a-f]{32}', schema) or (schema != live if production else schema == live):
         raise ValueError('A disposable clone schema (not the live one) is required')
     return psycopg.connect(dsn, options=f'-c search_path={schema}', autocommit=True)
 

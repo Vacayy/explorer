@@ -9,8 +9,8 @@ queue; repeats of a waiting job coalesce, as launchd does), each as a one-shot c
 (scripts/refactor_collect_trial.sh job <label> → scripts/refactor_collect_job.py, per-host request cap, record
 in PG collect_runs). A file lock keeps a second scheduler from starting. Sending jobs and the overnight backfill
 are refused. Missed runs are caught up as on the MacBook (pipeline.catchup over collect_runs, checked at start
-and every 30 minutes while idle). Before the cutover the job target is the disposable clone schema only; the MacBook stays the
-collection source until then, so nothing is enabled by default.
+and every 30 minutes while idle). The live target is opt-in; without it only a disposable clone is allowed.
+Nothing is enabled by default.
 
   python scripts/refactor_collect_scheduler.py --plan 24                       # the next 24 hours
   python scripts/refactor_collect_scheduler.py --run --enable indexintraday    # loop
@@ -159,6 +159,9 @@ def _run_one(label, log=print):
         log(f'{label} stopped at the {JOB_SECONDS}s limit (recorded as failed, nothing applied)')
         return
     lines = [line for line in output.splitlines() if line.startswith('{')]
+    if code != 0 and not lines:
+        engine.run(['python', '/app/scripts/refactor_collect_job.py', '--stopped', label, started_utc,
+                    f'job container exited {code} before recording its outcome'], internet=False, limit=300)
     log(f'{label} rc={code} {time.monotonic() - started:.0f}s {lines[-1] if lines else "(no record line)"}')
 
 

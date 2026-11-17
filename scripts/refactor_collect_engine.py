@@ -22,6 +22,8 @@ VOLUME = 'explorer-refactor-collect-trial'
 ROOT = Path(__file__).resolve().parent.parent
 HOME = Path(os.environ.get('HOST_HOME', Path.home()))
 STATE = HOME / 'server-data/review/refactor-single/collect-trial-schema'
+# Live scheduling is opt-in and derives its target from the running API, never from the trial state file.
+# The job independently checks that this target equals TRIAL_LIVE_SCHEMA before opening PG.
 # The credit adapter (local_sources/, git-excluded code from the MacBook; architect #3 6942709181): like a credential,
 # a host directory mounted read-only into job containers only, never the API or the image. Absent, credit reports
 # 'adapter missing' as on a MacBook without it.
@@ -133,9 +135,12 @@ def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=No
     """Create, start and wait for one job container; returns (exit code, output). Removed afterwards."""
     api = call('GET', f'/containers/{API}/json')
     env = [item for item in api['Config']['Env'] if item.split('=', 1)[0] in API_ENV]
-    env += [f'REFACTOR_FIXTURE_SCHEMA={STATE.read_text().strip()}', 'CLAUDE_BIN=/bin/false', 'EXPLORER_ONESHOT=1',
-            'TRIAL_LIVE_SCHEMA=' + next(item.split('=', 1)[1] for item in api['Config']['Env']
-                                        if item.startswith('REFACTOR_FIXTURE_SCHEMA=')),
+    live = next(item.split('=', 1)[1] for item in api['Config']['Env']
+                if item.startswith('REFACTOR_FIXTURE_SCHEMA='))
+    production = os.environ.get('COLLECT_TARGET') == 'live'
+    schema = live if production else STATE.read_text().strip()
+    env += [f'REFACTOR_FIXTURE_SCHEMA={schema}', 'CLAUDE_BIN=/bin/false', 'EXPLORER_ONESHOT=1',
+            'TRIAL_LIVE_SCHEMA=' + live, 'COLLECT_TARGET=' + ('live' if production else 'trial'),
             'PYTHONPATH=/app/backend:/opt/local-sources', 'PYTHONDONTWRITEBYTECODE=1']
     env += [f'{key}={os.environ[key]}' for key in FORWARDED if os.environ.get(key)]
     env += [f'{key}={value}' for key, value in (extra_env or {}).items()]  # this job's own caps
