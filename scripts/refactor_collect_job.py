@@ -484,6 +484,8 @@ def run(label):
             outcome = f'held back: {exc}'
         except Exception as exc:  # noqa: BLE001 - any failure keeps PG unchanged
             outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'
+    if trial.other_files:
+        entry['other_sqlite_written'] = sorted(trial.other_files)
     calls = pg.execute('SELECT count(*) FROM llm_calls WHERE created_at>=%s', (started,)).fetchone()[0]
     run_id = postgres_collect_runs.record(pg, label, started, outcome, requests=dict(trial.requests_by_host),
                                          model_calls=calls, result=entry)

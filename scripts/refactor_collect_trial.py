@@ -134,6 +134,7 @@ def _instrument():
 
 written = set()  # tables the job wrote in the collector file (sqlite authorizer)
 housekeeping = []  # non-empty while database.init_db runs
+other_files = set()  # other SQLite files the job wrote (recorded, never applied)
 
 
 def _watch_writes():
@@ -146,11 +147,19 @@ def _watch_writes():
             written.add(table)
         return sqlite3.SQLITE_OK
 
+    def elsewhere(target):
+        def authorizer(action, table, _detail, database, _trigger):
+            if action in WRITES and table and not table.startswith('sqlite_') and database != 'temp':
+                other_files.add(target)  # a connection's TEMP copies (the computation path's) are not a file write
+            return sqlite3.SQLITE_OK
+        return authorizer
+
     def watched(*args, **kwargs):
         conn = connect(*args, **kwargs)
-        # Only the collector file is the job's result; other SQLite files (a library's own cache) are not.
-        if str(WORK) in str(args[0] if args else kwargs.get('database', '')):
-            conn.set_authorizer(authorizer)
+        # Only the collector file is the job's result; writes to other SQLite files (a library's own cache) are not
+        # applied, only named in the run record (architect #3 6943390169).
+        target = str(args[0] if args else kwargs.get('database', ''))
+        conn.set_authorizer(authorizer if str(WORK) in target else elsewhere(target.split('?')[0]))
         return conn
     sqlite3.connect = watched
     # The legacy writer's own schema upkeep (database.init_db: idempotent backfill UPDATEs, usually no rows) is not
