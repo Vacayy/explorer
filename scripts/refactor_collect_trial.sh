@@ -21,7 +21,7 @@ container() {  # extra docker args..., then the command
   docker inspect "$API" --format '{{range .Config.Env}}{{println .}}{{end}}' \
     | grep -E '^(REFACTOR_POSTGRES_DSN|REFACTOR_TEST_DISPOSABLE|FASTEMBED_CACHE_PATH|CODEX_BIN|CODEX_HOME|CODEX_FALLBACK_MODEL|HOME|ENRICH_ENGINE)=' > "$env_file"
   printf 'REFACTOR_FIXTURE_SCHEMA=%s\nTRIAL_LIVE_SCHEMA=%s\nCLAUDE_BIN=/bin/false\nEXPLORER_ONESHOT=1\n' "$(cat "$STATE")" "$LIVE" >> "$env_file"
-  for key in TRIAL_MAX_REQUESTS TRIAL_HOST_CAPS COLLECT_FEED_SOURCES COLLECT_MAX_NEW_DOCS COLLECT_MAX_MODEL_CALLS; do   # caps and limits from the caller
+  for key in TRIAL_MAX_REQUESTS TRIAL_HOST_CAPS COLLECT_FEED_SOURCES COLLECT_MAX_NEW_DOCS COLLECT_MAX_MODEL_CALLS COLLECT_PROJECTION_WAIT; do   # caps and limits from the caller
     [ -n "${!key:-}" ] && printf '%s=%s\n' "$key" "${!key}" >> "$env_file"
   done
   local id; id=$(docker create ${CONTAINER_NAME:+--name "$CONTAINER_NAME"} --memory="${JOB_MEMORY:-2g}" --network explorer-refactor-preview-private --env-file "$env_file" --user "$USER_ID" \

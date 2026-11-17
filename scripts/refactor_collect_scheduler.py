@@ -33,6 +33,11 @@ LOCK = Path(os.environ.get('COLLECT_SCHEDULER_LOCK', Path.home() / 'server-data/
 JOB_SECONDS = int(os.environ.get('COLLECT_JOB_SECONDS', '3600'))  # one job's time limit (the MacBook chain step limit)
 TICK_SECONDS = 20
 JOB_MEMORY = {'proposals': '3584m'}  # measured peak 2.9GiB (weekly); every other job 2g
+# The MacBook's 30-minute chain (scripts/run_chain.sh) in its order: one container per step, each recorded; a step
+# that fails does not stop the next (as there). Not here: probe_llm (the gate does it), briefing catch-up (sends),
+# image backfill (its own budget, not connected), vault export and the search index (the projection builder).
+CHAIN_SEQUENCE = ('chain_macro_news', 'chain', 'chain_causal', 'chain_signals', 'chain_narratives', 'chain_events',
+                  'chain_actions', 'chain_digests')
 JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40'}  # ~30 registered Naver blog feeds per run (PM 6938365215)
 CATCHUP_SECONDS = 1800  # the MacBook's catchup job ran every 30 minutes
 
@@ -82,7 +87,12 @@ def plan(hours, now=None):
 
 
 def run_job(label, log=print):
-    """One job in its one-shot container; the job harness records the outcome in collect_runs."""
+    """One job (the chain: its steps in order) in one-shot containers; each outcome is recorded in collect_runs."""
+    for step in (CHAIN_SEQUENCE if label == 'chain' else (label,)):
+        _run_one(step, log)
+
+
+def _run_one(label, log=print):
     import refactor_collect_engine as engine
     started = time.monotonic()
     started_utc = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())

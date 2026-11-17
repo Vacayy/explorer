@@ -44,12 +44,39 @@ def _cap_model_calls(limit):
     return made
 
 
+def wait_for_projection(factory, projection_dir, *, timeout=600, poll=5):
+    """Until the builder's file carries every change PG holds now (a chain step reads the documents the intake
+    step just published). Returns the seconds waited; raises HeldBack at the timeout."""
+    import json
+    import time
+    from pathlib import Path
+    from pipeline.postgres_legacy_projection import projection_version
+    with factory() as pg:
+        wanted = projection_version(pg)
+    generation, counter = wanted.rsplit(':', 1)
+    started = time.monotonic()
+    while True:
+        try:
+            built = json.loads((Path(projection_dir) / 'current.json').read_text())['version']
+        except (OSError, ValueError, KeyError):
+            built = ''
+        built_generation, _, built_counter = built.rpartition(':')
+        if built_generation == generation and built_counter.isdigit() and int(built_counter) >= int(counter):
+            return round(time.monotonic() - started)
+        if time.monotonic() - started > timeout:
+            raise HeldBack(f'projection still at {built or "none"}, PG at {wanted}')
+        time.sleep(poll)
+
+
 def run(script, argv, factory, *, record, source, projection_dir='/projection', database_host='pg', max_calls=20):
     """Run `script` with `argv`; returns the stored counts. `record`: the job_runs name the script leaves."""
     from fastapi import FastAPI
     from pipeline.postgres_legacy_projection import LegacyProjection, write_connection_var
     from routers.postgres_legacy_read_fixture import _offline, install
     from routers.postgres_owner_legacy_fixture import _Borrowed
+    import os
+    wait = int(os.environ.get('COLLECT_PROJECTION_WAIT', '600'))  # 0: a clone test, whose projection is the live one
+    waited = wait_for_projection(factory, projection_dir, timeout=wait) if wait else None
     projection = LegacyProjection(factory, projection_dir, external=True)
     install(FastAPI(), projection, database_host=database_host)  # guard, get_connection → projection, saved data
     import database
@@ -94,7 +121,7 @@ def run(script, argv, factory, *, record, source, projection_dir='/projection', 
         if failed:
             raise HeldBack(f'job record {", ".join(failed)}')
         with factory() as pg, pg.transaction():
-            return {'overrides': overrides.apply(pg, before, overrides.rows(conn), source=source),
+            return {'waited_s': waited, 'overrides': overrides.apply(pg, before, overrides.rows(conn), source=source),
                     'graph': graph.publish(pg, graph_before, graph.snapshot(conn), run_id=source),
                     'runs': job_runs.capture(pg, conn, floor, source)}
     finally:

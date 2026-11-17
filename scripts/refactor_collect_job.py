@@ -30,13 +30,14 @@ TABLE_JOBS = {'prices', 'twrevenue', 'indexintraday', 'credit', 'retail', 'marke
 # Legacy computations over saved data: the computation-button path (pipeline.postgres_scheduled_compute) — their
 # overrides, graph diff and run records go to PG; model calls go through the usual gate and llm_calls.
 # The chain's computation steps after document intake (scripts/run_chain.sh order), as their own labels.
-CHAIN_STEPS = {'chain_causal': (['scripts/extract_doc_causal.py', '--limit', '10'], 'extract_doc_causal'),
+CHAIN_STEPS = {'chain_macro_news': (['scripts/fetch_macro_news.py'], None),  # headlines: a collection step
+               'chain_causal': (['scripts/extract_doc_causal.py', '--limit', '10'], 'extract_doc_causal'),
                'chain_signals': (['scripts/compute_signals.py'], None),
                'chain_narratives': (['scripts/compute_narratives.py', '--urgent'], 'compute_narratives'),
                'chain_events': (['scripts/extract_events.py', '--limit', '40'], 'extract_events'),
                'chain_actions': (['scripts/scan_actions.py'], None),  # fetches DART: a collection step (table path)
                'chain_digests': (['scripts/compute_digests.py'], None)}
-CHAIN_TABLE_STEPS = {'chain_actions'}
+CHAIN_TABLE_STEPS = {'chain_macro_news', 'chain_actions'}
 COMPUTE_JOBS = {'narratives', 'contradictions', 'promote', 'proposals', 'bigpicture', 'sectoroverview',
                 *(set(CHAIN_STEPS) - CHAIN_TABLE_STEPS)}
 # chain: its document intake only (ingest with the registered sources, tagging included), capped per run and
