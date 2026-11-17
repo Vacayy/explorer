@@ -219,6 +219,12 @@ def due_now(jobs, enabled, last, now, next_interval):
     for label, _argv, schedule in jobs:
         if label not in enabled:
             continue
+        if label == 'observealerts' and os.environ.get('COLLECT_OBSERVE_ALERTS_AFTER'):
+            after = datetime.fromisoformat(os.environ['COLLECT_OBSERVE_ALERTS_AFTER'])
+            if after.tzinfo is None:
+                raise ValueError('COLLECT_OBSERVE_ALERTS_AFTER requires a timezone')
+            if now < after:
+                continue
         if isinstance(schedule, int):
             if next_interval.setdefault(label, last) <= now:  # launchd runs an interval job once at load
                 due.append(label)

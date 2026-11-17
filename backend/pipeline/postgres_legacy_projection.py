@@ -52,7 +52,7 @@ SHADOWED = ('portfolio_transactions', 'stock_group_members', 'stock_groups', 'wa
             # Small computation outputs a screen reads right after its button: overrides shown at once, not next build.
             'pricing_claims', 'pricing_observations', 'pricing_days',
             # The operator's alert state, replaced whole from the MacBook at the cutover (a few hundred rows).
-            'portfolio_principle_state', 'portfolio_alerts_sent', *NATIVE)
+            'portfolio_principle_state', 'portfolio_alerts_sent', 'alert_state', *NATIVE)
 CHECK_SECONDS = 10
 log = logging.getLogger(__name__)
 

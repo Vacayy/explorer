@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import refactor_collect_trial as trial  # noqa: E402 - the same harness and safeguards
 
 SENDS = {'briefing', 'pfintraday', 'pfclose', 'observealerts', 'observeweekly'}
-CONNECTED_SENDS = {'briefing', 'observeweekly'}  # other sends remain refused until their candidate state is connected
+CONNECTED_SENDS = {'briefing', 'observeweekly', 'observealerts'}  # other sends remain refused until connected
 NEVER = {'backfill'}  # uncapped model calls; never scheduled automatically
 # Table-collecting jobs: the unchanged script, then the supplement tables it actually wrote are replaced in PG
 # (recorded by a sqlite authorizer; writing any table that is not a supplement table holds the run back).
@@ -510,6 +510,41 @@ def run_briefing(now=None):
         database.get_connection = original
 
 
+def run_observe_alerts():
+    """Evaluate operator alerts against live observation ledgers and persist their legacy deduplication state."""
+    from pipeline import observe, postgres_observe_ledgers as ledgers, postgres_owner_overrides as overrides
+    from pipeline.notify import send_telegram
+    from pipeline.postgres_legacy_projection import LegacyProjection, requester_is_operator
+    from routers.postgres_owner_legacy_fixture import _Borrowed
+    if not requester_is_operator():
+        raise trial.HeldBack('operator projection is unavailable')
+    projection = LegacyProjection(trial._pg, '/projection', external=True)
+
+    class WritableProjection:
+        def connect(self):
+            return projection.write_connection()[0]
+
+    with trial._pg() as pg, pg.transaction():
+        if not ledgers.ready(pg):
+            raise trial.HeldBack('observation ledgers are not ready')
+        pg.execute("SELECT pg_advisory_xact_lock(hashtextextended('owner-row-overrides',0))")
+        conn = ledgers.observe_connection(WritableProjection(), trial._pg, 7)
+        conn.execute('PRAGMA query_only=OFF')  # main file remains read-only; the state table is TEMP
+        before = {'alert_state': {row['key']: dict(row) for row in conn.execute('SELECT * FROM temp.alert_state')}}
+        old_get = observe.get_connection
+        observe.get_connection = lambda: _Borrowed(conn)
+        try:
+            result = observe.check_alerts(send=send_telegram)
+            after = {'alert_state': {row['key']: dict(row) for row in conn.execute('SELECT * FROM temp.alert_state')}}
+            overrides.apply(pg, before, after)
+        finally:
+            observe.get_connection = old_get
+            conn.close()
+    if (result['fired'] or result['resolved']) and not result['sent']:
+        raise trial.HeldBack('observation alert could not be sent')
+    return bool(result['sent'])
+
+
 def _run(label, pg, waited):
     import sqlite3
     from pipeline import llm, postgres_collect_runs, postgres_llm_calls
@@ -535,6 +570,16 @@ def _run(label, pg, waited):
         trial._instrument()
         try:
             outcome = 'applied: briefing sent' if run_briefing() else 'skipped: already sent or no content'
+        except trial.Aborted as exc:
+            outcome = f'aborted: {exc}'
+        except trial.HeldBack as exc:
+            outcome = f'held back: {exc}'
+        except Exception as exc:
+            outcome = f'failed: {type(exc).__name__}'
+    elif label == 'observealerts':
+        trial._instrument()
+        try:
+            outcome = 'applied: observation alert sent' if run_observe_alerts() else 'skipped: no alert changes'
         except trial.Aborted as exc:
             outcome = f'aborted: {exc}'
         except trial.HeldBack as exc:

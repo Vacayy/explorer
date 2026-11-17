@@ -25,9 +25,18 @@ class CollectionTargetTest(unittest.TestCase):
                                  {'DART_API_KEY', *engine.SEND_KEYS})
 
     def test_only_connected_send_can_be_enabled(self):
-        scheduler.check_enabled({'briefing', 'observeweekly'})
+        scheduler.check_enabled({'briefing', 'observeweekly', 'observealerts'})
         with self.assertRaises(SystemExit):
             scheduler.check_enabled({'pfclose'})
+
+    def test_observation_alert_waits_for_configured_slot(self):
+        with patch.dict(os.environ, {'COLLECT_OBSERVE_ALERTS_AFTER': '2026-11-18T01:00:00+09:00'}):
+            jobs = [('observealerts', [], 3600)]
+            before = datetime.fromisoformat('2026-11-18T00:59:00+09:00')
+            after = datetime.fromisoformat('2026-11-18T01:00:00+09:00')
+            intervals = {}
+            self.assertEqual(scheduler.due_now(jobs, {'observealerts'}, before, before, intervals), [])
+            self.assertEqual(scheduler.due_now(jobs, {'observealerts'}, before, after, intervals), ['observealerts'])
 
     def test_price_catchup_waits_for_the_next_slot(self):
         with patch.dict(os.environ, {'COLLECT_PRICES_CATCHUP_AFTER': '2026-11-18T07:35:00+00:00'}):
