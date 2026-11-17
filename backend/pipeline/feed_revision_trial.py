@@ -28,7 +28,7 @@ def stage_one(queue, connector, is_known, before_attempt, *, max_requests=3):
         doc = connector.fetch_post(ref)
     finally:
         requests.Session.send = send
-    if refused[0] or doc.source_type != 'blog' or doc.source_id != identity:
+    if refused[0] or doc.source_type != 'blog' or doc.source_id != identity or not (doc.raw_content or '').strip():
         raise ValueError('Revision snapshot was not safely captured')
     queue.enqueue('blog', ref.key, doc)
     row = queue.conn.execute('SELECT seq,revision_pending FROM pending WHERE source_type=? AND source_id=?',

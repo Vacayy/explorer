@@ -53,5 +53,12 @@ class RevisionTrialTests(unittest.TestCase):
         self.assertEqual(self.queue.conn.execute('SELECT count(*) FROM pending').fetchone()[0], 0)
         self.assertEqual(len(list(self.queue.revision_refs('blog'))), 1)
 
+    def test_empty_snapshot_is_not_recorded_as_a_success(self):
+        class Connector:
+            def fetch_post(self, ref): return RawDoc('blog', 'https://example.test/post', raw_content='')
+        with self.assertRaises(ValueError): stage_one(self.queue, Connector(), lambda *_: True, lambda: None)
+        self.assertEqual(self.queue.conn.execute('SELECT count(*) FROM pending').fetchone()[0], 0)
+        self.assertEqual(len(list(self.queue.revision_refs('blog'))), 1)
+
 
 if __name__ == '__main__': unittest.main()
