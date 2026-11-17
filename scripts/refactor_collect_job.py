@@ -490,7 +490,13 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
                         messages = scrape_channel(ref.key)
                         posts = [page_reference(ref.key, messages)] if messages else []
                     for post in posts:
-                        if name != 'blog' or not _blog_document_known(post.key):
+                        if name == 'blog':
+                            import hashlib
+                            known = _blog_document_known(post.key)
+                            payload = json.dumps(post.meta, sort_keys=True, ensure_ascii=False, default=str)
+                            staged = SourceRef(key=hashlib.sha256(payload.encode()).hexdigest(), meta=post.meta)
+                            queue.enqueue_ref(name, ref.key, staged, revision_pending=known)
+                        else:
                             queue.enqueue_ref(name, ref.key, post)
                     queue.advance_ref(name, ref)
                     queue.advance_ref('feed-sources', selected)
@@ -530,7 +536,11 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
                 raise trial.HeldBack(f'feed model call cap {MAX_MODEL_CALLS} reached')
 
         result = trial.run_documents(pg, [OneDocument()], 1, before_publish=check_cap)
-        queue.acknowledge(seq)  # only after successful PG publish and local floor commit
+        if result['counts'].get('existing_skipped'):
+            queue.defer_revision(seq)  # retain its payload until existing-document revisions are connected
+            result['deferred_revision'] = 1
+        else:
+            queue.acknowledge(seq)  # only after successful PG publish and local floor commit
         result['sources'] = [source_name]
         result['deferred_analysis'] = int(deferred_analysis)
         result['steps_not_connected'] = ['other feed sources', 'existing document revisions', 'chain postprocessing']

@@ -7,6 +7,28 @@ from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference, stage_on
 
 
 class FeedBacklogTest(unittest.TestCase):
+    def test_existing_revision_payload_is_retained_but_does_not_block_new_docs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'pending.sqlite'
+            queue = FeedBacklog(path)
+            queue.enqueue('telegram', 'channel', RawDoc('telegram', 'existing', raw_content='new version'))
+            seq = queue.next()[0]
+            queue.defer_revision(seq)
+            queue.enqueue('telegram', 'channel', RawDoc('telegram', 'new', raw_content='body'))
+            queue.close()
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.next()[2].source_id, 'new')
+            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending WHERE revision_pending=1').fetchone()[0], 1)
+            queue.close()
+
+    def test_discovered_revision_reference_is_retained_separately(self):
+        with tempfile.TemporaryDirectory() as directory:
+            queue = FeedBacklog(Path(directory) / 'pending.sqlite')
+            queue.enqueue_ref('blog', 'feed', SourceRef('old-version'), revision_pending=True)
+            queue.enqueue_ref('blog', 'feed', SourceRef('new-document'))
+            self.assertEqual(queue.next_pending_ref()[2].key, 'new-document')
+            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending_refs WHERE revision_pending=1').fetchone()[0], 1)
+            queue.close()
     def test_disabled_sources_remain_queued_without_blocking_enabled_source(self):
         with tempfile.TemporaryDirectory() as directory:
             queue = FeedBacklog(Path(directory) / 'pending.sqlite')

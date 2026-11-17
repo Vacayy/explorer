@@ -77,21 +77,28 @@ class FeedBacklog:
             INSERT OR IGNORE INTO ref_cursor VALUES (1, NULL);
             CREATE TABLE IF NOT EXISTS ref_lane_cursor (lane TEXT PRIMARY KEY, seq INTEGER NOT NULL);
         ''')
+        if 'revision_pending' not in {row[1] for row in self.conn.execute('PRAGMA table_info(pending)')}:
+            self.conn.execute('ALTER TABLE pending ADD COLUMN revision_pending INTEGER NOT NULL DEFAULT 0 '
+                              'CHECK(revision_pending IN (0,1))')
+        if 'revision_pending' not in {row[1] for row in self.conn.execute('PRAGMA table_info(pending_refs)')}:
+            self.conn.execute('ALTER TABLE pending_refs ADD COLUMN revision_pending INTEGER NOT NULL DEFAULT 0 '
+                              'CHECK(revision_pending IN (0,1))')
         self.conn.commit()
 
     def close(self):
         self.conn.close()
 
-    def enqueue_ref(self, connector, lane_ref, ref):
+    def enqueue_ref(self, connector, lane_ref, ref, *, revision_pending=False):
         """Persist a discovered item before fetching it, including connector metadata."""
         if not connector or not lane_ref or not ref.key:
             raise ValueError('A connector, source lane and reference are required')
         lane = hashlib.sha256((connector + '\0' + lane_ref).encode()).hexdigest()
         payload = json.dumps(asdict(ref), ensure_ascii=False, separators=(',', ':'))
         with self.conn:
-            self.conn.execute('INSERT INTO pending_refs(connector,ref_key,lane,payload) VALUES (?,?,?,?) '
-                              'ON CONFLICT(connector,ref_key) DO UPDATE SET payload=excluded.payload',
-                              (connector, ref.key, lane, payload))
+            self.conn.execute('INSERT INTO pending_refs(connector,ref_key,lane,payload,revision_pending) VALUES (?,?,?,?,?) '
+                              'ON CONFLICT(connector,ref_key) DO UPDATE SET payload=excluded.payload, '
+                              'revision_pending=max(pending_refs.revision_pending,excluded.revision_pending)',
+                              (connector, ref.key, lane, payload, int(revision_pending)))
 
     def next_pending_ref(self, allowed=None):
         if allowed is not None and not allowed:
@@ -99,17 +106,17 @@ class FeedBacklog:
         clause = '' if allowed is None else ' AND connector IN (' + ','.join('?' for _ in allowed) + ')'
         params = () if allowed is None else tuple(sorted(allowed))
         last = self.conn.execute('SELECT lane FROM ref_cursor WHERE singleton=1').fetchone()[0] or ''
-        lane = self.conn.execute('SELECT lane FROM pending_refs WHERE lane>?' + clause + ' GROUP BY lane ORDER BY lane LIMIT 1',
+        lane = self.conn.execute('SELECT lane FROM pending_refs WHERE revision_pending=0 AND lane>?' + clause + ' GROUP BY lane ORDER BY lane LIMIT 1',
                                  (last, *params)).fetchone()
         if lane is None:
-            lane = self.conn.execute('SELECT lane FROM pending_refs WHERE 1=1' + clause + ' GROUP BY lane ORDER BY lane LIMIT 1', params).fetchone()
+            lane = self.conn.execute('SELECT lane FROM pending_refs WHERE revision_pending=0' + clause + ' GROUP BY lane ORDER BY lane LIMIT 1', params).fetchone()
         if lane is None:
             return None
         seen = self.conn.execute('SELECT seq FROM ref_lane_cursor WHERE lane=?', lane).fetchone()
-        row = self.conn.execute('SELECT seq,connector,payload FROM pending_refs WHERE lane=? AND seq>?' + clause +
+        row = self.conn.execute('SELECT seq,connector,payload FROM pending_refs WHERE revision_pending=0 AND lane=? AND seq>?' + clause +
                                 ' ORDER BY seq LIMIT 1', (lane[0], seen[0] if seen else 0, *params)).fetchone()
         if row is None:
-            row = self.conn.execute('SELECT seq,connector,payload FROM pending_refs WHERE lane=?' + clause +
+            row = self.conn.execute('SELECT seq,connector,payload FROM pending_refs WHERE revision_pending=0 AND lane=?' + clause +
                                     ' ORDER BY seq LIMIT 1', (lane[0], *params)).fetchone()
         seq, connector, payload = row
         return seq, connector, SourceRef(**json.loads(payload)), lane[0]
@@ -172,15 +179,24 @@ class FeedBacklog:
         clause = '' if allowed is None else ' AND connector IN (' + ','.join('?' for _ in allowed) + ')'
         params = () if allowed is None else tuple(sorted(allowed))
         last = self.conn.execute('SELECT lane FROM feed_cursor WHERE singleton=1').fetchone()[0] or ''
-        lane = self.conn.execute('SELECT lane FROM pending WHERE lane>?' + clause + ' GROUP BY lane ORDER BY lane LIMIT 1',
+        lane = self.conn.execute('SELECT lane FROM pending WHERE revision_pending=0 AND lane>?' + clause + ' GROUP BY lane ORDER BY lane LIMIT 1',
                                  (last, *params)).fetchone()
         if lane is None:
-            lane = self.conn.execute('SELECT lane FROM pending WHERE 1=1' + clause + ' GROUP BY lane ORDER BY lane LIMIT 1', params).fetchone()
+            lane = self.conn.execute('SELECT lane FROM pending WHERE revision_pending=0' + clause + ' GROUP BY lane ORDER BY lane LIMIT 1', params).fetchone()
         if lane is None:
             return None
-        seq, connector, payload = self.conn.execute('SELECT seq,connector,payload FROM pending WHERE lane=?' + clause +
+        seq, connector, payload = self.conn.execute('SELECT seq,connector,payload FROM pending WHERE revision_pending=0 AND lane=?' + clause +
                                                     ' ORDER BY seq LIMIT 1', (lane[0], *params)).fetchone()
         return seq, connector, RawDoc(**json.loads(payload))
+
+    def defer_revision(self, seq):
+        """Keep an existing document's collected payload until revision publishing is connected."""
+        with self.conn:
+            row = self.conn.execute('SELECT lane FROM pending WHERE seq=? AND revision_pending=0', (seq,)).fetchone()
+            if row is None or self.conn.execute('SELECT 1 FROM publication_intent WHERE seq=?', (seq,)).fetchone():
+                raise ValueError('Pending document cannot be deferred')
+            self.conn.execute('UPDATE pending SET revision_pending=1 WHERE seq=?', (seq,))
+            self.conn.execute('UPDATE feed_cursor SET lane=? WHERE singleton=1', (row[0],))
 
     def acknowledge(self, seq):
         """Call only after publication succeeds; deleting and advancing the cursor are atomic."""
