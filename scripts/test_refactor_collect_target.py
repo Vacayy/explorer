@@ -86,6 +86,45 @@ class CollectionTargetTest(unittest.TestCase):
             with ThreadPoolExecutor(max_workers=8) as executor:
                 list(executor.map(invoke, range(30)))
         self.assertEqual(len(attempts), 3)
+    def test_persistent_batch_flag_keeps_five_documents_on_model_failure(self):
+        from pipeline import feed_enrichment, image_reading
+        from pipeline.base import RawDoc
+        from pipeline.feed_backlog import FeedBacklog
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path, flag = root / 'queue.sqlite', root / 'enabled'
+            flag.write_text('feed-batch-enabled-v1\n')
+            flag.chmod(0o600)
+            queue = FeedBacklog(path)
+            for n in range(5):
+                queue.enqueue('blog', 'feed', RawDoc('blog', str(n), title='test', raw_content='body'))
+            queue.close()
+            with patch.dict(os.environ, {'COLLECT_FEED_BATCH_MODEL': '0', 'COLLECT_FEED_STRICT_IMAGES': '1',
+                                         'COLLECT_FEED_KEYWORD_ONLY': '0'}), \
+                 patch.object(job, 'MAX_NEW_DOCS', 1), patch.object(job, 'MAX_MODEL_CALLS', 2), \
+                 patch.object(job, '_feed_document_known', return_value=False), \
+                 patch.object(image_reading, 'read_images'), \
+                 patch.object(feed_enrichment, 'enrich_documents', side_effect=ValueError('synthetic')) as enrich, \
+                 patch.object(trial, 'run_documents') as publish:
+                with self.assertRaises(trial.HeldBack):
+                    job.run_minimal_blog(None, object(), queue_path=path, batch_enabled=flag)
+            self.assertEqual(len(enrich.call_args.args[0]), 5)
+            publish.assert_not_called()
+            self.assertTrue(flag.exists())
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending').fetchone()[0], 5)
+            queue.close()
+    def test_batch_flag_rejects_unrecognized_or_insecure_file(self):
+        with TemporaryDirectory() as directory:
+            flag = Path(directory) / 'enabled'
+            flag.write_text('not-the-expected-flag\n')
+            flag.chmod(0o600)
+            with self.assertRaises(ValueError):
+                job.run_minimal_blog(None, object(), queue_path=Path(directory) / 'queue', batch_enabled=flag)
+            flag.write_text('feed-batch-enabled-v1\n')
+            flag.chmod(0o644)
+            with self.assertRaises(ValueError):
+                job.run_minimal_blog(None, object(), queue_path=Path(directory) / 'queue', batch_enabled=flag)
     def test_keyword_feed_defers_missing_image_analysis_without_dropping_payload(self):
         from pipeline.base import RawDoc
         from pipeline.feed_backlog import FeedBacklog

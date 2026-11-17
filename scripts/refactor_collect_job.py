@@ -467,7 +467,8 @@ def _mark_identical_feed_revisions(queue):
 
 
 def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-backlog.sqlite', youtube=None, telegram=None,
-                     batch_marker=Path('/trial/feed-batch-trial'), image_marker=Path('/trial/feed-image-trial')):
+                     batch_marker=Path('/trial/feed-batch-trial'), image_marker=Path('/trial/feed-image-trial'),
+                     batch_enabled=Path('/trial/feed-batch-enabled')):
     """One blog reference, one queued document; a failure keeps this isolated feed on hold."""
     from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference
     keyword_only = os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1'
@@ -478,7 +479,13 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 \
                 or batch_marker.read_text() != 'feed-batch-trial-v1\n':
             raise ValueError('Unrecognized feed batch trial marker')
-    batch_requested = os.environ.get('COLLECT_FEED_BATCH_MODEL') == '1' or marker_exists
+    enabled_exists = batch_enabled.exists() or batch_enabled.is_symlink()
+    if enabled_exists:
+        info = batch_enabled.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 \
+                or batch_enabled.read_text() != 'feed-batch-enabled-v1\n':
+            raise ValueError('Unrecognized feed batch enable flag')
+    batch_requested = os.environ.get('COLLECT_FEED_BATCH_MODEL') == '1' or marker_exists or enabled_exists
     if batch_requested and (keyword_only or not strict_images):
         raise ValueError('Feed batch model requires strict images and model mode')
     if batch_requested and not 1 <= MAX_MODEL_CALLS <= 2:
