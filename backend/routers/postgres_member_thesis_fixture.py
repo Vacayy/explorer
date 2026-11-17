@@ -80,5 +80,8 @@ def install(app, factory):
             raise HTTPException(404, '감사 결과 없음')
         return {'id': row[0], 'created_at': row[3], 'thesis_text': row[1], **json.loads(row[2])}
 
-    # Ahead of the legacy thesis routes (the same paths), so every request comes here first.
-    app.router.routes[:0] = [route for route in router.routes if isinstance(route, APIRoute)]
+    # In place of the legacy thesis routes (same paths): the access boundary refuses an ambiguous route.
+    mine = [route for route in router.routes if isinstance(route, APIRoute)]
+    keys = {(method, route.path) for route in mine for method in route.methods}
+    app.router.routes[:] = mine + [route for route in app.router.routes if not (
+        isinstance(route, APIRoute) and any((method, route.path) in keys for method in route.methods))]
