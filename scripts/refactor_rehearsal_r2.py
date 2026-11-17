@@ -66,6 +66,11 @@ def main():
         out['unprocessed'] = changes.unprocessed(pg)
     steps['publish_documents_graph'] = round(time.monotonic() - started, 1)
 
+    from pipeline import postgres_supplement_preserve as preserve
+    started = time.monotonic()
+    with connect() as pg:
+        captured, state = preserve.capture(pg, work)  # the candidate's collected rows the MacBook file lacks
+    steps['capture_candidate_supplement'] = round(time.monotonic() - started, 1)
     started = time.monotonic()
     with connect() as pg:
         names = [row[0] for row in pg.execute('SELECT table_name FROM legacy_supplement_tables ORDER BY 1')]
@@ -75,6 +80,15 @@ def main():
     out['supplement'] = {'tables': len(tables), 'rows': sum(counts.values()),
                          'not_in_source': sorted(set(names) - present)}
     steps['replace_supplement'] = round(time.monotonic() - started, 1)
+    started = time.monotonic()
+    with connect() as pg:
+        out['supplement_preserved'] = preserve.restore(pg, captured, state)
+        # Gate (architect #3 6945482451 item 4): every accumulating candidate-only row is back, or the run stops.
+        for table, rows in captured.items():
+            back = out['supplement_preserved'][table]['added_back']
+            if back != len(rows):
+                raise SystemExit(f'{table}: {back} of {len(rows)} candidate rows added back')
+    steps['restore_candidate_supplement'] = round(time.monotonic() - started, 1)
     work.close()
     origin.close()
 

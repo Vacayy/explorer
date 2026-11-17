@@ -1,0 +1,116 @@
+"""Rows the candidate collected into supplement tables that the MacBook file lacks, kept across the cutover's whole
+replacement of those tables (architect #3 6945482451 item 2; PM 6945436466: the user's decision to keep collected data).
+
+The publication replaces every supplement table with the MacBook's rows. For an accumulating table (events, time
+series, observations: rows only ever added) a candidate row whose natural key the MacBook file lacks is captured before
+the replacement and added back after it, under a band id where the table has an integer id (map: candidate_id_remap,
+kind 'supplement:<table>'); a key both sides have keeps the MacBook's row. For a state table (rewritten or pruned as a
+whole) the MacBook's rows stand; candidate-only rows are archived and counted. A table is accumulating when its
+natural key carries a date or time (the list below, derived from the base's keys); anything unclear is a state table.
+job_runs is an operation record and is never carried (the candidate's own runs are in candidate_job_runs).
+"""
+import json
+
+from psycopg.types.json import Jsonb
+
+from pipeline.postgres_graph_fixture import _guard
+from pipeline.postgres_id_bands import start
+
+ACCUMULATING = {'business_segments': ('corp_code', 'bsns_year', 'reprt_code', 'segment_type', 'segment_name'),
+                'call_momentum': ('ticker', 'event_date'),
+                'consensus': ('stock_code', 'data_source', 'fiscal_year'),
+                'consensus_estimates': ('stock_code', 'fetched_date', 'fiscal_year'),
+                'consensus_snapshots': ('ticker', 'snap_date', 'period'),
+                'credit_quotes': ('symbol', 'date'),
+                'earnings_events': ('ticker', 'fiscal_year', 'fiscal_period'),
+                'earnings_expectations': ('ticker', 'fiscal_year', 'fiscal_period', 'snapshot'),
+                'entity_digests': ('entity_id', 'period', 'period_start'),
+                'ext_series': ('series', 'period'),
+                'financial_statements': ('corp_code', 'bsns_year', 'reprt_code', 'fs_div', 'sj_div', 'account_nm'),
+                'fundamentals': ('stock_code', 'trade_date'),
+                'index_intraday': ('key', 'trade_date', 'hhmm'),
+                'investor_flows': ('stock_code', 'trade_date'),
+                'kalshi_candles': ('market_ticker', 'day'),
+                'kalshi_events': ('fetched_at', 'event_ticker'),
+                'kr_movers': ('trade_date', 'rank'),
+                'kr_preliminary_earnings': ('stock_code', 'period'),
+                'macro_signals': ('as_of',),
+                'market_indicators': ('snapshot_date', 'indicator'),
+                'market_today': ('trade_date', 'slot'),
+                'pricing_days': ('trade_date',),
+                'pricing_observations': ('trade_date', 'claim_id'),
+                'retail_flows': ('date',),
+                'sector_benchmark_prices': ('ticker', 'trade_date'),
+                'sector_index': ('sector', 'trade_date'),
+                'signals': ('signal_type', 'entity_id', 'date'),
+                'stock_prices': ('stock_code', 'trade_date'),
+                'trade_stats': ('hs_code', 'period'),
+                'transcript_probe': ('ticker', 'fiscal_year', 'fiscal_period'),
+                'transcripts': ('ticker', 'fiscal_year', 'fiscal_period'),
+                'treasury_curve': ('date', 'tenor'),
+                'tw_monthly_revenue': ('code', 'ym'),
+                'us_briefings': ('trade_date',),
+                'us_macro_issues': ('trade_date',),
+                'us_movers': ('trade_date', 'rank'),
+                'us_prices': ('stock_code', 'trade_date'),
+                'watch_evaluations': ('rule_id', 'stock_code', 'as_of')}
+NEVER = {'job_runs'}
+
+
+def _key(row, columns):
+    return tuple(str(row.get(c)) for c in columns)
+
+
+def capture(pg, source):
+    """Before the replacement: per table, candidate rows whose natural key the MacBook file lacks."""
+    captured, state = {}, {}
+    tables = [t for (t,) in pg.execute('SELECT table_name FROM legacy_supplement_tables ORDER BY 1') if t not in NEVER]
+    for table in tables:
+        if source.execute('SELECT 1 FROM sqlite_master WHERE name=?', (table,)).fetchone() is None:
+            continue
+        columns = ACCUMULATING.get(table)
+        if columns is None:
+            info = source.execute(f'PRAGMA table_info("{table}")').fetchall()
+            columns = tuple(r[1] for r in info if r[5]) or tuple(r[1] for r in info)
+        have = {tuple(str(v) for v in row) for row in source.execute(
+            f'SELECT {",".join(chr(34) + c + chr(34) for c in columns)} FROM "{table}"')}
+        rows = [data for (data,) in pg.execute('SELECT row_data FROM legacy_supplement_rows WHERE table_name=%s '
+                                               'ORDER BY row_ordinal', (table,)) if _key(data, columns) not in have]
+        if rows:
+            (captured if table in ACCUMULATING else state)[table] = rows
+    return captured, state
+
+
+def restore(pg, captured, state):
+    """After the replacement: add the accumulating candidate-only rows back, archive the state ones; one transaction."""
+    _guard(pg)
+    report = {}
+    with pg.transaction():
+        pg.execute("ALTER TABLE candidate_id_remap ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'candidate'")
+        pg.execute('CREATE TABLE IF NOT EXISTS candidate_record_archive (id BIGSERIAL PRIMARY KEY, ledger TEXT NOT NULL, '
+                   'record_key JSONB NOT NULL, candidate_row JSONB, source_row JSONB, computed BOOLEAN NOT NULL, '
+                   "reason TEXT NOT NULL DEFAULT 'conflict: MacBook value applied', archived_at TIMESTAMPTZ NOT NULL DEFAULT now())")
+        for table, rows in captured.items():
+            ordinal = pg.execute('SELECT COALESCE(max(row_ordinal), -1) + 1 FROM legacy_supplement_rows WHERE table_name=%s',
+                                 (table,)).fetchone()[0]
+            renumbered = 0
+            for row in rows:
+                if isinstance(row.get('id'), int) and row['id'] < start(table):
+                    new = start(table) + row['id']
+                    pg.execute('INSERT INTO candidate_id_remap (kind, old_id, new_id) VALUES (%s,%s,%s) '
+                               'ON CONFLICT (kind, old_id) DO UPDATE SET new_id=excluded.new_id',
+                               (f'supplement:{table}', row['id'], new))
+                    row, renumbered = {**row, 'id': new}, renumbered + 1
+                pg.execute('INSERT INTO legacy_supplement_rows (table_name, row_ordinal, row_data) VALUES (%s,%s,%s)',
+                           (table, ordinal, Jsonb(row)))
+                ordinal += 1
+            pg.execute('UPDATE legacy_supplement_tables SET row_count = (SELECT count(*) FROM legacy_supplement_rows '
+                       'WHERE table_name=%s) WHERE table_name=%s', (table, table))
+            report[table] = {'kind': 'accumulating', 'added_back': len(rows), 'renumbered': renumbered}
+        for table, rows in state.items():
+            for row in rows:
+                pg.execute('INSERT INTO candidate_record_archive (ledger, record_key, candidate_row, source_row, computed, reason) '
+                           "VALUES (%s,%s,%s,NULL,false,'state table: the MacBook rows replaced it')",
+                           (f'supplement:{table}', Jsonb([]), Jsonb(row)))
+            report[table] = {'kind': 'state', 'archived': len(rows)}
+    return report
