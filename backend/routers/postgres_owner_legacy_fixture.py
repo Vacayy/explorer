@@ -6,8 +6,8 @@ universe members, edit business segments and IR notes. Each request borrows one 
 whose owner tables are TEMP copies of the PG ledger; the legacy handler runs
 unchanged on it (a member's request: on that member's own groups only) and, only if it ends 2xx, the PK diff is stored in one PG
 transaction that first checks no other write landed. Writes to any other table
-hit the read-only projection and fail the request (fail closed). Evaluation and
-tracker preparation stay unavailable; watch reasons use the native question gate.
+hit the read-only projection and fail the request (fail closed). A group's rule evaluation
+runs here too; tracker preparation stays unavailable; watch reasons use the native question gate.
 """
 import re
 
@@ -26,7 +26,9 @@ ADAPTED = (('POST', '/api/spine/groups'), ('PATCH', '/api/spine/groups/{group_id
            ('PUT', '/api/spine/groups/{group_id}/members/{stock_code}/tracked'),
            ('POST', '/api/industries/{group_id}/members'), ('POST', '/api/business/{stock_code}/segments'),
            ('PUT', '/api/business/segments/{segment_id}'), ('DELETE', '/api/business/segments/{segment_id}'),
-           ('POST', '/api/ir-notes/{stock_code}'), ('DELETE', '/api/ir-notes/{note_id}'))
+           ('POST', '/api/ir-notes/{stock_code}'), ('DELETE', '/api/ir-notes/{note_id}'),
+           # Rule evaluation over the saved prices (writes watch_evaluations only; no model, no fetch).
+           ('POST', '/api/spine/groups/{group_id}/evaluate'))
 # A member's own default watch group is created on first read, through the same diff (legacy default_watch_group_id).
 MEMBER_ADAPTED = (('GET', '/api/spine/groups/default-watch'),)
 LOCK = 'owner-legacy-write'

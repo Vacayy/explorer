@@ -33,6 +33,7 @@ ADAPTED = (('POST', '/api/spine/admin/flag'), ('PUT', '/api/spine/regimes/checks
            ('POST', '/api/spine/company/{name}/profile'), ('POST', '/api/spine/knowledge/worldview/compute'),
            ('POST', '/api/spine/pricing/extract'),
            # Saved prices answer (fetches skipped offline, kept as not-run requests); the model call stays.
+           ('POST', '/api/spine/transcript/detail/{transcript_id}/digest'),  # sets transcripts.digest once
            ('POST', '/api/spine/transcript/detail/{transcript_id}/reaction'),
            ('POST', '/api/spine/transcript/expectation/{ticker}'))
 # Computations that also write the graph: graph tables are copied writable and their diff is published.
