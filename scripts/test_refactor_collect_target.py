@@ -70,6 +70,13 @@ class CollectionTargetTest(unittest.TestCase):
         with self.assertRaises(trial.Aborted):
             retrying_client()
 
+    def test_chain_intake_only_runs_one_step(self):
+        with TemporaryDirectory() as directory, patch.object(scheduler, 'HOLD', Path(directory) / 'hold'), \
+             patch.dict(os.environ, {'COLLECT_CHAIN_INTAKE_ONLY': '1'}), \
+             patch.object(scheduler, '_run_one', return_value=True) as run:
+            self.assertTrue(scheduler.run_job('chain', lambda *_: None))
+            self.assertEqual([args[0][0] for args in run.call_args_list], ['chain'])
+
     def test_target_guard(self):
         live = 'refactor_fixture_' + 'a' * 32
         clone = 'refactor_fixture_' + 'b' * 32

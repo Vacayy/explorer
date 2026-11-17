@@ -224,7 +224,7 @@ def run_blog(pg):
     return run_documents(pg, [BlogConnector([os.environ['TRIAL_FEED']])], NEW_DOCUMENT_CAP)
 
 
-def run_documents(pg, connectors, cap):
+def run_documents(pg, connectors, cap, before_publish=None):
     """The connectors' new documents, at most `cap` per run (each stored and tagged as by ingest; the rest wait for
     the next run because they are not stored); existing documents are not touched. New documents are published."""
     from pipeline.runner import run_source
@@ -258,6 +258,8 @@ def run_documents(pg, connectors, cap):
     work.close()
     if stopped:
         raise Aborted(stopped[0])  # a source swallowed the stop: still nothing published
+    if before_publish is not None:
+        before_publish()
     work = sqlite3.connect(WORK)
     if work.execute('SELECT COALESCE(max(id),0) FROM raw_documents').fetchone()[0] <= floors['document_floor']:
         return {'stats': stats, 'counts': dict(counts), 'published': 0}

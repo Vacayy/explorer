@@ -418,13 +418,16 @@ def run_compute(label):
                                           record=record, source=f'scheduled {label}', max_calls=MAX_MODEL_CALLS)
 
 
-def run_feeds(pg):
+def run_feeds(pg, refused=None):
     from pipeline.registry import CONNECTORS
     names = [name for name in FEED_SOURCES.split(',') if name]
     unknown = set(names) - set(CONNECTORS)
     if unknown:
         raise ValueError(f'Unknown sources: {sorted(unknown)}')
-    result = trial.run_documents(pg, [CONNECTORS[name]() for name in names], MAX_NEW_DOCS)
+    def check_cap():
+        if refused:
+            raise trial.HeldBack(f'feed model call cap {MAX_MODEL_CALLS} reached')
+    result = trial.run_documents(pg, [CONNECTORS[name]() for name in names], MAX_NEW_DOCS, before_publish=check_cap)
     result['sources'] = names
     result['steps_not_connected'] = ['extract_doc_causal', 'compute_signals', 'compute_narratives --urgent',
                                      'extract_events', 'backfill_images', 'scan_actions', 'compute_digests']
@@ -718,7 +721,8 @@ def _run(label, pg, waited):
         trial._point_legacy_at_work()
         try:
             if label == 'chain':
-                entry.update(run_feeds(pg))
+                refused = _cap_table_model_calls(MAX_MODEL_CALLS)
+                entry.update(run_feeds(pg, refused))
                 if trial.requests_by_host and not trial.statuses:  # a connector may log its network errors and go on
                     raise trial.HeldBack('no source answered')
                 failed = [name for name, stats in entry['stats'].items() if isinstance(stats, str)]

@@ -132,7 +132,8 @@ def plan(hours, now=None):
 
 def run_job(label, log=print):
     """One job (the chain: its steps in order) in one-shot containers; each outcome is recorded in collect_runs."""
-    for step in (CHAIN_SEQUENCE if label == 'chain' else (label,)):
+    steps = (('chain',) if os.environ.get('COLLECT_CHAIN_INTAKE_ONLY') == '1' else CHAIN_SEQUENCE) if label == 'chain' else (label,)
+    for step in steps:
         HOLD.parent.mkdir(parents=True, exist_ok=True)
         try:
             with HOLD.open('x') as marker:
