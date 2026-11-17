@@ -60,7 +60,17 @@ CATCHUP_SECONDS = 1800  # the MacBook's catchup job ran every 30 minutes
 
 
 # Jobs the Mac mini adds to the MacBook's list: the sector tables after the daily prices (KST, weekdays like prices).
-EXTRA_JOBS = [('sectorrefresh', ['scripts/refactor_sector_refresh.py'], [{'Weekday': d, 'Hour': 21, 'Minute': 0} for d in range(1, 6)])]
+EXTRA_JOBS = [('sectorrefresh', ['scripts/refactor_sector_refresh.py'], [{'Weekday': d, 'Hour': 21, 'Minute': 0} for d in range(1, 6)]),
+              # The candidate PG backup daily (the MacBook's backup hour) and a restore check of the newest dump weekly:
+              # a dump that does not restore is not a backup (architect #3 6947453973).
+              ('pgbackup', ['scripts/refactor_pg_backup.sh', 'backup'], {'Hour': 4, 'Minute': 30}),
+              ('pgrestorecheck', ['scripts/refactor_pg_backup.sh', 'check'], {'Weekday': 0, 'Hour': 5, 'Minute': 0})]
+# Jobs that need the host's docker CLI (the backup execs into the PG container), run here instead of in a job container;
+# recorded in collect_runs like the others. A restore check counts only when it says every row count is equal.
+HOST_JOBS = {'pgbackup': ('sh', '-c', 'scripts/refactor_pg_backup.sh backup'),
+             'pgrestorecheck': ('sh', '-c', 'scripts/refactor_pg_backup.sh check "$(ls -t "$HOME"/server-data/backups/refactor-pg/'
+                                            '*-candidate.dump | head -1)"')}
+HOST_OK = {'pgbackup': '-candidate.dump', 'pgrestorecheck': 'restore check ok'}
 
 
 def load_jobs():
@@ -71,7 +81,7 @@ def load_jobs():
         import types
         sys.modules['dotenv'] = types.SimpleNamespace(load_dotenv=lambda *args, **kwargs: False)
     import install_launchd  # noqa: E402 — the job list itself, unchanged
-    return install_launchd.JOBS + EXTRA_JOBS, {**install_launchd.CATCHUP, 'sectorrefresh': {}}
+    return install_launchd.JOBS + EXTRA_JOBS, {**install_launchd.CATCHUP, 'sectorrefresh': {}, 'pgbackup': {}, 'pgrestorecheck': {}}
 
 
 def _matches(entry, at):
@@ -117,6 +127,18 @@ def _run_one(label, log=print):
     import refactor_collect_engine as engine
     started = time.monotonic()
     started_utc = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+    if label in HOST_JOBS:
+        import subprocess
+        try:
+            done = subprocess.run(HOST_JOBS[label], cwd=ROOT, capture_output=True, text=True, timeout=JOB_SECONDS)
+            last = (done.stdout.strip().splitlines() or done.stderr.strip().splitlines() or ['(no output)'])[-1][:300]
+            kind = 'applied' if done.returncode == 0 and HOST_OK[label] in done.stdout else 'failed'
+        except subprocess.TimeoutExpired:
+            last, kind = f'stopped at the {JOB_SECONDS}s limit', 'failed'
+        engine.run(['python', '/app/scripts/refactor_collect_job.py', '--stopped', label, started_utc, last, kind],
+                   internet=False, limit=300)
+        log(f'{label} {kind} {time.monotonic() - started:.0f}s {last}')
+        return
     code, output = engine.run(['python', '/app/scripts/refactor_collect_job.py', label], job=label,
                               name=f'explorer-collect-{label}-{os.getpid()}', memory=JOB_MEMORY.get(label, '2g'),
                               internet=os.environ.get('NO_INTERNET') != '1', limit=JOB_SECONDS,

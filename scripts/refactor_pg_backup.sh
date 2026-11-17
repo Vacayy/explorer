@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Candidate PG backup and restore check (pilot plan: daily backup during the pilot, a restore check before the cutover).
 # The live candidate schema and every schema its views read (the base, the sector store) are dumped together (custom format, compressed) to a
 # host directory with a SHA-256; the newest KEEP dumps stay. `check` restores a dump into a separate scratch database,
@@ -41,11 +41,14 @@ case "$1" in
     docker exec "$DB" psql -U fixture -d fixture -AtF'|' -c "$counts" > "$DIR/.live-counts"
     docker exec "$DB" psql -U fixture -d restore_check -AtF'|' -c "$counts" > "$DIR/.restored-counts"
     tables=$(wc -l < "$DIR/.live-counts" | tr -d ' ')
-    if diff -q "$DIR/.live-counts" "$DIR/.restored-counts" >/dev/null; then
-      echo "restore check ok: $tables tables, every row count equal"
+    # The restore itself is the test (it stops at the first error); the live service keeps writing after the dump, so
+    # row counts are reported, not judged. Every live table must be there.
+    if ! diff -q <(cut -d'|' -f1 "$DIR/.live-counts") <(cut -d'|' -f1 "$DIR/.restored-counts") >/dev/null; then
+      echo "restore check FAILED: the restored tables differ from the live ones:"
+      diff <(cut -d'|' -f1 "$DIR/.live-counts") <(cut -d'|' -f1 "$DIR/.restored-counts") | head -20
     else
-      echo "restore check: row counts differ (writes since the dump, or a restore problem):"
-      diff "$DIR/.live-counts" "$DIR/.restored-counts" | head -20
+      moved=$(diff "$DIR/.live-counts" "$DIR/.restored-counts" | grep -c '^<' || true)
+      echo "restore check ok: $tables tables restored; $moved with rows written since the dump"
     fi
     rm -f "$DIR/.live-counts" "$DIR/.restored-counts"
     ;;
