@@ -77,7 +77,7 @@ READ_ROUTES = {'/api/spine/home', '/api/spine/home/ai-activity', '/api/spine/hom
                '/api/spine/trade/by-stock/{stock_code}', '/api/spine/transcript/chain/{transcript_id}',
                '/api/spine/transcript/chain/upcoming/{ticker}', '/api/spine/transcript/collect/status',
                '/api/spine/transcript/detail/{transcript_id}/reaction', '/api/spine/transcript/season/sector/{key}',
-               '/api/spine/trend-leaders/{code}/chart', '/api/spine/tw/chain-report/preview',
+               '/api/spine/trend-leaders/{code}/chart', '/api/spine/tw/chain-report/preview', '/api/spine/tw/chain-report/{rid}',
                '/api/spine/tw/chain-reports', '/api/spine/tw/expectations', '/api/spine/tw/flow',
                '/api/spine/tw/revenue', '/api/spine/tw/value-chain', '/api/spine/tw/links', '/api/spine/tw/confirm',
                '/api/spine/tw/propagation', '/api/spine/curation', '/api/spine/client-errors', '/api/spine/us', '/api/spine/us/{ticker}',
@@ -171,6 +171,8 @@ def install(app, projection, *, database_host):
     from pipeline.us_briefing import build_briefing
     from pipeline.indices import get_indices
     from routers import spine_kr, spine_us
+    from models.kalshi import KalshiDetail
+    from fastapi import Path, Query
     from models.us import UsMoversResponse
     router = APIRouter()
 
@@ -191,6 +193,15 @@ def install(app, projection, *, database_host):
     @router.get('/api/spine/market-regime')
     def market_regime():
         return get_regime()
+
+    @router.get('/api/spine/home/predictions/{event_ticker}', response_model=KalshiDetail)
+    def prediction_detail(event_ticker: str = Path(..., pattern=r'^[A-Za-z0-9._-]{1,80}$'),
+                          range: str = Query('3m', pattern=r'^(1m|3m|1y)$')):
+        from pipeline.kalshi import detail
+        try:
+            return detail(event_ticker, range, stored_only=True)  # the stored event and candles; Kalshi is not called
+        except LookupError:
+            raise HTTPException(404, 'Stored prediction detail unavailable') from None
 
     @router.get('/api/spine/us/movers', response_model=UsMoversResponse)
     def us_movers(force: bool = False):
