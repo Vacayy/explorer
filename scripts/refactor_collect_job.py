@@ -26,12 +26,14 @@ NEVER = {'backfill'}  # uncapped model calls; never scheduled automatically
 # Table-collecting jobs: the unchanged script, then the supplement tables it actually wrote are replaced in PG
 # (recorded by a sqlite authorizer; writing any table that is not a supplement table holds the run back).
 TABLE_JOBS = {'prices', 'twrevenue', 'indexintraday', 'credit', 'retail', 'market', 'krmovers', 'extseries',
-              'sectorbench', 'kalshi', 'trade', 'usfund', 'krcompany', 'markettoday', 'usbriefing'}
+              'sectorbench', 'kalshi', 'trade', 'usfund', 'krcompany', 'markettoday', 'usbriefing', 'expfeed'}
 # Home jobs on the table path whose model calls are capped per run (each llm._execute is one call, its fallback
 # included): a Market Today slot is one call; the US briefing is the macro light (macro.interpret), the macro issues
 # (briefing.macro) and the synthesis (briefing.synthesize), one each (cached ones make none). Their network reads are optional (index values, macro series): the legacy job still
 # writes its result when every one fails, so 'no source answered' does not hold them back.
-TABLE_MODEL_CAPS = {'markettoday': 1, 'usbriefing': 3}
+TABLE_MODEL_CAPS = {'markettoday': 1, 'usbriefing': 3,
+                    # Brokers' forecasts from feed documents: one call per document, at most 25 documents per run.
+                    'expfeed': 25}
 NETWORK_OPTIONAL = {'markettoday', 'usbriefing'}
 # Legacy computations over saved data: the computation-button path (pipeline.postgres_scheduled_compute) — their
 # overrides, graph diff and run records go to PG; model calls go through the usual gate and llm_calls.
