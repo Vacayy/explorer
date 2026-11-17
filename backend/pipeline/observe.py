@@ -463,8 +463,11 @@ def weekly_message(days: int = 7) -> str:
     ch = f" (지난주 {'+' if (c['change_pct'] or 0) >= 0 else ''}{c['change_pct']}%)" if c["change_pct"] is not None else ""
     L.append(f"<b>얼마나 드는가</b> LLM ${c['usd']:.1f}{ch}")
     if c["by_job"]:
-        L.append("· " + " · ".join(f"{x['name']} ${x['usd']:.1f}" + (f"({x['share']}%)" if i == 0 else "") for i, x in enumerate(c["by_job"][:3])))
-        if c["by_job"][0]["share"] >= 40:
+        L.append("· " + " · ".join(
+            f"{x['name']} " + (f"${x['usd']:.1f}" if x['usd'] is not None else "비용 미집계")
+            + (f"({x['share']}%)" if i == 0 and x['usd'] is not None else "")
+            for i, x in enumerate(c["by_job"][:3])))
+        if c["by_job"][0]["usd"] is not None and c["by_job"][0]["share"] >= 40:
             todo["cost"].append(f"{c['by_job'][0]['name']} 비용({c['by_job'][0]['share']}%) 줄일지 검토")
     L.append("")
     if u["visits"]:
