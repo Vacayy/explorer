@@ -54,7 +54,7 @@ JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40,t.me=40,www.youtube.com=40,.tel
                  'history': 'fchart.stock.naver.com=3200',
                  # credit (macbook-source #3 6942831447): 34 companies — issuer scan and history on the scanner host,
                  # symbol search as the fallback, 10 Treasury series from FRED; any other host keeps the default 20
-                 'credit': 'scanner.tradingview.com=150,symbol-search.tradingview.com=60,fred.stlouisfed.org=12',
+                 'credit': 'scanner.tradingview.com=150,symbol-search.tradingview.com=60,data.tradingview.com=150,fred.stlouisfed.org=12',
                  # peer: one daily-price page per catalog company (104 now)
                  'peer': 'stock.naver.com=120',
                  # US briefing: macro series from FRED (three tries when all fail), Yahoo quotes·charts·headlines for the

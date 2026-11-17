@@ -921,6 +921,12 @@ class CollectionTargetTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 projection.check_override_shadows(pg)
 
+    def test_credit_history_host_has_an_explicit_bounded_cap(self):
+        caps = dict(item.split('=', 1) for item in scheduler.JOB_HOST_CAPS['credit'].split(','))
+        self.assertEqual(int(caps['data.tradingview.com']), 150)
+        with patch.object(trial, 'HOST_CAPS', {key: int(value) for key, value in caps.items()}):
+            self.assertEqual(trial.cap_of('data.tradingview.com'), 150)
+
     def test_calendar_due_time_is_not_repeated_within_same_minute(self):
         jobs = [('briefing', [], {'Hour': 7, 'Minute': 0})]
         before = datetime.fromisoformat('2026-11-18T06:59:59+09:00')
