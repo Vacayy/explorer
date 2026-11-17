@@ -1,0 +1,73 @@
+"""Append one published feed document into an isolated collector work copy.
+
+Run only after a consistent backup and with every collector stopped. Never replaces
+existing rows: any unexpected divergence refuses the entire SQLite transaction.
+"""
+import sqlite3
+
+TABLES = ('raw_documents', 'enrichments', 'entity_links', 'entities', 'entity_keywords', 'entity_relations')
+
+
+def sync(source_path, target_path):
+    src = sqlite3.connect(f'file:{source_path}?mode=ro', uri=True)
+    dst = sqlite3.connect(target_path)
+    try:
+        src.execute('BEGIN')
+        dst.execute('BEGIN IMMEDIATE')
+        floor_tables = (('document_floor', 'raw_documents'), ('entity_floor', 'entities'),
+                        ('keyword_floor', 'entity_keywords'), ('relation_floor', 'entity_relations'))
+        for name, table in floor_tables:
+            for conn in (src, dst):
+                row = conn.execute('SELECT value FROM candidate_publish_floor WHERE name=?', (name,)).fetchone()
+                maximum = conn.execute(f'SELECT COALESCE(max(id),0) FROM "{table}"').fetchone()[0]
+                if row is None or row[0] != maximum:
+                    raise ValueError('A work copy contains unpublished rows or lacks its publication floor')
+        additions = {}
+        for table in TABLES:
+            source_columns = [r[1] for r in src.execute(f'PRAGMA table_info("{table}")')]
+            target_columns = [r[1] for r in dst.execute(f'PRAGMA table_info("{table}")')]
+            if not source_columns or source_columns != target_columns or source_columns[0] != 'id':
+                raise ValueError('Work schemas differ')
+            source = iter(src.execute(f'SELECT * FROM "{table}" ORDER BY id'))
+            target = iter(dst.execute(f'SELECT * FROM "{table}" ORDER BY id'))
+            a, b = next(source, None), next(target, None)
+            new = []
+            while a is not None or b is not None:
+                if b is None or (a is not None and a[0] < b[0]):
+                    new.append(a)
+                    a = next(source, None)
+                elif a is None or b[0] < a[0]:
+                    raise ValueError('Target contains rows absent from feed work')
+                else:
+                    if a != b:
+                        raise ValueError('An existing row differs between work copies')
+                    a, b = next(source, None), next(target, None)
+            additions[table] = (source_columns, new)
+        documents = additions['raw_documents'][1]
+        if len(documents) != 1 or any(additions[t][1] for t in ('entities', 'entity_keywords', 'entity_relations')):
+            raise ValueError('Expected exactly one document and no new graph rows')
+        doc_id = documents[0][0]
+        for table in ('enrichments', 'entity_links'):
+            cols, rows = additions[table]
+            if any(row[cols.index('doc_id')] != doc_id for row in rows):
+                raise ValueError('An added row belongs to another document')
+        if len(additions['enrichments'][1]) != 1:
+            raise ValueError('Expected one completed enrichment')
+        for table in ('raw_documents', 'enrichments', 'entity_links'):
+            cols, rows = additions[table]
+            dst.executemany(f'INSERT INTO "{table}" VALUES ({",".join("?" for _ in cols)})', rows)
+        dst.execute("UPDATE candidate_publish_floor SET value=? WHERE name='document_floor'", (doc_id,))
+        if dst.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
+            raise ValueError('Target integrity check failed')
+        dst.commit()
+        return {table: len(additions[table][1]) for table in ('raw_documents', 'enrichments', 'entity_links')}
+    except BaseException:
+        dst.rollback()
+        raise
+    finally:
+        src.close()
+        dst.close()
+
+
+if __name__ == '__main__':
+    print('work rows appended:', sync('/feed/work.db', '/target/work.db'))

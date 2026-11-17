@@ -14,9 +14,41 @@ import refactor_collect_scheduler as scheduler
 import refactor_collect_engine as engine
 import refactor_collect_job as job
 import refactor_feed_recover as recover
+import refactor_feed_sync as feed_sync
 
 
 class CollectionTargetTest(unittest.TestCase):
+    def test_feed_sync_appends_only_validated_document_and_preserves_existing_rows(self):
+        with TemporaryDirectory() as directory:
+            paths = [Path(directory) / name for name in ('source', 'target')]
+            for path in paths:
+                db = sqlite3.connect(path)
+                db.executescript('''
+                    CREATE TABLE raw_documents(id INTEGER PRIMARY KEY AUTOINCREMENT, body TEXT);
+                    CREATE TABLE enrichments(id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id INTEGER, summary TEXT);
+                    CREATE TABLE entity_links(id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id INTEGER, entity_id INTEGER);
+                    CREATE TABLE entities(id INTEGER PRIMARY KEY); CREATE TABLE entity_keywords(id INTEGER PRIMARY KEY);
+                    CREATE TABLE entity_relations(id INTEGER PRIMARY KEY);
+                    CREATE TABLE candidate_publish_floor(name TEXT PRIMARY KEY,value INTEGER);
+                    INSERT INTO candidate_publish_floor VALUES ('document_floor',1),('entity_floor',0),('keyword_floor',0),('relation_floor',0);
+                    INSERT INTO raw_documents VALUES(1,'old');
+                ''')
+                db.commit()
+                db.close()
+            db = sqlite3.connect(paths[0])
+            db.executescript("INSERT INTO raw_documents VALUES(2,'new'); INSERT INTO enrichments VALUES(1,2,'summary');"
+                             "INSERT INTO entity_links VALUES(1,2,1); UPDATE candidate_publish_floor SET value=2 WHERE name='document_floor';")
+            db.commit()
+            db.close()
+            self.assertEqual(feed_sync.sync(*paths), {'raw_documents': 1, 'enrichments': 1, 'entity_links': 1})
+            db = sqlite3.connect(paths[1])
+            self.assertEqual(db.execute('SELECT count(*) FROM raw_documents').fetchone()[0], 2)
+            self.assertEqual(db.execute("SELECT value FROM candidate_publish_floor WHERE name='document_floor'").fetchone()[0], 2)
+            self.assertEqual(db.execute("SELECT seq FROM sqlite_sequence WHERE name='raw_documents'").fetchone()[0], 2)
+            db.close()
+            with self.assertRaises(ValueError):
+                feed_sync.sync(*paths)
+
     def test_recovery_requires_one_matching_complete_queued_document(self):
         from pipeline.base import RawDoc
         from pipeline.feed_backlog import FeedBacklog
