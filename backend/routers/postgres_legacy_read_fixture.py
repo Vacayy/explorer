@@ -64,7 +64,8 @@ READ_ROUTES = {'/api/spine/home', '/api/spine/home/ai-activity', '/api/spine/hom
                '/api/spine/knowledge/items/{knowledge_id}/evidence', '/api/spine/knowledge/overview',
                '/api/spine/knowledge/worldview', '/api/spine/narrative-candidates', '/api/spine/narrative/mega',
                '/api/spine/person', '/api/spine/person/followed', '/api/spine/person/home',
-               '/api/spine/person/resolve', '/api/spine/proxy-boards/adapters',
+               '/api/spine/person/resolve', '/api/spine/person/{entity_id:int}',
+               '/api/spine/person/{name}/dossier', '/api/spine/company/{name}/dossier', '/api/spine/proxy-boards/adapters',
                '/api/spine/proxy-boards/adapters/{kind}/catalog', '/api/spine/report', '/api/spine/report/history',
                '/api/spine/report/list', '/api/spine/report/version', '/api/spine/research/candidates',
                '/api/spine/retail/history', '/api/spine/retail/snapshots', '/api/spine/saved',
@@ -166,7 +167,8 @@ def install(app, projection, *, database_host):
     from pipeline.market_regime import get_regime
     from pipeline.us_briefing import build_briefing
     from pipeline.indices import get_indices
-    from routers import spine_kr
+    from routers import spine_kr, spine_us
+    from models.us import UsMoversResponse
     router = APIRouter()
 
     @router.get('/api/spine/indices')
@@ -186,6 +188,12 @@ def install(app, projection, *, database_host):
     @router.get('/api/spine/market-regime')
     def market_regime():
         return get_regime()
+
+    @router.get('/api/spine/us/movers', response_model=UsMoversResponse)
+    def us_movers(force: bool = False):
+        if force:
+            raise HTTPException(405, 'Collection is unavailable in the read-only preview')
+        return spine_us.us_movers(force=False)  # an expired cache answers stale/error offline, never refetches
 
     @router.get('/api/spine/us/briefing', response_model=UsBriefing)
     def us_briefing(force: bool = False, trade_date: str | None = None):
