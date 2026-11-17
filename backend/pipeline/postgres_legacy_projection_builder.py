@@ -44,6 +44,13 @@ def run(directory):
             return False
         if time.time() - manifest.stat().st_mtime < COLLECTION_BUILD_SECONDS:
             return False
+    if current and (directory / current['file']).exists():
+        # A build that died before its file was linked (memory, a restart) left that file; no reader ever had it, and
+        # repeated failures must not fill the volume.
+        linked = (directory / current['file']).stat().st_mtime
+        for leftover in directory.glob('projection-*.db'):
+            if leftover.name != current['file'] and leftover.stat().st_mtime > linked:
+                leftover.unlink(missing_ok=True)
     started = time.monotonic()
     path, version, legacy_version = build_projection(factory, directory)
     refreshed = _reembed(factory)
