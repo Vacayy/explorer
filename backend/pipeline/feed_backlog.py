@@ -8,7 +8,7 @@ import uuid
 from dataclasses import asdict
 from pathlib import Path
 
-from pipeline.base import RawDoc
+from pipeline.base import RawDoc, SourceRef
 
 
 def stage_one_reference(queue, name, connector):
@@ -48,11 +48,66 @@ class FeedBacklog:
                 singleton INTEGER PRIMARY KEY CHECK(singleton=1), token TEXT NOT NULL UNIQUE,
                 seq INTEGER NOT NULL REFERENCES pending(seq)
             );
+            CREATE TABLE IF NOT EXISTS pending_refs (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT, connector TEXT NOT NULL, ref_key TEXT NOT NULL,
+                lane TEXT NOT NULL, payload TEXT NOT NULL, UNIQUE(connector, ref_key)
+            );
+            CREATE TABLE IF NOT EXISTS ref_cursor (singleton INTEGER PRIMARY KEY CHECK(singleton=1), lane TEXT);
+            INSERT OR IGNORE INTO ref_cursor VALUES (1, NULL);
+            CREATE TABLE IF NOT EXISTS ref_lane_cursor (lane TEXT PRIMARY KEY, seq INTEGER NOT NULL);
         ''')
         self.conn.commit()
 
     def close(self):
         self.conn.close()
+
+    def enqueue_ref(self, connector, lane_ref, ref):
+        """Persist a discovered item before fetching it, including connector metadata."""
+        if not connector or not lane_ref or not ref.key:
+            raise ValueError('A connector, source lane and reference are required')
+        lane = hashlib.sha256((connector + '\0' + lane_ref).encode()).hexdigest()
+        payload = json.dumps(asdict(ref), ensure_ascii=False, separators=(',', ':'))
+        with self.conn:
+            self.conn.execute('INSERT INTO pending_refs(connector,ref_key,lane,payload) VALUES (?,?,?,?) '
+                              'ON CONFLICT(connector,ref_key) DO UPDATE SET payload=excluded.payload',
+                              (connector, ref.key, lane, payload))
+
+    def next_pending_ref(self):
+        last = self.conn.execute('SELECT lane FROM ref_cursor WHERE singleton=1').fetchone()[0] or ''
+        lane = self.conn.execute('SELECT lane FROM pending_refs WHERE lane>? GROUP BY lane ORDER BY lane LIMIT 1',
+                                 (last,)).fetchone()
+        if lane is None:
+            lane = self.conn.execute('SELECT lane FROM pending_refs GROUP BY lane ORDER BY lane LIMIT 1').fetchone()
+        if lane is None:
+            return None
+        seen = self.conn.execute('SELECT seq FROM ref_lane_cursor WHERE lane=?', lane).fetchone()
+        row = self.conn.execute('SELECT seq,connector,payload FROM pending_refs WHERE lane=? AND seq>? '
+                                'ORDER BY seq LIMIT 1', (lane[0], seen[0] if seen else 0)).fetchone()
+        if row is None:
+            row = self.conn.execute('SELECT seq,connector,payload FROM pending_refs WHERE lane=? ORDER BY seq LIMIT 1', lane).fetchone()
+        seq, connector, payload = row
+        return seq, connector, SourceRef(**json.loads(payload))
+
+    def acknowledge_ref(self, seq):
+        """Call only after all fetched documents are durably staged."""
+        with self.conn:
+            row = self.conn.execute('SELECT lane FROM pending_refs WHERE seq=?', (seq,)).fetchone()
+            if row is None:
+                raise ValueError('Unknown pending source reference')
+            self.conn.execute('DELETE FROM pending_refs WHERE seq=?', (seq,))
+            self.conn.execute('UPDATE ref_cursor SET lane=? WHERE singleton=1', (row[0],))
+            self.conn.execute('INSERT INTO ref_lane_cursor VALUES (?,?) ON CONFLICT(lane) DO UPDATE SET seq=excluded.seq',
+                              (row[0], seq))
+
+    def defer_ref(self, seq):
+        """Leave a failed or empty fetch pending while allowing other source lanes to run."""
+        with self.conn:
+            row = self.conn.execute('SELECT lane FROM pending_refs WHERE seq=?', (seq,)).fetchone()
+            if row is None:
+                raise ValueError('Unknown pending source reference')
+            self.conn.execute('UPDATE ref_cursor SET lane=? WHERE singleton=1', (row[0],))
+            self.conn.execute('INSERT INTO ref_lane_cursor VALUES (?,?) ON CONFLICT(lane) DO UPDATE SET seq=excluded.seq',
+                              (row[0], seq))
 
     def next_ref(self, connector, refs):
         """Select one reference per source, rotating across runs without storing its private key."""

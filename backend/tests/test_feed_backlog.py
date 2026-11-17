@@ -7,6 +7,32 @@ from pipeline.feed_backlog import FeedBacklog, stage_one_reference
 
 
 class FeedBacklogTest(unittest.TestCase):
+    def test_discovered_refs_survive_restart_and_empty_fetch_can_yield(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'pending.sqlite'
+            queue = FeedBacklog(path)
+            queue.enqueue_ref('youtube', 'channel-a', SourceRef('first', {'channel': 'a'}))
+            queue.enqueue_ref('youtube', 'channel-b', SourceRef('second', {'channel': 'b'}))
+            first = queue.next_pending_ref()
+            queue.defer_ref(first[0])
+            second = queue.next_pending_ref()
+            self.assertNotEqual(first[2].key, second[2].key)
+            queue.close()
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.next_pending_ref()[2].meta, second[2].meta)
+            queue.acknowledge_ref(second[0])
+            self.assertEqual(queue.next_pending_ref()[2].key, first[2].key)
+            queue.close()
+
+    def test_failed_reference_does_not_starve_same_channel(self):
+        with tempfile.TemporaryDirectory() as directory:
+            queue = FeedBacklog(Path(directory) / 'pending.sqlite')
+            queue.enqueue_ref('youtube', 'channel', SourceRef('first'))
+            queue.enqueue_ref('youtube', 'channel', SourceRef('second'))
+            first = queue.next_pending_ref()
+            queue.defer_ref(first[0])
+            self.assertEqual(queue.next_pending_ref()[2].key, 'second')
+            queue.close()
     def test_intent_survives_restart_and_requires_confirmed_receipt(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'pending.sqlite'
