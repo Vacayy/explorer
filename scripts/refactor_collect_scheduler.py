@@ -82,13 +82,18 @@ def plan(hours, now=None):
 def run_job(label, log=print):
     """One job in its one-shot container; the job harness records the outcome in collect_runs."""
     started = time.monotonic()
+    started_utc = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+    name = f'explorer-collect-{label}-{os.getpid()}'  # removed at the time limit (stopping the shell leaves the container)
     try:
         done = subprocess.run([str(ROOT / 'scripts/refactor_collect_trial.sh'), 'job', label], capture_output=True,
-                              text=True, timeout=JOB_SECONDS)
+                              text=True, timeout=JOB_SECONDS, env={**os.environ, 'CONTAINER_NAME': name})
         lines = [line for line in done.stdout.splitlines() if line.startswith('{')]
         log(f'{label} rc={done.returncode} {time.monotonic() - started:.0f}s {lines[-1] if lines else "(no record line)"}')
     except subprocess.TimeoutExpired:
-        log(f'{label} stopped at the {JOB_SECONDS}s limit')
+        subprocess.run(['docker', 'rm', '-f', name], capture_output=True)
+        subprocess.run([str(ROOT / 'scripts/refactor_collect_trial.sh'), 'stopped', label, started_utc,
+                        f'stopped at the {JOB_SECONDS}s limit'], capture_output=True, timeout=300)
+        log(f'{label} stopped at the {JOB_SECONDS}s limit (recorded as failed, nothing applied)')
 
 
 def catchup_due(enabled, log=print):

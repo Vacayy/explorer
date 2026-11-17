@@ -30,6 +30,13 @@ NEW_DOCUMENT_CAP = 5
 SHRINK_LIMIT = 0.5
 BLOCKED = {403, 429}
 MAX_REQUESTS = int(os.environ.get('TRIAL_MAX_REQUESTS', '20'))  # per source host, enforced before anything is applied (PM 6937645863)
+# Per-host exceptions, 'host=cap,host=cap' (a job that needs more from one host, decided by the PM); others MAX_REQUESTS.
+HOST_CAPS = {host: int(cap) for host, _, cap in (item.partition('=') for item in
+             os.environ.get('TRIAL_HOST_CAPS', '').split(',') if item)}
+
+
+def cap_of(host):
+    return HOST_CAPS.get(host, MAX_REQUESTS)
 requests_by_host, statuses, per_host = Counter(), Counter(), Counter()
 stopped = []  # the first stop reason; kept, because a source may swallow the exception raised at the stop
 
@@ -64,8 +71,8 @@ def _instrument():
         if host not in ('pg', 'localhost', '127.0.0.1') and isinstance(host, str):
             if stopped:
                 stop(stopped[0])  # nothing more goes out after a stop
-            if requests_by_host[host] >= MAX_REQUESTS:  # every client (urllib included) resolves before it connects
-                stop(f'{host} reached the request cap {MAX_REQUESTS}')
+            if requests_by_host[host] >= cap_of(host):  # every client (urllib included) resolves before it connects
+                stop(f'{host} reached the request cap {cap_of(host)}')
             requests_by_host[host] += 1
         return resolve(host, *args, **kwargs)
     socket.getaddrinfo = getaddrinfo
@@ -76,8 +83,8 @@ def _instrument():
         if status in BLOCKED:
             stop(f'{host} answered {status}')
         per_host[host] += 1
-        if per_host[host] >= MAX_REQUESTS:
-            stop(f'{host} reached the request cap {MAX_REQUESTS}')  # no further request, nothing applied
+        if per_host[host] >= cap_of(host):
+            stop(f'{host} reached the request cap {cap_of(host)}')  # no further request, nothing applied
     import urllib.error
     import urllib.request
     open_url = urllib.request.OpenerDirector.open
@@ -114,6 +121,39 @@ def _instrument():
         curl.Session.request = checked_curl
     except ImportError:
         pass
+
+
+written = set()  # tables the job wrote in the collector file (sqlite authorizer)
+housekeeping = []  # non-empty while database.init_db runs
+
+
+def _watch_writes():
+    """Record every table a statement inserts into, updates or deletes from, on every sqlite connection of the job."""
+    connect = sqlite3.connect
+    WRITES = {sqlite3.SQLITE_INSERT, sqlite3.SQLITE_UPDATE, sqlite3.SQLITE_DELETE}
+
+    def authorizer(action, table, *_rest):
+        if action in WRITES and table and not table.startswith('sqlite_') and not housekeeping:
+            written.add(table)
+        return sqlite3.SQLITE_OK
+
+    def watched(*args, **kwargs):
+        conn = connect(*args, **kwargs)
+        conn.set_authorizer(authorizer)
+        return conn
+    sqlite3.connect = watched
+    # The legacy writer's own schema upkeep (database.init_db: idempotent backfill UPDATEs, usually no rows) is not
+    # the job's collection; its statements would otherwise mark tables the job never collects.
+    import database
+    init_db = database.init_db
+
+    def quiet_init_db(*args, **kwargs):
+        housekeeping.append(True)
+        try:
+            return init_db(*args, **kwargs)
+        finally:
+            housekeeping.pop()
+    database.init_db = quiet_init_db
 
 
 def _point_legacy_at_work():

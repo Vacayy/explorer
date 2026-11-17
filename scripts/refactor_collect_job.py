@@ -10,6 +10,7 @@ Jobs not connected yet are recorded as 'unsupported' and not run.
 
   python scripts/refactor_collect_job.py <label>
   python scripts/refactor_collect_job.py --catchup <label,...>   # which of these to catch up now (prints JSON)
+  python scripts/refactor_collect_job.py --stopped <label> <started UTC> <reason>   # record a run stopped at its limit
 """
 import json
 import os
@@ -22,11 +23,32 @@ import refactor_collect_trial as trial  # noqa: E402 - the same harness and safe
 
 SENDS = {'briefing', 'pfintraday', 'pfclose', 'observealerts', 'observeweekly'}  # Telegram; on only after the cutover
 NEVER = {'backfill'}  # uncapped model calls; never scheduled automatically
-TABLE_JOBS = {'prices', 'twrevenue', 'indexintraday'}  # trial.job_table: script → supplement replacement
+# Table-collecting jobs: the unchanged script, then the supplement tables it actually wrote are replaced in PG
+# (recorded by a sqlite authorizer; writing any table that is not a supplement table holds the run back).
+TABLE_JOBS = {'prices', 'twrevenue', 'indexintraday', 'credit', 'retail', 'market', 'krmovers', 'extseries',
+              'sectorbench', 'kalshi', 'trade', 'usfund', 'krcompany'}
 # chain: its document intake only (ingest with the registered sources, tagging included), capped per run and
 # published; the chain's later steps (causal extraction, signals, narratives, digests…) are not connected yet.
 FEED_SOURCES = os.environ.get('COLLECT_FEED_SOURCES', 'blog,note,memo,scrap')  # YouTube·Telegram excluded before cutover
 MAX_NEW_DOCS = int(os.environ.get('COLLECT_MAX_NEW_DOCS', '20'))
+
+
+def job_argv(label):
+    """(script argv relative to the project, job record name) from the MacBook job list, unchanged."""
+    from refactor_collect_scheduler import load_jobs
+    jobs, rules = load_jobs()
+    argv = next(argv for name, argv, _schedule in jobs if name == label)
+    return [str(Path(argv[1]).relative_to(Path(argv[1]).parents[1])), *argv[2:]], rules.get(label, {}).get('record')
+
+
+def supplement_tables(pg, written):
+    known = {name for (name,) in pg.execute('SELECT table_name FROM legacy_supplement_tables WHERE table_name=ANY(%s)',
+                                            (sorted(written),))}
+    if written - known:
+        raise trial.HeldBack(f'wrote tables the candidate does not take from collection: {sorted(written - known)}')
+    if not written:
+        raise trial.HeldBack('wrote nothing')
+    return sorted(written)
 
 
 def run_feeds(pg):
@@ -66,14 +88,18 @@ def run(label):
                     raise trial.HeldBack(f'every source failed: {", ".join(failed)}')
                 outcome = (f'partial: {done}; failed {", ".join(failed)}' if failed else f'applied: {done}')
             else:
-                argv, record, tables = trial.job_table(label)
+                argv, record = job_argv(label)
                 os.chdir('/app')
+                trial._watch_writes()
                 trial._run_script(*argv)
                 if trial.stopped:
                     raise trial.Aborted(trial.stopped[0])
+                if trial.requests_by_host and not trial.statuses:  # a script may record 'ok' with every fetch failed
+                    raise trial.HeldBack('no source answered')
                 if record:
                     trial._job_record(record, started)
-                entry['applied'] = trial._apply_supplement(pg, tables)
+                entry['written'] = sorted(trial.written)
+                entry['applied'] = trial._apply_supplement(pg, supplement_tables(pg, trial.written))
                 outcome = 'applied: ' + ', '.join(f'{t} {n}' for t, n in (entry['applied'] or {}).items())
         except trial.Aborted as exc:
             outcome = f'aborted: {exc}'
@@ -118,8 +144,16 @@ def catchup(labels, now=None):
     return due_labels
 
 
+def record_stop(label, started, reason):
+    """A run the scheduler stopped (time limit): recorded as failed, so catch-up counts the attempt."""
+    from pipeline import postgres_collect_runs
+    print(postgres_collect_runs.record(trial._pg(), label, started, f'failed: {reason}'))
+
+
 if __name__ == '__main__':
     if sys.argv[1] == '--catchup':
         catchup(set(sys.argv[2].split(',')))
+    elif sys.argv[1] == '--stopped':
+        record_stop(sys.argv[2], sys.argv[3], sys.argv[4])
     else:
         run(sys.argv[1])
