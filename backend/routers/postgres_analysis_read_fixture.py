@@ -4,7 +4,8 @@ The legacy read routes run unchanged over the file stores (logs/market-analysis,
 from the rehearsal data into the candidate's own volume and moved to the MacBook's latest at the cutover. The
 analysis and discovery services are created but not started unless runs are enabled. Starting, resuming and cancelling
 a run call Claude (a CodeAct model in the candidate broker's sandbox): they answer 503 until enabled after the Claude
-login, as every discovery action does, instead of reaching the previous stack.
+login; discovery records (strategies, versions, cases, notes) are saved at once, discovery runs follow the run switch
+and company research its own switch. Nothing reaches the previous stack.
 """
 from fastapi import HTTPException
 from fastapi.routing import APIRoute
@@ -19,7 +20,18 @@ UNAVAILABLE = 'Market analysis runs need the Claude login on the candidate; save
 # Starting, resuming and cancelling a run, once enabled (REFACTOR_MARKET_ANALYSIS_RUNS=1, after the Claude login and the
 # PM's approval): the legacy routes with the worker started under lowered per-run limits (PM #3 6940939784).
 RUNS = {('POST', '/api/analysis/runs'), ('POST', '/api/analysis/runs/{run_id}/resume'),
-        ('POST', '/api/analysis/runs/{run_id}/cancel')}
+        ('POST', '/api/analysis/runs/{run_id}/cancel'),
+        # discovery actions that start an analysis run
+        ('POST', '/api/analysis/discovery/strategies/{strategy_id}/run'),
+        ('POST', '/api/analysis/discovery/recommendations/{recommendation_id}/run')}
+# Discovery records written to the store only (no model): always on. They live in the candidate's own analysis store,
+# which the cutover replaces with the MacBook's latest (candidate-made records are not carried over).
+STORE_WRITES = {('POST', '/api/analysis/discovery/strategies'),
+                ('POST', '/api/analysis/discovery/strategies/{strategy_id}/versions'),
+                ('POST', '/api/analysis/discovery/cases'), ('POST', '/api/analysis/discovery/cases/{case_id}/notes')}
+# Company research (the discovery worker: web collection and Claude), its own switch (REFACTOR_MARKET_DISCOVERY_RESEARCH=1).
+RESEARCH = {('POST', '/api/analysis/discovery/cases/{case_id}/research'),
+            ('POST', '/api/analysis/discovery/cases/{case_id}/research/{research_id}/cancel')}
 
 
 def install(app):
@@ -35,6 +47,9 @@ def install(app):
     if runs:
         analysis._service.start()
     discovery._service = DiscoveryService(analysis._service)
+    research = os.environ.get('REFACTOR_MARKET_DISCOVERY_RESEARCH') == '1'
+    if research:
+        discovery._service.start()
     # The discovery routes are mounted under /api/analysis here (their router's own prefix is /discovery).
     routes = [(route, route.path) for route in analysis.router.routes if isinstance(route, APIRoute)]
     routes += [(route, '/api/analysis' + route.path) for route in discovery.router.routes if isinstance(route, APIRoute)
@@ -45,7 +60,8 @@ def install(app):
     for route, path in routes:
         if 'GET' in route.methods and path in READS:
             app.add_api_route(path, route.endpoint, methods=['GET'], response_model=route.response_model, name=route.name)
-        elif runs and 'POST' in route.methods and ('POST', path) in RUNS:
+        elif 'POST' in route.methods and (('POST', path) in STORE_WRITES or (runs and ('POST', path) in RUNS)
+                                          or (research and ('POST', path) in RESEARCH)):
             app.add_api_route(path, route.endpoint, methods=['POST'], response_model=route.response_model, name=route.name)
         elif 'POST' in route.methods and path != '/api/analysis/refine':
             app.add_api_route(path, unavailable, methods=['POST'], name=f'unavailable {path}')
