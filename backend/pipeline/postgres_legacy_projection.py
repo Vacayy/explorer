@@ -303,7 +303,9 @@ class LegacyProjection:
                 if table in ddl:
                     # Original DDL keeps PKs, AUTOINCREMENT and cascades for the legacy writer.
                     conn.execute(re.sub(r'^\s*CREATE\s+TABLE\s+', 'CREATE TEMP TABLE ', ddl[table], flags=re.I))
-                    conn.execute(f'INSERT INTO temp."{table}" SELECT * FROM main."{table}"')
+                    if conn.execute("SELECT 1 FROM main.sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
+                        conn.execute(f'INSERT INTO temp."{table}" SELECT * FROM main."{table}"')
+                    # else: registered after this file was built; empty until the next build carries it
                 else:
                     conn.execute(f'CREATE TEMP TABLE "{table}" AS SELECT * FROM main."{table}"')
                 # Same index names, so legacy `CREATE INDEX IF NOT EXISTS` stays a no-op under query_only.

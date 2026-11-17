@@ -35,6 +35,8 @@ def run(script, argv, factory, *, record, source, projection_dir='/projection', 
     install(FastAPI(), projection, database_host=database_host)  # guard, get_connection → projection, saved data
     import database
     database.init_db = lambda *args, **kwargs: None  # the projection's schema is fixed; upkeep is the collector's
+    from pipeline import postgres_legacy_embeddings
+    postgres_legacy_embeddings.install(factory)  # doc_vec is not in the projection: PG document vectors, as the API
     conn, _version = projection.write_connection(graph.GRAPH + ('job_runs',))
     refused = set()  # collected (read-only) tables the script tried to write: named in the failure
 

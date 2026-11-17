@@ -20,7 +20,7 @@ def _column(table, column):
 def steps():
     """(version, name, present(conn), initialize(conn)) in application order."""
     from pipeline import postgres_identity_store, postgres_trial_quota, postgres_usage_gate
-    from pipeline import postgres_chain_reports, postgres_client_errors, postgres_collect_runs, postgres_live_tables, postgres_llm_calls, postgres_observe_ledgers, postgres_owner_legacy_fixture, postgres_study_owners
+    from pipeline import postgres_chain_reports, postgres_client_errors, postgres_collect_runs, postgres_legacy_supplement, postgres_live_tables, postgres_llm_calls, postgres_observe_ledgers, postgres_owner_legacy_fixture, postgres_study_owners
     from routers import postgres_member_thesis_fixture, postgres_questions_fixture
     return [
         (1, 'identity (principals, sessions)', _table('principals'), postgres_identity_store.initialize),
@@ -37,6 +37,8 @@ def steps():
         (12, 'value-chain report records', _table('candidate_chain_node_notes'), postgres_chain_reports.initialize),
         (13, 'collection run record', _table('collect_runs'), postgres_collect_runs.initialize),
         (14, 'collection counters (live tables, folded rebuilds)', _table('live_version'), postgres_live_tables.initialize),
+        (15, 'contradiction scan record table', postgres_legacy_supplement.has_doc_scans,
+         postgres_legacy_supplement.initialize_doc_scans),
     ]
 
 

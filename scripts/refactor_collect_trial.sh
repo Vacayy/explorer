@@ -24,7 +24,7 @@ container() {  # extra docker args..., then the command
   for key in TRIAL_MAX_REQUESTS TRIAL_HOST_CAPS COLLECT_FEED_SOURCES COLLECT_MAX_NEW_DOCS; do   # caps and limits from the caller
     [ -n "${!key:-}" ] && printf '%s=%s\n' "$key" "${!key}" >> "$env_file"
   done
-  local id; id=$(docker create ${CONTAINER_NAME:+--name "$CONTAINER_NAME"} --memory=2g --network explorer-refactor-preview-private --env-file "$env_file" --user "$USER_ID" \
+  local id; id=$(docker create ${CONTAINER_NAME:+--name "$CONTAINER_NAME"} --memory="${JOB_MEMORY:-2g}" --network explorer-refactor-preview-private --env-file "$env_file" --user "$USER_ID" \
     -v "$ROOT/backend:/app/backend:ro" -v "$ROOT/scripts:/app/scripts:ro" -v explorer-refactor-single-projection:/projection:ro \
     -v "$VOLUME:/trial" -v explorer-public-codex-auth:/provider-auth -v explorer-data-rehearsal_models:/models:ro \
     -v "$HOME/server-data/review/refactor-single/codex-gate:/control/codex-gate:ro" \

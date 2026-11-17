@@ -32,6 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 LOCK = Path(os.environ.get('COLLECT_SCHEDULER_LOCK', Path.home() / 'server-data/review/refactor-single/collect-scheduler.lock'))
 JOB_SECONDS = int(os.environ.get('COLLECT_JOB_SECONDS', '3600'))  # one job's time limit (the MacBook chain step limit)
 TICK_SECONDS = 20
+JOB_MEMORY = {'proposals': '3584m'}  # measured peak 2.9GiB (weekly); every other job 2g
 CATCHUP_SECONDS = 1800  # the MacBook's catchup job ran every 30 minutes
 
 
@@ -86,7 +87,8 @@ def run_job(label, log=print):
     name = f'explorer-collect-{label}-{os.getpid()}'  # removed at the time limit (stopping the shell leaves the container)
     try:
         done = subprocess.run([str(ROOT / 'scripts/refactor_collect_trial.sh'), 'job', label], capture_output=True,
-                              text=True, timeout=JOB_SECONDS, env={**os.environ, 'CONTAINER_NAME': name})
+                              text=True, timeout=JOB_SECONDS,
+                              env={**os.environ, 'CONTAINER_NAME': name, 'JOB_MEMORY': JOB_MEMORY.get(label, '2g')})
         lines = [line for line in done.stdout.splitlines() if line.startswith('{')]
         log(f'{label} rc={done.returncode} {time.monotonic() - started:.0f}s {lines[-1] if lines else "(no record line)"}')
     except subprocess.TimeoutExpired:
