@@ -1,10 +1,13 @@
 """Pre-publication check: does any public GET leak the operator's personal state to an anonymous visitor?
 
 Run against the candidate API in the public mode (loopback):
-  python3 scripts/refactor_personal_leak_check.py <session-file> <entity_id> <watch_group_id> <stock_code>
+  python3 scripts/refactor_personal_leak_check.py <session-file> <entity_id> <watch_group_id> <stock_code> [<channel> <hs_code>]
 <session-file> holds "<operator session token> <csrf token>". Every contract GET (frontend routes.json and
 live samples) is read anonymously and as the operator; then only the operator's personal ledgers change
-(a follow, a saved item, a tracker condition, a watch-group member; all undone by id afterwards) and
+(a follow, a saved item, a tracker condition, a watch-group member, a prediction pin; all undone through the API
+afterwards; with <channel> and <hs_code> also a feed read mark and a trade-item follow, which the API cannot undo:
+pick a channel the operator has no mark for and an item with no owner_trade_follow row, then delete the two rows
+by key with the command in LEAK_CHECK_CLEANUP, run before the after-undo sweep) and
 every GET is read again. Shared data does not move when only personal ledgers change, so an anonymous
 response that changes is a leak; caches are not cleared, so a stale shared result shows up too. Routes
 whose anonymous response also differs after the undo vary with time (e.g. decaying activation) and are
@@ -55,9 +58,22 @@ try:
     s, b = call('POST', '/api/spine/saved', 'op', {'kind': 'doc', 'ref': '29424', 'url': '/doc/29424', 'title': 'RV22 시험 저장'}); print('perturb saved', s); undo.append(('DELETE', f"/api/spine/saved/{b['id']}")) if s in (200, 201) else None
     s, b = call('POST', '/api/spine/tracker/005930/conditions', 'op', {'role': 'check', 'kind': 'manual', 'label': 'RV22 시험 조건'}); print('perturb tracker', s); undo.append(('DELETE', f"/api/spine/tracker/conditions/{b['id']}")) if s in (200, 201) else None
     s, b = call('POST', f'/api/spine/groups/{sys.argv[3]}/members', 'op', {'stock_code': sys.argv[4]}); print('perturb group member', s, b if s >= 400 else ''); undo.append(('DELETE', f'/api/spine/groups/{sys.argv[3]}/members/{sys.argv[4]}')) if s in (200, 201) else None
+    s, b = call('GET', '/api/spine/home/predictions', 'op')
+    free = [i for i in (b or {}).get('items', []) if not i.get('pinned')] if s == 200 else []
+    if free:
+        t = free[0]; s, _ = call('POST', f"/api/spine/home/predictions/{t['event_ticker']}/pin", 'op', {'series_ticker': t.get('series_ticker') or '', 'pinned': True})
+        print('perturb pin', s); undo.append(('POST', f"/api/spine/home/predictions/{t['event_ticker']}/pin", {'series_ticker': t.get('series_ticker') or '', 'pinned': False})) if s == 200 else None
+    else:
+        print('perturb pin: no unpinned prediction', s)
+    if len(sys.argv) > 6:
+        s, _ = call('POST', '/api/spine/feed/channels/read', 'op', {'channel': sys.argv[5], 'read_until': '2099-01-01T00:00:00Z'}); print('perturb read mark', s)
+        s, _ = call('POST', '/api/spine/trade/follow', 'op', {'hs_code': sys.argv[6], 'active': False}); print('perturb trade follow', s)
     B, O2 = sweep(), sweep('op')
 finally:
-    for m, u in undo: print('undo', u, call(m, u, 'op')[0])
+    for m, u, *body in undo: print('undo', u, call(m, u, 'op', *body)[0])
+if len(sys.argv) > 6:
+    import subprocess
+    print('cleanup', subprocess.run(os.environ['LEAK_CHECK_CLEANUP'], shell=True).returncode)
 A3 = sweep()  # after the undo: personal state is back, time is not
 timed = sorted(p for p in A1 if p not in noisy and A1[p] != B[p] and A1[p] != A3[p])
 print('time-varying (changed and did not come back after the undo, not a leak):', timed)
