@@ -38,6 +38,14 @@ def main():
             out['apply_seconds'] = round(time.monotonic() - started, 1)
             out['after'] = summary(reimport.compare(pg, base, source))
             out['rerun'] = reimport.apply(pg, base, source)
+            # R3b: the user's own records made on the MacBook after the base (conversations, questions, studies, boards).
+            from pipeline import postgres_user_records_import as user_records
+            from pipeline.postgres_principals import operator_principal
+            operator = operator_principal(pg)
+            started = time.monotonic()
+            out['r3b'] = user_records.apply(pg, base, source, operator=operator)
+            out['r3b_seconds'] = round(time.monotonic() - started, 1)
+            out['r3b_rerun'] = user_records.apply(pg, base, source, operator=operator)
     print(json.dumps(out, ensure_ascii=False, default=str))
 
 
