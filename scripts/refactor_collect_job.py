@@ -74,6 +74,13 @@ PEER = 'peer'
 # (routers.postgres_owner_legacy_fixture) for every ledger with groups — the operator's, then each member's own, each
 # on a connection scoped to that principal; the watch_evaluations diff goes to that principal's ledger.
 WATCH = 'watch'
+# The daily question refresh (scripts/refresh_questions.py): its native PG form,
+# pipeline.postgres_question_refresh_fixture.refresh_all_native (numeric transcript observations, corpus sentiment,
+# graph projection, re-judging every tracking question), with the API's search over the projection's chunk index.
+# No network; its model calls are capped per run (QUESTIONS_MAX_CALLS). The Telegram alerts that follow the legacy
+# job are sends (on at the cutover).
+QUESTIONS = 'questions'
+QUESTIONS_MAX_CALLS = int(os.environ.get('COLLECT_QUESTIONS_MAX_CALLS', '30'))
 PEER_ROOT = Path(os.environ.get('PEER_ROOT', '/peer'))
 COMPUTE_JOBS = {'narratives', 'contradictions', 'promote', 'proposals', 'bigpicture', 'sectoroverview',
                 *(set(CHAIN_STEPS) - CHAIN_TABLE_STEPS)}
@@ -352,6 +359,33 @@ def run_watch():
     return results
 
 
+def run_questions():
+    import psycopg
+    from fastapi import FastAPI
+    from pipeline import chat_tools, llm, postgres_legacy_embeddings
+    from pipeline.postgres_legacy_projection import LegacyProjection
+    from pipeline.postgres_question_refresh_fixture import refresh_all_native
+    from pipeline.postgres_retrieval_jobs import legacy_retrieval
+    from routers.postgres_legacy_read_fixture import install
+    dsn, schema = os.environ['REFACTOR_POSTGRES_DSN'], trial._pg().execute('SELECT current_schema()').fetchone()[0]
+    factory = lambda: psycopg.connect(dsn, options=f'-c search_path={schema}')  # noqa: E731
+    projection = LegacyProjection(factory, '/projection', external=True)
+    install(FastAPI(), projection, database_host='pg')
+    postgres_legacy_embeddings.install(factory)
+    legacy_retrieval('/projection/chunks.db', '/projection/' + json.load(open('/projection/current.json'))['file'])
+    refused = _cap_table_model_calls(QUESTIONS_MAX_CALLS)
+
+    def model(prompt, *, task):
+        return llm.run(prompt, task=task, record_call=lambda *args: None)
+
+    def search(query, *, k):
+        return chat_tools.run_tool({'name': 'search_docs', 'args': {'query': query, 'k': k}})
+    result = refresh_all_native(factory, run_llm=model, search=search)
+    if refused:
+        raise trial.HeldBack(f'model call cap {QUESTIONS_MAX_CALLS} reached (later calls refused; what ran is stored)')
+    return result
+
+
 def run_compute(label):
     import psycopg
     from pipeline import postgres_scheduled_compute
@@ -401,6 +435,18 @@ def run(label):
             entry['history'] = run_market_history()
             outcome = f"{'skipped' if entry['history']['status'] == 'skipped' else 'applied'}: {entry['history']['summary']}"
         except trial.HeldBack as exc:  # under 90% of the published codes, or nothing collected: the file stays
+            outcome = f'held back: {exc}'
+        except Exception as exc:  # noqa: BLE001
+            outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'
+    elif label == QUESTIONS:
+        from pipeline import postgres_llm_calls
+        postgres_llm_calls.install(llm, trial._pg)
+        try:
+            entry['questions'] = run_questions()
+            r = entry['questions']
+            outcome = (f"applied: rerolled {r['rerolled']}, numeric {r['numeric']}, sentiment {r['sentiment']}, "
+                       f"projected {r['projected']}, stale {len(r['stale'])}, failed {len(r['failed'])}")
+        except trial.HeldBack as exc:
             outcome = f'held back: {exc}'
         except Exception as exc:  # noqa: BLE001
             outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'

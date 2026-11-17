@@ -32,7 +32,8 @@ sys.path.insert(0, str(ROOT / 'scripts'))  # refactor_collect_engine, refactor_c
 LOCK = Path(os.environ.get('COLLECT_SCHEDULER_LOCK', Path.home() / 'server-data/review/refactor-single/collect-scheduler.lock'))
 JOB_SECONDS = int(os.environ.get('COLLECT_JOB_SECONDS', '3600'))  # one job's time limit (the MacBook chain step limit)
 TICK_SECONDS = 20
-JOB_MEMORY = {'proposals': '3584m'}  # measured peak 2.9GiB (weekly); every other job 2g
+JOB_MEMORY = {'proposals': '3584m',  # measured peak 2.9GiB (weekly); every other job 2g
+              'questions': '3584m'}  # the search model and index: 2.2GiB measured, killed at 2g
 # The MacBook's 30-minute chain (scripts/run_chain.sh) in its order: one container per step, each recorded; a step
 # that fails does not stop the next (as there). Not here: probe_llm (the gate does it), briefing catch-up (sends),
 # vault export and the search index (the projection builder). Image backfill runs with at most 10 calls.
