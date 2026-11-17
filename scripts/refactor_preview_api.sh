@@ -24,6 +24,7 @@ docker run -d --name "$C" --user 10001:10001 --network explorer-refactor-preview
   -v explorer-public-codex-auth:/provider-auth -v explorer-data-rehearsal_models:/models:ro \
   -v explorer-refactor-single-projection:/projection \
   -v explorer-data-rehearsal_media:/app/media:ro \
+  -v explorer-refactor-analysis-store:/app/logs \
   -v explorer-refactor-claude-auth:/home/explorer/.claude \
   -v "$ROOT/backend:/app/backend:ro" -v "$ROOT/scripts:/app/scripts:ro" \
   -v "$HOME/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py:/control/codex-credential-gate.py:ro" \

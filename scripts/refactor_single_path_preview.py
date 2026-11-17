@@ -239,6 +239,8 @@ if MEDIA_PATH.is_dir():  # the documents' saved images (as the legacy main.py); 
     app.mount('/media', StaticFiles(directory=str(MEDIA_PATH)), name='media')
 from routers.postgres_chain_reports_fixture import install as install_chain_reports  # noqa: E402
 install_chain_reports(app, factory)  # value-chain report button, records in PG
+from routers.postgres_analysis_read_fixture import install as install_analysis_reads  # noqa: E402
+install_analysis_reads(app)  # market analysis: saved runs and discovery records; runs wait for Claude
 install_collector_requests(app, factory)  # collection buttons: recorded, never run here
 threading.Thread(target=legacy_projection.path, daemon=True).start()  # warm before the first home visit
 
