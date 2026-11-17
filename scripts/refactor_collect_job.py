@@ -470,6 +470,8 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
     from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference
     keyword_only = os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1'
     strict_images = keyword_only or os.environ.get('COLLECT_FEED_STRICT_IMAGES') == '1'
+    if os.environ.get('COLLECT_FEED_BATCH_MODEL') == '1' and (keyword_only or not strict_images):
+        raise ValueError('Feed batch model requires strict images and model mode')
     if keyword_only:
         if MAX_MODEL_CALLS != 0:
             raise ValueError('Keyword-only feed requires a zero model attempt cap')
@@ -569,11 +571,40 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
             def fetch(self, _ref):
                 return [item[2] for item in selected]
 
+        batch = None
+        consumed = [0]
+        old_enrich = None
+        if os.environ.get('COLLECT_FEED_BATCH_MODEL') == '1' and not keyword_only and len(selected) > 1:
+            from pipeline import enrich, feed_enrichment
+            documents = [{'title': item[2].title, 'markdown': item[2].markdown} for item in selected]
+            try:
+                batch = feed_enrichment.enrich_documents(documents)
+            except trial.Aborted:
+                raise
+            except Exception as exc:
+                raise trial.HeldBack(f'feed batch model failed: {type(exc).__name__}') from None
+            old_enrich = enrich.enrich
+
+            def use_batch(title, markdown, **kwargs):
+                index = consumed[0]
+                if index >= len(documents) or (title, markdown) != (documents[index]['title'], documents[index]['markdown']):
+                    raise ValueError('Feed batch input order changed')
+                consumed[0] += 1
+                return batch[index]
+
+            enrich.enrich = use_batch
+
         def check_cap():
             if refused:
                 raise trial.HeldBack(f'feed model call cap {MAX_MODEL_CALLS} reached')
+            if batch is not None and consumed[0] != len(selected):
+                raise trial.HeldBack('feed batch did not apply every model result')
 
-        result = trial.run_documents(pg, [QueuedDocuments()], min(MAX_NEW_DOCS, 5), before_publish=check_cap)
+        try:
+            result = trial.run_documents(pg, [QueuedDocuments()], min(MAX_NEW_DOCS, 5), before_publish=check_cap)
+        finally:
+            if old_enrich is not None:
+                enrich.enrich = old_enrich
         if result['counts'].get('existing_skipped') or any(isinstance(v, str) for v in result['stats'].values()):
             raise trial.HeldBack('a selected document failed or became existing; retain the batch')
         for seq, _, _ in selected:

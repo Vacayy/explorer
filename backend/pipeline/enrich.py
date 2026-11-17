@@ -261,7 +261,7 @@ BATCH_MODEL = requested_model('document.tag_batch')  # existing cache/display fi
 BATCH_DOC_CHARS = 1500       # 배치는 문서당 발췌를 줄여 프롬프트 총량 통제
 
 
-def _build_batch_prompt(docs: list[dict], *, vocabulary=None) -> str:
+def _build_batch_prompt(docs: list[dict], *, vocabulary=None, max_chars=BATCH_DOC_CHARS) -> str:
     """문서 N건을 한 콜에 태깅 — 단건 프롬프트와 같은 스키마, 문서별 [i] 인덱스로 분리."""
     if vocabulary is None:
         inds, tops = _live_vocab()
@@ -270,7 +270,7 @@ def _build_batch_prompt(docs: list[dict], *, vocabulary=None) -> str:
     else:
         inds, tops, persons, companies = vocabulary
     body = "\n\n".join(
-        f"[{i + 1}] 제목: {d['title']}\n{(d['markdown'] or '')[:BATCH_DOC_CHARS]}"
+        f"[{i + 1}] 제목: {d['title']}\n{(d['markdown'] or '')[:max_chars]}"
         for i, d in enumerate(docs))
     return (
         f"아래 한국 투자 관련 문서 {len(docs)}건을 각각 독립적으로 분석해 JSON만 출력해. "

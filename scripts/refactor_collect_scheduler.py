@@ -194,7 +194,8 @@ def _run_one(label, log=print):
         limit = int(os.environ.get('COLLECT_FEED_MODEL_ATTEMPTS', '2'))
         if not 1 <= limit <= 2:
             raise ValueError('Invalid feed model attempt limit')
-        feed_env = {'COLLECT_MAX_MODEL_CALLS': str(limit), 'COLLECT_MAX_NEW_DOCS': '1'}
+        feed_env = {'COLLECT_MAX_MODEL_CALLS': str(limit),
+                    'COLLECT_MAX_NEW_DOCS': '5' if os.environ.get('COLLECT_FEED_BATCH_MODEL') == '1' else '1'}
     code, output = engine.run(['python', '/app/scripts/refactor_collect_job.py', label], job=label,
                               name=f'explorer-collect-{label}-{os.getpid()}', memory=JOB_MEMORY.get(label, '2g'),
                               internet=os.environ.get('NO_INTERNET') != '1', limit=JOB_SECONDS,

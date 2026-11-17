@@ -24,6 +24,36 @@ class CollectionTargetTest(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
+    def test_batch_model_results_are_applied_to_their_staged_documents(self):
+        from pipeline import enrich, feed_enrichment, image_reading
+        from pipeline.base import RawDoc
+        from pipeline.feed_backlog import FeedBacklog
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'queue.sqlite'
+            queue = FeedBacklog(path)
+            queue.enqueue('blog', 'feed', RawDoc('blog', 'a', title='a', raw_content='first'))
+            queue.enqueue('blog', 'feed', RawDoc('blog', 'b', title='b', raw_content='second'))
+            queue.close()
+            applied = []
+
+            def run_docs(_pg, connectors, cap, before_publish):
+                for doc in connectors[0].fetch(None):
+                    applied.append(enrich.enrich(doc.title, doc.markdown)['summary'])
+                before_publish()
+                return {'counts': {'new': 2}, 'stats': {}, 'published': [1, 2]}
+
+            with patch.dict(os.environ, {'COLLECT_FEED_BATCH_MODEL': '1', 'COLLECT_FEED_STRICT_IMAGES': '1',
+                                         'COLLECT_FEED_KEYWORD_ONLY': '0'}), \
+                 patch.object(job, 'MAX_NEW_DOCS', 5), patch.object(job, '_feed_document_known', return_value=False), \
+                 patch.object(image_reading, 'read_images'), \
+                 patch.object(feed_enrichment, 'enrich_documents', return_value=[{'summary': 'one'}, {'summary': 'two'}]), \
+                 patch.object(trial, 'run_documents', side_effect=run_docs):
+                job.run_minimal_blog(None, object(), queue_path=path)
+            self.assertEqual(set(applied), {'one', 'two'})
+            queue = FeedBacklog(path)
+            self.assertIsNone(queue.next())
+            queue.close()
+
     def test_model_budget_holds_under_parallel_engine_attempts(self):
         from concurrent.futures import ThreadPoolExecutor
         from pipeline import llm
