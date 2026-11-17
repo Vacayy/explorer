@@ -18,6 +18,33 @@ TABLES = ('stock_groups', 'stock_group_members', 'watch_rules', 'watch_evaluatio
           'industry_groups', 'industry_members', 'business_segments', 'ir_notes')
 
 
+# Tables a member's own groups use; a member's diff may touch only these (pipeline.postgres_principals).
+MEMBER_TABLES = ('stock_groups', 'stock_group_members', 'watch_rules', 'watch_evaluations')
+
+
+def initialize_member_rows(conn):
+    """Explicit deployment step: rows may belong to a member's account (NULL: the mapped owner's, as before)."""
+    _guard(conn)
+    with conn.transaction():
+        conn.execute('ALTER TABLE owner_legacy_rows ADD COLUMN IF NOT EXISTS account_id BIGINT REFERENCES fixture_portfolio_accounts(id)')
+        conn.execute('CREATE INDEX IF NOT EXISTS owner_legacy_rows_account ON owner_legacy_rows(account_id) WHERE account_id IS NOT NULL')
+
+
+def _accounts(conn):
+    return conn.execute("SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() "
+                        "AND table_name='owner_legacy_rows' AND column_name='account_id'").fetchone() is not None
+
+
+def member_rows(conn, account):
+    """A member's own group rows, by table."""
+    rows = {table: [] for table in MEMBER_TABLES}
+    if _accounts(conn):
+        for table, data in conn.execute('SELECT table_name,row_data FROM owner_legacy_rows WHERE account_id=%s '
+                                        'ORDER BY table_name,pk', (account,)):
+            rows[table].append(data)
+    return rows
+
+
 def portfolio_group(conn):
     rows = conn.execute('SELECT legacy_group_id FROM fixture_portfolio_legacy_mapping').fetchall()
     if len(rows) != 1:
@@ -67,29 +94,47 @@ def initialize(conn, backup_dir):
 
 
 def load(conn):
-    """Return (version, rows by table, sequences) from one consistent read."""
+    """Return (version, the mapped owner's rows by table, sequences) from one consistent read."""
     version = conn.execute('SELECT counter FROM owner_legacy_version WHERE singleton').fetchone()[0]
     rows = {table: [] for table in TABLES}
-    for table, data in conn.execute('SELECT table_name,row_data FROM owner_legacy_rows ORDER BY table_name,pk'):
+    owner = ' WHERE account_id IS NULL' if _accounts(conn) else ''  # members' rows stay out of the owner's view
+    for table, data in conn.execute(f'SELECT table_name,row_data FROM owner_legacy_rows{owner} ORDER BY table_name,pk'):
         rows[table].append(data)
     return version, rows, dict(conn.execute('SELECT table_name,seq FROM owner_legacy_sequences').fetchall())
 
 
-def apply(conn, started, changes, sequences):
-    """Store one successful request's diff, refusing if another write landed meanwhile."""
+def apply(conn, started, changes, sequences, account=None):
+    """Store one successful request's diff, refusing if another write landed meanwhile. `account`: a member's
+    diff, kept on that member's rows (only MEMBER_TABLES); None: the mapped owner's."""
     if conn.execute('SELECT counter FROM owner_legacy_version WHERE singleton FOR UPDATE').fetchone()[0] != started:
         raise RuntimeError('Owner records changed during the request')
+    accounts = _accounts(conn)
+    if account is not None and not accounts:
+        raise PermissionError('Member groups are not initialized')
     group = portfolio_group(conn)
     for table, upserts, deletes in changes:
+        if account is not None and table not in MEMBER_TABLES and (upserts or deletes):
+            raise PermissionError('A member changes only their own groups')
         if table == 'stock_groups' and group in deletes:
             raise PermissionError('The mapped portfolio group is kept by the portfolio ledger')
         if table == 'stock_group_members' and any(row.get('group_id') == group for row in upserts.values()):
             raise PermissionError('Portfolio members are kept by the portfolio ledger')
+        owner = ' AND account_id IS NOT DISTINCT FROM %s' if accounts else ''
         for pk in deletes:
-            conn.execute('DELETE FROM owner_legacy_rows WHERE table_name=%s AND pk=%s', (table, pk))
+            if conn.execute('DELETE FROM owner_legacy_rows WHERE table_name=%s AND pk=%s' + owner,
+                            (table, pk, *((account,) if accounts else ()))).rowcount != 1:
+                raise PermissionError('Not the requester\'s row')
         for pk, row in upserts.items():
-            conn.execute('INSERT INTO owner_legacy_rows VALUES (%s,%s,%s) ON CONFLICT (table_name,pk) '
-                         'DO UPDATE SET row_data=excluded.row_data', (table, pk, Jsonb(row)))
+            if accounts:
+                stored = conn.execute('INSERT INTO owner_legacy_rows (table_name,pk,row_data,account_id) VALUES (%s,%s,%s,%s) '
+                                      'ON CONFLICT (table_name,pk) DO UPDATE SET row_data=excluded.row_data '
+                                      'WHERE owner_legacy_rows.account_id IS NOT DISTINCT FROM excluded.account_id',
+                                      (table, pk, Jsonb(row), account)).rowcount
+                if stored != 1:
+                    raise PermissionError('Not the requester\'s row')
+            else:
+                conn.execute('INSERT INTO owner_legacy_rows VALUES (%s,%s,%s) ON CONFLICT (table_name,pk) '
+                             'DO UPDATE SET row_data=excluded.row_data', (table, pk, Jsonb(row)))
     for table, seq in sequences.items():
         conn.execute('UPDATE owner_legacy_sequences SET seq=GREATEST(seq,%s) WHERE table_name=%s', (seq, table))
     conn.execute('UPDATE owner_legacy_version SET counter=counter+1')

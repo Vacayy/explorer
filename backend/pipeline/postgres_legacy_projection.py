@@ -276,7 +276,7 @@ class LegacyProjection:
                 self.legacy_cache = cached
         return cached
 
-    def _shadow(self, conn, *, writable=False, extra=()):
+    def _shadow(self, conn, *, writable=False, extra=(), scoped=False):
         """TEMP names shadow main ones; the unchanged derivations then write only the shadows."""
         with self.factory() as pg:
             pg.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
@@ -316,8 +316,8 @@ class LegacyProjection:
             from pipeline.postgres_owner_overrides import COMPUTED
             _derive_owner_records(conn, pg, skip_overrides=() if writable else COMPUTED)
             _derive_native(conn, pg)
-            if not writable and not requester_is_operator():
-                _scope_to_requester(conn, pg)
+            if (not writable or scoped) and not requester_is_operator():
+                _scope_to_requester(conn, pg)  # `scoped`: a member's own groups, written by that member
             if writable and legacy:
                 for table, seq in legacy[2].items():
                     # Never hand out an ID the legacy writer already used.
@@ -340,15 +340,16 @@ class LegacyProjection:
         conn.execute('PRAGMA query_only=ON')
         return conn
 
-    def write_connection(self, extra=()):
+    def write_connection(self, extra=(), *, scoped=False):
         """A projection connection whose owner tables are writable TEMP copies, with the ledger version.
 
         `extra` names more tables to copy writable for this request (a computation that writes the graph).
+        `scoped`: a member's request sees (and writes) only that member's personal state, as its reads do.
         """
         conn = sqlite3.connect(f'file:{self.path()}?mode=ro', uri=True, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         try:
-            version = self._shadow(conn, writable=True, extra=extra)
+            version = self._shadow(conn, writable=True, extra=extra, scoped=scoped)
             if version is None:
                 raise LookupError('Owner legacy ledger unavailable')
         except BaseException:
@@ -429,6 +430,13 @@ def _scope_to_requester(conn, pg):
                 conn.executemany(f'INSERT INTO temp."{table}" ({",".join(columns)}) VALUES ({",".join("?" for _ in columns)})',
                                  pg.execute(f'SELECT {",".join(columns)} FROM {ledger} WHERE account_id=%s ORDER BY {columns[0]}',
                                             (account[0],)).fetchall())
+    if account is not None:
+        for table, rows in owner_legacy.member_rows(pg, account[0]).items():
+            if rows and conn.execute("SELECT 1 FROM temp.sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
+                columns = [row[1] for row in conn.execute(f'PRAGMA temp.table_info("{table}")')]
+                quoted = ','.join('"' + column + '"' for column in columns)
+                conn.executemany(f'INSERT INTO temp."{table}" ({quoted}) VALUES ({",".join("?" for _ in columns)})',
+                                 (tuple(row.get(column) for column in columns) for row in rows))
     for statement in PERSONAL_ROWS:
         table = statement.split('temp.')[1].split()[0]
         if table not in temp:

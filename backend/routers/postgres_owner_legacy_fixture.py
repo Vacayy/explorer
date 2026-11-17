@@ -4,7 +4,7 @@ Loopback-only preview adapter, minimal scope: create/rename/delete a group and
 add/update/remove its members, replace its rules and toggle member tracking; add industry
 universe members, edit business segments and IR notes. Each request borrows one projection connection
 whose owner tables are TEMP copies of the PG ledger; the legacy handler runs
-unchanged on it and, only if it ends 2xx, the PK diff is stored in one PG
+unchanged on it (a member's request: on that member's own groups only) and, only if it ends 2xx, the PK diff is stored in one PG
 transaction that first checks no other write landed. Writes to any other table
 hit the read-only projection and fail the request (fail closed). Evaluation and
 tracker preparation stay unavailable; watch reasons use the native question gate.
@@ -27,6 +27,8 @@ ADAPTED = (('POST', '/api/spine/groups'), ('PATCH', '/api/spine/groups/{group_id
            ('POST', '/api/industries/{group_id}/members'), ('POST', '/api/business/{stock_code}/segments'),
            ('PUT', '/api/business/segments/{segment_id}'), ('DELETE', '/api/business/segments/{segment_id}'),
            ('POST', '/api/ir-notes/{stock_code}'), ('DELETE', '/api/ir-notes/{note_id}'))
+# A member's own default watch group is created on first read, through the same diff (legacy default_watch_group_id).
+MEMBER_ADAPTED = (('GET', '/api/spine/groups/default-watch'),)
 LOCK = 'owner-legacy-write'
 
 
@@ -127,14 +129,21 @@ def install(app, projection, factory, *, run_llm=None, search=None):
         for route in router.routes:
             if isinstance(route, APIRoute) and any((method, route.path) in wanted for method in route.methods):
                 app.router.routes.append(route)
-    patterns = [(method, re.compile('^' + re.sub(r'\\\{[^}]+\\\}', '[^/]+', re.escape(path)) + '$')) for method, path in ADAPTED]
+
+    def compiled(routes):
+        return [(method, re.compile('^' + re.sub(r'\\\{[^}]+\\\}', '[^/]+', re.escape(path)) + '$')) for method, path in routes]
+    patterns, member_patterns = compiled(ADAPTED), compiled(MEMBER_ADAPTED)
 
     @app.middleware('http')
     async def legacy_group_writes(request, call_next):
-        if not any(method == request.method and pattern.match(request.url.path) for method, pattern in patterns):
+        from pipeline.postgres_legacy_projection import requester_is_operator
+        member = not requester_is_operator()  # a member's diff stays on that member's own rows
+        if not any(method == request.method and pattern.match(request.url.path)
+                   for method, pattern in (patterns + member_patterns if member else patterns)):
             return await call_next(request)
+        from functools import partial
         from starlette.concurrency import run_in_threadpool
-        conn, started = await run_in_threadpool(projection.write_connection)
+        conn, started = await run_in_threadpool(partial(projection.write_connection, scoped=True))
         try:
             before = _rows(conn)
             token = write_connection_var.set(_Borrowed(conn))
@@ -149,10 +158,18 @@ def install(app, projection, factory, *, run_llm=None, search=None):
                 with factory() as pg:
                     pg.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))', (LOCK,))
                     changes = _diff(before, _rows(conn), owner_legacy.portfolio_group(pg))
+                    account = None
+                    if member:
+                        if not any(upserts or deletes for _, upserts, deletes in changes):
+                            return  # nothing of the member's changed (a read of an existing default group)
+                        from pipeline.postgres_principals import owner_account
+                        account = owner_account(pg, create=True)[0]
                     sequences = dict(conn.execute('SELECT name,seq FROM temp.sqlite_sequence'))
-                    owner_legacy.apply(pg, started, changes, {t: s for t, s in sequences.items() if t in owner_legacy.TABLES})
+                    owner_legacy.apply(pg, started, changes, {t: s for t, s in sequences.items() if t in owner_legacy.TABLES},
+                                       account=account)
             try:
-                await run_in_threadpool(store)
+                import contextvars
+                await run_in_threadpool(contextvars.copy_context().run, store)  # the request's principal
             except (RuntimeError, PermissionError) as exc:
                 return JSONResponse({'detail': str(exc)}, status_code=409)
             return response

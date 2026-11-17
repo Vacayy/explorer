@@ -26,9 +26,11 @@ from security.login_flow import SESSION_COOKIE, session_csrf
 POLICIES = {'auth', 'public', 'compute', 'member', 'operator'}
 
 _MEMBER = re.compile(r'^/api/portfolio(/|$)|^/api/spine/(saved|follows)(/|$)|^/api/spine/feed/channels/read'
-                     r'|^/api/spine/home/predictions/[^/]+/pin$|^/api/spine/tracker/(conditions/|[^/]+/conditions$)')  # each member's own ledger
+                     r'|^/api/spine/home/predictions/[^/]+/pin$|^/api/spine/tracker/(conditions/|[^/]+/conditions$)')
+# A member's own groups (pipeline.postgres_owner_legacy_fixture.member_rows); evaluation and reasons stay the operator's.
+_MEMBER_GROUPS = re.compile(r'^/api/spine/groups(/default-watch|/[^/]+(/members(/[^/]+(/tracked)?)?|/rules)?)?$')  # each member's own ledger
 # Personal ledgers not yet per principal (members get 403 until converted; tracked as open items).
-_PERSONAL = re.compile(r'^/api/spine/(tracker/[^/]+/prepare$|studies|study-projects|groups|'
+_PERSONAL = re.compile(r'^/api/spine/(tracker/[^/]+/prepare$|studies|study-projects|groups/[^/]+/(evaluate|reasons)$|'
                        r'transcript/(follow|core/pin)|trade/follow)')
 _ADMIN = re.compile(r'^/api/spine/(admin|approvals|agent-proposals|keywords|research/candidates|regimes/checks|client-errors|'
                     r'knowledge/items/[^/]+/(approve|reject)|narrative-candidates/)|^/api/spine/sources/(telegram|blog|youtube/[^/]+|collect)'
@@ -47,6 +49,8 @@ def route_policy(method, path):
         return 'member'  # each member's own tracked questions (question_principals)
     if _MEMBER.match(path):
         return 'member'
+    if path == '/api/spine/groups/default-watch' or (_MEMBER_GROUPS.match(path) and method not in {'GET', 'HEAD'}):
+        return 'member'  # default-watch creates the requester's default group on first read
     if _PERSONAL.match(path):  # questions too: the user's own tracked questions, read by the PG-native router
         return 'operator'
     if _ADMIN.match(path) or (_OPERATOR_COMPUTE.match(path) and method not in {'GET', 'HEAD'}):
