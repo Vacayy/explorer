@@ -39,6 +39,55 @@ class SearchSnapshotTests(unittest.TestCase):
         _sort_latest(rows)
         self.assertEqual([row[0] for row in rows], [3, 2, 9])
 
+    def test_stale_vectors_are_filtered_against_streamed_document_hashes(self):
+        class Result:
+            def __init__(self, value):
+                self.value = value
+            def fetchone(self):
+                return self.value
+
+        class Cursor:
+            def __init__(self, rows):
+                self.rows = rows
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+            def execute(self, sql):
+                self.sql = sql
+                assert ' JOIN ' not in sql
+            def __iter__(self):
+                return iter(self.rows)
+
+        class Connection:
+            def execute(self, sql):
+                if 'current_database' in sql:
+                    return Result(('fixture', 'refactor_fixture_' + 'a' * 32))
+                if 'transaction_isolation' in sql:
+                    return Result(('repeatable read',))
+                if 'transaction_read_only' in sql:
+                    return Result(('on',))
+                if 'snapshot_metadata' in sql:
+                    return Result(('generation', 3))
+                if 'document_embedding_metadata' in sql:
+                    return Result(('generation', 4, 1, 0))
+                if 'count(*) FROM document_embeddings' in sql:
+                    return Result((4,))
+                raise AssertionError(sql)
+            def cursor(self, name):
+                if name == 'fixture_search_documents':
+                    return Cursor([(1, 'one', 'a', 'same'), (2, 'two', 'b', 'new'), (3, 'three', 'c', None)])
+                return Cursor([(1, vector(0), 'same'), (2, vector(1), 'old'),
+                               (3, vector(2), None), (4, vector(3), 'orphan')])
+
+        index = SearchSnapshot.from_postgres(Connection(), allow_stale=True)
+        try:
+            self.assertEqual(index.db.execute('SELECT count(*) FROM doc_vec').fetchone()[0], 1)
+            self.assertEqual(index.excluded_vectors, 3)
+            self.assertEqual([x['doc_id'] for x in index.search('one')], [1])
+        finally:
+            index.close()
+
 
 if __name__ == '__main__':
     unittest.main()

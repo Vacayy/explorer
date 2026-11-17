@@ -60,19 +60,25 @@ class SearchSnapshot:
         # Named cursors keep PostgreSQL transfer bounded; the resulting search
         # index itself is intentionally an in-memory prototype.
         with connection.cursor(name='fixture_search_documents') as docs, connection.cursor(name='fixture_search_embeddings') as vecs:
-            docs.execute("SELECT (row_data->>'id')::bigint,row_data->>'title',row_data->>'markdown' "
+            docs.execute("SELECT (row_data->>'id')::bigint,row_data->>'title',row_data->>'markdown',row_data->>'content_hash' "
                          "FROM legacy_snapshot_rows WHERE table_name='raw_documents' ORDER BY row_ordinal")
+            hashes = {}
+            def documents():
+                for ident, title, markdown, content_hash in docs:
+                    if allow_stale and not lexical_only and content_hash is not None:
+                        hashes[ident] = content_hash
+                    yield ident, title, markdown
             if lexical_only:
-                index = cls(generation, docs)
+                index = cls(generation, documents())
             else:
                 if allow_stale:
-                    vecs.execute("""SELECT e.document_id,e.embedding FROM document_embeddings e
-                        JOIN legacy_snapshot_rows r ON r.table_name='raw_documents' AND r.row_data->>'id'=e.document_id::text
-                        WHERE e.content_hash IS NOT NULL AND r.row_data->>'content_hash' IS NOT NULL
-                          AND e.content_hash=r.row_data->>'content_hash' ORDER BY e.document_id""")
+                    vecs.execute('SELECT document_id,embedding,content_hash FROM document_embeddings ORDER BY document_id')
+                    embeddings = ((ident, bytes(blob)) for ident, blob, content_hash in vecs
+                                  if content_hash is not None and hashes.get(ident) == content_hash)
                 else:
                     vecs.execute('SELECT document_id,embedding FROM document_embeddings ORDER BY document_id')
-                index = cls(generation, docs, ((ident, bytes(blob)) for ident, blob in vecs))
+                    embeddings = ((ident, bytes(blob)) for ident, blob in vecs)
+                index = cls(generation, documents(), embeddings)
         vector_count = index.db.execute('SELECT count(*) FROM doc_vec').fetchone()[0] if not lexical_only else 0
         expected_vectors = vector_count if allow_stale else (metadata[1] if not lexical_only else 0)
         if index.db.execute('SELECT count(*) FROM raw_documents').fetchone()[0] != count or \
