@@ -68,6 +68,29 @@ def _logs(ident):
     return ''.join(out)
 
 
+# Collection credentials (PM #3 6940013382: checked and passed safely, values never printed or recorded). They live
+# only in a host file readable by its owner alone; only these names reach a job container. Sending (Telegram bot)
+# is not among them: sending jobs are refused.
+SECRETS_FILE = HOME / 'server-data/review/refactor-single/collect-secrets.env'
+SECRET_KEYS = ('DART_API_KEY', 'DATA_GO_KR_KEY', 'FRED_API_KEY', 'ALPHAVANTAGE_API_KEY', 'FMP_API_KEY', 'SEC_USER_AGENT',
+               'KRX_ID', 'KRX_PW')
+
+
+def secrets():
+    """{name: value} from the secrets file (absent before the cutover: {}); refused unless owner-only (0600)."""
+    if not SECRETS_FILE.exists():
+        return {}
+    info = SECRETS_FILE.stat()
+    if info.st_mode & 0o077 or info.st_uid != os.getuid():
+        raise ValueError(f'{SECRETS_FILE} must be owned by this user and readable by it alone (chmod 600)')
+    found = {}
+    for line in SECRETS_FILE.read_text().splitlines():
+        name, sep, value = line.strip().partition('=')
+        if sep and name in SECRET_KEYS and value:
+            found[name] = value
+    return found
+
+
 LABEL = 'explorer.collect'  # every job container carries it; only labelled containers are stopped or removed here
 
 
@@ -110,6 +133,7 @@ def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=No
             'PYTHONPATH=/app/backend', 'PYTHONDONTWRITEBYTECODE=1']
     env += [f'{key}={os.environ[key]}' for key in FORWARDED if os.environ.get(key)]
     env += [f'{key}={value}' for key, value in (extra_env or {}).items()]  # this job's own caps
+    env += [f'{key}={value}' for key, value in secrets().items()]
     binds = [f'{ROOT}/backend:/app/backend:ro', f'{ROOT}/scripts:/app/scripts:ro',
              'explorer-refactor-single-projection:/projection:ro', f'{VOLUME}:/trial',
              'explorer-public-codex-auth:/provider-auth', 'explorer-data-rehearsal_models:/models:ro',
@@ -135,6 +159,10 @@ def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=No
         call('DELETE', f'/containers/{ident}?force=1')
 
 
+if __name__ == '__main__' and sys.argv[1:] == ['--secrets-check']:  # names only, never values
+    present = secrets()
+    print('present:', sorted(present), '| missing:', sorted(set(SECRET_KEYS) - set(present)))
+    sys.exit(0)
 if __name__ == '__main__':
     code, output = run(['python', '/app/scripts/refactor_collect_job.py', *sys.argv[1:]],
                        memory=os.environ.get('JOB_MEMORY', '2g'), internet=os.environ.get('NO_INTERNET') != '1')
