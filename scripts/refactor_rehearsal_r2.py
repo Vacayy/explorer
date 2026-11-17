@@ -69,7 +69,8 @@ def main():
     from pipeline import postgres_supplement_preserve as preserve
     started = time.monotonic()
     with connect() as pg:
-        captured, state = preserve.capture(pg, work)  # the candidate's collected rows the MacBook file lacks
+        captured, state, excluded = preserve.capture(pg, work)  # the candidate's collected rows the MacBook file lacks
+    out['supplement_excluded'] = excluded
     steps['capture_candidate_supplement'] = round(time.monotonic() - started, 1)
     started = time.monotonic()
     with connect() as pg:

@@ -11,6 +11,7 @@ items (added below); configuration, lists and current state are state tables.
 job_runs is an operation record and is never carried (the candidate's own runs are in candidate_job_runs).
 """
 import json
+from datetime import datetime, timedelta, timezone
 
 from psycopg.types.json import Jsonb
 
@@ -76,6 +77,16 @@ ACCUMULATING.update({'call_extracts': ('doc_id',), 'exp_feed_docs': ('doc_id',),
 # and keyed by their own id (candidate rows carry band ids; an earlier one is added back under band + old id):
 ACCUMULATING.update({table: ('id',) for table in (
     'catalysts', 'knowledge_evidence', 'lens_readings', 'chain_reports', 'stock_briefs', 'thesis_audits')})
+# Rewritten whole by its writer (DELETE FROM sector_index, then the full index): a state table.
+ACCUMULATING.pop('sector_index', None)
+# Accumulating tables whose writer rewrites one part at a time (delete that part, write it again): a candidate row goes
+# back only when the MacBook file has nothing of its part, so a part is never half one side and half the other.
+PARTITIONS = {'kr_movers': ('trade_date',), 'us_movers': ('trade_date',), 'pricing_observations': ('trade_date',),
+              'us_quarterly': ('ticker', 'metric'), 'us_segments': ('ticker', 'q'),
+              'us_customer_concentration': ('ticker', 'period_end', 'period_kind', 'benchmark'),
+              'catalysts': ('stock_code', 'event_type', 'event_date')}
+# Pruned by age (macro_news.py RETAIN_DAYS): only candidate rows inside the MacBook's window go back.
+RETENTION = {'macro_news': ('fetched_at', 14)}
 NEVER = {'job_runs'}
 
 
@@ -85,22 +96,38 @@ def _key(row, columns):
 
 def capture(pg, source):
     """Before the replacement: per table, candidate rows whose natural key the MacBook file lacks."""
-    captured, state = {}, {}
+    captured, state, excluded = {}, {}, {}
     tables = [t for (t,) in pg.execute('SELECT table_name FROM legacy_supplement_tables ORDER BY 1') if t not in NEVER]
     for table in tables:
         if source.execute('SELECT 1 FROM sqlite_master WHERE name=?', (table,)).fetchone() is None:
             continue
+        info = source.execute(f'PRAGMA table_info("{table}")').fetchall()
         columns = ACCUMULATING.get(table)
+        if columns == ('id',):  # a surrogate id only: matched by the row's own content (architect #3 6946013683)
+            columns = tuple(r[1] for r in info if r[1] != 'id')
         if columns is None:
-            info = source.execute(f'PRAGMA table_info("{table}")').fetchall()
             columns = tuple(r[1] for r in info if r[5]) or tuple(r[1] for r in info)
         have = {tuple(str(v) for v in row) for row in source.execute(
             f'SELECT {",".join(chr(34) + c + chr(34) for c in columns)} FROM "{table}"')}
         rows = [data for (data,) in pg.execute('SELECT row_data FROM legacy_supplement_rows WHERE table_name=%s '
                                                'ORDER BY row_ordinal', (table,)) if _key(data, columns) not in have]
+        if rows and table in ACCUMULATING:
+            if table in PARTITIONS:
+                part = PARTITIONS[table]
+                macbook_parts = {tuple(str(v) for v in row) for row in source.execute(
+                    f'SELECT DISTINCT {",".join(chr(34) + c + chr(34) for c in part)} FROM "{table}"')}
+                kept = [row for row in rows if _key(row, part) not in macbook_parts]
+                excluded[table] = {'part_on_macbook': len(rows) - len(kept)}
+                rows = kept
+            if table in RETENTION:
+                column, days = RETENTION[table]
+                cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+                kept = [row for row in rows if str(row.get(column) or '') >= cutoff]
+                excluded.setdefault(table, {})['outside_retention'] = len(rows) - len(kept)
+                rows = kept
         if rows:
             (captured if table in ACCUMULATING else state)[table] = rows
-    return captured, state
+    return captured, state, excluded
 
 
 def restore(pg, captured, state):
