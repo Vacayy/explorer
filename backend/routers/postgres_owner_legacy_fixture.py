@@ -32,6 +32,7 @@ ADAPTED = (('POST', '/api/spine/groups'), ('PATCH', '/api/spine/groups/{group_id
 # A member's own default watch group is created on first read, through the same diff (legacy default_watch_group_id).
 MEMBER_ADAPTED = (('GET', '/api/spine/groups/default-watch'),)
 LOCK = 'owner-legacy-write'
+EVALUATE = re.compile(r'^/api/spine/groups/[^/]+/evaluate$')
 
 
 class _Borrowed:
@@ -169,6 +170,11 @@ def install(app, projection, factory, *, run_llm=None, search=None):
                     sequences = dict(conn.execute('SELECT name,seq FROM temp.sqlite_sequence'))
                     owner_legacy.apply(pg, started, changes, {t: s for t, s in sequences.items() if t in owner_legacy.TABLES},
                                        account=account)
+                    if EVALUATE.match(request.url.path):  # computed rows, not the owner's edits: listed for the final sync
+                        from pipeline.postgres_owner_overrides import record_outputs
+                        record_outputs(pg, f'{request.method} {request.url.path}',
+                                       [('watch_evaluations', pk) for table, upserts, _ in changes
+                                        if table == 'watch_evaluations' for pk in upserts])
             try:
                 import contextvars
                 await run_in_threadpool(contextvars.copy_context().run, store)  # the request's principal

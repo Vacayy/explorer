@@ -4,17 +4,20 @@ The unchanged legacy build reads its material (value-chain map, expectations, tr
 and calls the models as before. Only what it writes goes here: the report row, updated stage by stage while the
 screen polls it, the per-node note cache, and its run record. These are written outside any request, so they cannot
 wait for a projection build; the report and history reads look here first, then at the collected (projection) rows.
-Candidate report ids start at ID_START so they never meet an id the legacy writer used.
+Candidate report ids start at ID_START so they never meet an id the legacy writer used; every row written here is
+listed in candidate_outputs, so the final sync can drop or re-map it.
 """
 import logging
 
 from pipeline.postgres_graph_fixture import _guard
+from pipeline.postgres_owner_overrides import record_outputs
 
 log = logging.getLogger(__name__)
 ID_START = 1_000_000
 COLUMNS = ('id', 'root', 'status', 'progress', 'tree_json', 'body', 'refs_json', 'missing_json', 'inputs_hash', 'model',
            'error', 'created_at', 'finished_at', 'analysis', 'outline')
 UPDATABLE = set(COLUMNS) - {'id', 'root', 'created_at'}
+SOURCE = 'POST /api/spine/tw/chain-report'  # every row here is listed in candidate_outputs for the final sync
 NOW = "to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')"
 
 
@@ -45,6 +48,7 @@ def install(chain_report, connect):
                              "(%s,'running','트리 고르는 중',%s,%s) RETURNING id",
                              (root, f'{chain_report.NOTE_MODEL}+{chain_report.SYNTH_MODEL}+{chain_report.WRITER_MODEL}',
                               outline)).fetchone()[0]
+            record_outputs(pg, SOURCE, [('candidate_chain_reports', rid)])
             return rid, True
 
     def update(rid, **cols):
@@ -88,6 +92,7 @@ def install(chain_report, connect):
             pg.execute('INSERT INTO candidate_chain_node_notes (node_key,inputs_hash,body,model) VALUES (%s,%s,%s,%s) '
                        'ON CONFLICT (node_key,inputs_hash) DO UPDATE SET body=excluded.body,model=excluded.model,'
                        f'created_at={NOW}', (key, h, body, chain_report.NOTE_MODEL))
+            record_outputs(pg, SOURCE, [('candidate_chain_node_notes', f'{key}|{h}')])
 
     def record(status, summary):
         from pipeline.ops import mask_secrets
@@ -95,8 +100,9 @@ def install(chain_report, connect):
             if pg.execute("SELECT to_regclass('candidate_job_runs')").fetchone()[0] is None:
                 log.warning('chain_report run not recorded: candidate_job_runs missing')
                 return
-            pg.execute(f'INSERT INTO candidate_job_runs (job,status,summary,ran_at) VALUES (%s,%s,%s,{NOW})',
-                       ('chain_report', status, mask_secrets(summary or '')[:500]))
+            run = pg.execute(f'INSERT INTO candidate_job_runs (job,status,summary,ran_at) VALUES (%s,%s,%s,{NOW}) RETURNING id',
+                             ('chain_report', status, mask_secrets(summary or '')[:500])).fetchone()[0]
+            record_outputs(pg, SOURCE, [('candidate_job_runs', run)])
 
     chain_report.start, chain_report._update, chain_report.read, chain_report.history = start, update, read, history
     chain_report._cached_note, chain_report._store_note, chain_report._record = cached_note, store_note, record

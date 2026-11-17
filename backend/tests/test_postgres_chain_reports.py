@@ -65,3 +65,5 @@ class ChainReportRecordTests(unittest.TestCase):
         self.module._record('ok', 'root dram · 칸 2/2')
         with self.target() as pg:
             self.assertEqual(pg.execute("SELECT job,status FROM candidate_job_runs").fetchall(), [('chain_report', 'ok')])
+            listed = pg.execute('SELECT table_name,count(*) FROM candidate_outputs GROUP BY 1 ORDER BY 1').fetchall()
+            self.assertEqual(listed, [('candidate_chain_node_notes', 2), ('candidate_chain_reports', 2), ('candidate_job_runs', 1)])
