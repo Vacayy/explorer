@@ -29,7 +29,8 @@ class FeedBacklogTest(unittest.TestCase):
             queue = FeedBacklog(path)
             first = []
             for _ in range(3):
-                seq, doc = queue.next()
+                seq, connector, doc = queue.next()
+                self.assertEqual(connector, 'blog')
                 first.append(doc.source_id)
                 if doc.source_id == '1':
                     self.assertEqual(doc.raw_content, 'new')
@@ -43,7 +44,7 @@ class FeedBacklogTest(unittest.TestCase):
             path = Path(directory) / 'pending.sqlite'
             queue = FeedBacklog(path)
             queue.enqueue('test', 'ref', RawDoc('test', 'id'))
-            seq, _ = queue.next()
+            seq, _, _ = queue.next()
             queue.close()
             queue = FeedBacklog(path)
             self.assertEqual(queue.next()[0], seq)

@@ -93,7 +93,6 @@ class ScrapConnector:
                 ORDER BY published_at DESC""", (channel, f"-{LOOKBACK_DAYS} days")).fetchall()
 
             # URL 대장 갱신 — 처음 본 링크는 등록, 다시 본 링크는 노출 횟수만 올린다
-            todo: list[tuple[str, int, str]] = []
             for m in msgs:
                 for raw in _URL_RE.findall(m["markdown"] or ""):
                     url = _clean_url(raw)
@@ -106,20 +105,25 @@ class ScrapConnector:
                         conn.execute(
                             "INSERT INTO scrap_links (url, channel, src_doc_id, status) VALUES (?, ?, ?, ?)",
                             (url, channel, m["id"], "duplicate" if dup else "pending"))
-                        if not dup:
-                            todo.append((url, m["id"], m["published_at"] or ""))
                     else:
                         conn.execute(
                             "UPDATE scrap_links SET seen_count=seen_count+1, last_seen_at=datetime('now') "
                             "WHERE url=?", (url,))
-                        if row["status"] == "failed" and (row["tries"] or 0) < MAX_TRIES:
-                            todo.append((url, m["id"], m["published_at"] or ""))
             conn.commit()
+            # The ledger, not the bounded message scan, owns unfinished work. A crash
+            # can leave either pending or ok-without-doc_id after fetching a page.
+            todo = conn.execute("""
+                SELECT s.url, s.src_doc_id, COALESCE(d.published_at, '')
+                FROM scrap_links s LEFT JOIN raw_documents d ON d.id=s.src_doc_id
+                WHERE s.channel=? AND (s.status='pending'
+                    OR (s.status='failed' AND COALESCE(s.tries,0) < ?)
+                    OR (s.status='ok' AND s.doc_id IS NULL))
+                ORDER BY s.rowid LIMIT ?""", (channel, MAX_TRIES, MAX_PER_RUN)).fetchall()
         finally:
             conn.close()
 
         docs: list[RawDoc] = []
-        for i, (url, src_doc_id, msg_date) in enumerate(todo[:MAX_PER_RUN]):
+        for i, (url, src_doc_id, msg_date) in enumerate(todo):
             if i:
                 time.sleep(FETCH_GAP_SEC)
             doc = self._fetch_one(url, src_doc_id, msg_date, channel)

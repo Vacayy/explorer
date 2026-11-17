@@ -25,7 +25,7 @@ class FeedBacklog:
         self.conn.executescript('''
             CREATE TABLE IF NOT EXISTS pending (
                 seq INTEGER PRIMARY KEY AUTOINCREMENT, source_type TEXT NOT NULL, source_id TEXT NOT NULL,
-                lane TEXT NOT NULL, payload TEXT NOT NULL, UNIQUE(source_type, source_id)
+                lane TEXT NOT NULL, connector TEXT NOT NULL, payload TEXT NOT NULL, UNIQUE(source_type, source_id)
             );
             CREATE TABLE IF NOT EXISTS feed_cursor (singleton INTEGER PRIMARY KEY CHECK(singleton=1), lane TEXT);
             INSERT OR IGNORE INTO feed_cursor(singleton, lane) VALUES (1, NULL);
@@ -41,9 +41,9 @@ class FeedBacklog:
             raise ValueError('Feed document and source identities are required')
         lane = hashlib.sha256((connector + '\0' + ref).encode()).hexdigest()
         payload = json.dumps(asdict(doc), ensure_ascii=False, separators=(',', ':'))
-        self.conn.execute('INSERT INTO pending(source_type,source_id,lane,payload) VALUES (?,?,?,?) '
+        self.conn.execute('INSERT INTO pending(source_type,source_id,lane,connector,payload) VALUES (?,?,?,?,?) '
                           'ON CONFLICT(source_type,source_id) DO UPDATE SET payload=excluded.payload',
-                          (doc.source_type, doc.source_id, lane, payload))
+                          (doc.source_type, doc.source_id, lane, connector, payload))
         self.conn.commit()  # fetched material survives a later source failure
 
     def next(self):
@@ -55,8 +55,8 @@ class FeedBacklog:
             lane = self.conn.execute('SELECT lane FROM pending GROUP BY lane ORDER BY lane LIMIT 1').fetchone()
         if lane is None:
             return None
-        seq, payload = self.conn.execute('SELECT seq,payload FROM pending WHERE lane=? ORDER BY seq LIMIT 1', lane).fetchone()
-        return seq, RawDoc(**json.loads(payload))
+        seq, connector, payload = self.conn.execute('SELECT seq,connector,payload FROM pending WHERE lane=? ORDER BY seq LIMIT 1', lane).fetchone()
+        return seq, connector, RawDoc(**json.loads(payload))
 
     def acknowledge(self, seq):
         """Call only after publication succeeds; deleting and advancing the cursor are atomic."""
