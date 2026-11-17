@@ -82,7 +82,7 @@ def latest() -> dict:
     h = _hash(inputs)
     conn = get_connection()
     try:
-        row = conn.execute("SELECT * FROM era_commentary ORDER BY id DESC LIMIT 1").fetchone()
+        row = conn.execute("SELECT * FROM era_commentary ORDER BY created_at DESC, id DESC LIMIT 1").fetchone()
     finally:
         conn.close()
     if not row:

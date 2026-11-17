@@ -427,7 +427,7 @@ def _compute_report(conn, anchor_topic: str, member_narrs: list, rel: list,
     if not force:
         cur = conn.execute(   # append-only — 최신 버전(id DESC) (D-047)
             "SELECT title, body, stocks_json, members_json, debate_json, members_hash, created_at "
-            "FROM reports WHERE anchor_topic=? ORDER BY id DESC LIMIT 1", (anchor_topic,)).fetchone()
+            "FROM reports WHERE anchor_topic=? ORDER BY created_at DESC, id DESC LIMIT 1", (anchor_topic,)).fetchone()
         if cur and cur["members_hash"] == mhash:
             return {"status": "ok", "title": cur["title"], "answer": cur["body"],
                     "members": json.loads(cur["members_json"] or "[]"),

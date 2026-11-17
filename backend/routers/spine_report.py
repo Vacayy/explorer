@@ -52,8 +52,8 @@ def report_list():
     conn = get_connection()
     rows = conn.execute(
         "SELECT r.anchor_topic, r.title, r.members_json, r.stocks_json, r.created_at "
-        "FROM reports r JOIN (SELECT anchor_topic, MAX(id) mid FROM reports GROUP BY anchor_topic) t "
-        "ON t.mid=r.id ORDER BY r.created_at DESC").fetchall()
+        "FROM reports r WHERE r.id = (SELECT r2.id FROM reports r2 WHERE r2.anchor_topic=r.anchor_topic "
+        "ORDER BY r2.created_at DESC, r2.id DESC LIMIT 1) ORDER BY r.created_at DESC").fetchall()
     conn.close()
     return [ReportListItem(
         anchor_topic=r["anchor_topic"], title=r["title"],
@@ -67,7 +67,7 @@ def report_history(topic: str):
     """한 주제의 과거 리포트 버전 목록 — 최신순 (append-only, D-047). LLM 없음."""
     conn = get_connection()
     rows = conn.execute(
-        "SELECT id, title, top_pick, created_at FROM reports WHERE anchor_topic=? ORDER BY id DESC",
+        "SELECT id, title, top_pick, created_at FROM reports WHERE anchor_topic=? ORDER BY created_at DESC, id DESC",
         (topic,)).fetchall()
     conn.close()
     return [ReportVersion(id=r["id"], title=r["title"], top_pick=r["top_pick"],
@@ -91,7 +91,7 @@ def report_cached(topic: str):
     conn = get_connection()
     row = conn.execute(
         "SELECT id, title, body, members_json, stocks_json, debate_json, top_pick, created_at "
-        "FROM reports WHERE anchor_topic=? ORDER BY id DESC LIMIT 1", (topic,)).fetchone()
+        "FROM reports WHERE anchor_topic=? ORDER BY created_at DESC, id DESC LIMIT 1", (topic,)).fetchone()
     conn.close()
     return _row_to_result(row) if row else ReportResult(status="none")
 

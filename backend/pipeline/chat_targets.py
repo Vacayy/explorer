@@ -231,7 +231,7 @@ def resolve(conn, ref: dict) -> dict:
         return _target("doc", key, row["title"] or label, sub=SOURCE_LABEL.get(row["source_type"], row["source_type"]),
                        date=_day(row["published_at"])) if row else gone
     if kind == "report":
-        row = conn.execute("SELECT anchor_topic, title, created_at FROM reports WHERE anchor_topic = ? ORDER BY id DESC LIMIT 1", (key,)).fetchone()
+        row = conn.execute("SELECT anchor_topic, title, created_at FROM reports WHERE anchor_topic = ? ORDER BY created_at DESC, id DESC LIMIT 1", (key,)).fetchone()
         return _target("report", key, key, sub=row["title"], date=_day(row["created_at"])) if row else gone
     if kind == "peer_group":
         try:
@@ -375,7 +375,7 @@ def _peer_item(group_id: str) -> dict | None:
 
 
 def _report_item(conn, topic: str) -> dict | None:
-    row = conn.execute("SELECT id, title, body, created_at FROM reports WHERE anchor_topic = ? ORDER BY id DESC LIMIT 1", (topic,)).fetchone()
+    row = conn.execute("SELECT id, title, body, created_at FROM reports WHERE anchor_topic = ? ORDER BY created_at DESC, id DESC LIMIT 1", (topic,)).fetchone()
     if not row:
         return None
     from pipeline.chat_tools import BODY_CHARS

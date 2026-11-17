@@ -527,7 +527,7 @@ def compute_quadrant(value_stance: str | None, trend_stance: str | None) -> dict
 def _get_cached(conn, code: str, lens_type: str, market: str = "kr"):
     return conn.execute(
         "SELECT body, stance, signals_json, principles_hash, material_hash, created_at "
-        "FROM lens_readings WHERE stock_code=? AND lens_type=? AND market=? ORDER BY id DESC LIMIT 1",
+        "FROM lens_readings WHERE stock_code=? AND lens_type=? AND market=? ORDER BY created_at DESC, id DESC LIMIT 1",
         (code, lens_type, market)).fetchone()
 
 
