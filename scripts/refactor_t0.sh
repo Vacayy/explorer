@@ -47,13 +47,14 @@ print('public member rows', n); raise SystemExit(1 if any(n) else 0)" | log
   files)   # media to the candidate's own volume (the old one stays for the rollback), logs stores, history, vault, adapter
     docker volume create explorer-refactor-media >/dev/null
     docker run --rm --network none -v "$PAYLOAD:/p:ro" -v explorer-refactor-media:/media -v explorer-refactor-analysis-store:/logs \
-      -v explorer-refactor-history:/history --entrypoint sh "$IMAGE" -c '
+      -v explorer-refactor-history:/history --user 0:0 --entrypoint sh "$IMAGE" -c '
         set -e
         cp -a /p/media/. /media/
         for d in /p/logs/*/; do n=$(basename "$d"); case $n in weekly-harness|market-analysis-smoke) continue;; esac
           mkdir -p "/logs/$n"; cp -a "$d." "/logs/$n/"; done
         [ -f /history/market_history.sqlite ] && mv /history/market_history.sqlite /history/market_history.prev.sqlite
         cp /p/backend/db/market_history.sqlite /history/market_history.sqlite
+        chown -R 10001:10001 /media /logs /history
         echo media $(find /media -type f | wc -l) logs $(find /logs -type f | wc -l) history $(stat -c %s /history/market_history.sqlite)' | log
     mkdir -p "$DATA/runtime" && chmod 700 "$DATA/runtime"
     rsync -a --delete "$PAYLOAD/vault/" "$DATA/runtime/vault/" && echo "vault $(find "$DATA/runtime/vault" -type f | wc -l)" | log
