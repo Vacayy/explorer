@@ -34,7 +34,7 @@ TABLE_JOBS = {'prices', 'twrevenue', 'indexintraday', 'credit', 'retail', 'marke
 # included): a Market Today slot is one call; the US briefing is the macro light (macro.interpret), the macro issues
 # (briefing.macro) and the synthesis (briefing.synthesize), one each (cached ones make none). Their network reads are optional (index values, macro series): the legacy job still
 # writes its result when every one fails, so 'no source answered' does not hold them back.
-TABLE_MODEL_CAPS = {'markettoday': 1, 'usbriefing': 3,
+TABLE_MODEL_CAPS = {'markettoday': 2, 'usbriefing': 4,
                     # Brokers' forecasts from feed documents: one call per document, at most 25 documents per run.
                     'expfeed': 25,
                     # US earnings-call momentum (pending the PM's figures): digests of new calls (up to 22), extraction
@@ -253,17 +253,27 @@ def run_peer():
 
 
 def _cap_table_model_calls(limit):
-    """At most `limit` model calls in this run; a further one is refused and noted (the run is then held back)."""
+    """Count actual engine attempts, including fallback; refuse before starting an extra process."""
     from pipeline import llm
-    execute, made, refused = llm._execute, [0], []
+    class Refusals(list):
+        def restore(self):
+            for name, original in originals.items():
+                setattr(llm, name, original)
 
-    def capped(*args, **kwargs):
-        if made[0] >= limit:
-            refused.append(1)
-            raise RuntimeError(f'model call cap {limit} reached')
-        made[0] += 1
-        return execute(*args, **kwargs)
-    llm._execute = capped
+    made, refused, originals = [0], Refusals(), {}
+
+    def wrap(execute):
+        def capped(*args, **kwargs):
+            if made[0] >= limit:
+                refused.append(1)
+                raise trial.Aborted(f'model attempt cap {limit} reached')
+            made[0] += 1
+            return execute(*args, **kwargs)
+        return capped
+
+    for name in ('_run_claude_code', '_run_codex', '_run_api'):
+        originals[name] = getattr(llm, name)
+        setattr(llm, name, wrap(originals[name]))
     return refused
 
 
@@ -282,7 +292,7 @@ def _defer_big_picture_event():
     return requested
 
 
-PRICING_MAX_CALLS = 3  # one call per pending briefing day; at most three days per run (the rest: the next run)
+PRICING_MAX_CALLS = 2  # counts both the primary and fallback attempts
 
 
 def _defer_pricing():
@@ -809,6 +819,8 @@ def _run(label, pg, waited):
                     raise trial.Aborted(trial.stopped[0])
                 if refused:
                     raise trial.HeldBack(f'model call cap {TABLE_MODEL_CAPS[label]} reached (a later call was refused)')
+                if refused is not None:
+                    refused.restore()  # follow-up pricing/event has its own independent budget
                 if trial.requests_by_host and not trial.statuses and label not in NETWORK_OPTIONAL:
                     raise trial.HeldBack('no source answered')  # a script may record 'ok' with every fetch failed
                 if record:

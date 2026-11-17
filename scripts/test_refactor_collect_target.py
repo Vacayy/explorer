@@ -16,6 +16,49 @@ import refactor_collect_job as job
 
 
 class CollectionTargetTest(unittest.TestCase):
+    def test_model_budget_counts_primary_and_fallback_engine_attempts(self):
+        from pipeline import llm
+        from pipeline.llm_policies import resolve
+        attempts = []
+
+        def primary(*args, **kwargs):
+            attempts.append('primary')
+            raise RuntimeError('simulated primary failure')
+
+        def fallback(*args, **kwargs):
+            attempts.append('fallback')
+            return llm.LLMResult(text='ok', model='test', engine='codex-exec')
+
+        with patch.object(llm, '_run_claude_code', primary), patch.object(llm, '_run_codex', fallback), \
+             patch.object(llm, '_run_api'), patch.object(llm, 'call_observer', None):
+            refused = job._cap_table_model_calls(3)
+            policy = resolve('document.tag', engine='claude-code', environ={})
+            llm._execute('sample', policy=policy, record_call=lambda *_: None)
+            with self.assertRaises(trial.Aborted):
+                llm._execute('sample', policy=policy, record_call=lambda *_: None)
+            self.assertEqual(attempts, ['primary', 'fallback', 'primary'])
+            self.assertTrue(refused)
+
+    def test_scheduled_compute_budget_counts_fallback_attempt(self):
+        from pipeline import llm, postgres_scheduled_compute as compute
+        from pipeline.llm_policies import resolve
+        attempts = []
+
+        def primary(*args, **kwargs):
+            attempts.append('primary')
+            raise RuntimeError('simulated primary failure')
+
+        def fallback(*args, **kwargs):
+            attempts.append('fallback')
+            return llm.LLMResult(text='ok', model='test', engine='codex-exec')
+
+        with patch.object(llm, '_run_claude_code', primary), patch.object(llm, '_run_codex', fallback), \
+             patch.object(llm, '_run_api'), patch.object(llm, 'call_observer', None):
+            compute._cap_model_calls(1)
+            policy = resolve('document.tag', engine='claude-code', environ={})
+            with self.assertRaises(compute.ModelBudgetExceeded):
+                llm._execute('sample', policy=policy, record_call=lambda *_: None)
+            self.assertEqual(attempts, ['primary'])
     def test_minimal_feed_keeps_unpublished_documents_after_failure(self):
         from pipeline.base import RawDoc, SourceRef
         from pipeline.feed_backlog import FeedBacklog

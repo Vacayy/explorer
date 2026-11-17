@@ -1218,3 +1218,7 @@ PublicMacroPage는 기존 RiskTiles와 useRiskTiles의 readonly `/api/spine/risk
 company-profile GET의 market=kr는 public KR snapshot companies의 정확한6자리 종목과 같은 snapshot의 public_company_profiles만 읽는다. 미국과 같은 ProfileRecord·출처/인용/개인metadata 검증을 공유하고 DART official_report는 HTTPS 공식호스트만 허용한다. PublicCompanySummary는 기존 PublicCompanyOverviewCard를 사용하며 최신 저장본문·작성시각·출처·gaps를 유지하고 생성/갱신을 마운트하지 않는다. 준비없는 등록기업은null,등록밖은404. 개인reason입력 보고서는 준비 단계에서 제외하며 필드삭제만으로 공개하지 않는다.
 
 공개 매크로는 기존 `PageLayout`과 `MacroLiquidity`의 공통 `MacroIndicatorRows`를 사용해 금리·달러/유동성/신용·위험선호/원자재 행과 모바일 핵심 지표 구성을 유지한다. `macro_view=full`에서 전체 그룹으로 전환하며 공개 관측일·출처·비교 기준·순유동성 계산 설명은 기존 Collapsible에 보존한다. private 데이터 hook/신호 산문은 마운트하지 않고 공개 수치 GET과 RiskTiles만 연결한다. 국면·Now·History·BRK의 나머지 공개 연결은 별도다.
+
+## 예약 작업의 모델 실행 상한
+
+수집 작업과 예약 계산의 상한은 `llm._execute` 진입 횟수가 아니라 Claude·Codex·API 엔진을 시작하려는 횟수다. 기본 엔진 실패 후 대체 시도도 별도로 센다. 상한을 넘는 시도는 엔진 실행 전에 중단하며, 수집 작업은 해당 작업 사본을 보류한다. 미국 브리핑 본문 최대 4회와 후속 pricing 최대 2회, Market Today 각 최대 2회와 16시 조건부 후속 최대 2회다. 이 수치에는 실패한 로컬 실행 시도도 포함된다. 상한 도달 시 분석이 완성되지 않을 수 있으며 실제 모델·원천·발송 성공은 작업 결과로 따로 확인한다.

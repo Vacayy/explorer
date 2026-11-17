@@ -29,18 +29,25 @@ class Skipped(RuntimeError):
     """The script's own admin flag is off (its run_job recorded 'skipped'); nothing to store."""
 
 
-def _cap_model_calls(limit):
-    """At most `limit` model calls in this run (each llm._execute: one call, its fallback included); the next is
-    refused and the run is held back. Returns the counter."""
-    from pipeline import llm
-    execute, made = llm._execute, [0]
+class ModelBudgetExceeded(BaseException):
+    """A further engine attempt must not be swallowed by source or fallback handlers."""
 
-    def capped(*args, **kwargs):
-        if made[0] >= limit:
-            raise RuntimeError(f'model call cap {limit} reached')
-        made[0] += 1
-        return execute(*args, **kwargs)
-    llm._execute = capped
+
+def _cap_model_calls(limit):
+    """Count each actual primary and fallback engine attempt, refusing a further attempt."""
+    from pipeline import llm
+    made = [0]
+
+    def wrap(execute):
+        def capped(*args, **kwargs):
+            if made[0] >= limit:
+                raise ModelBudgetExceeded(f'model attempt cap {limit} reached')
+            made[0] += 1
+            return execute(*args, **kwargs)
+        return capped
+
+    for name in ('_run_claude_code', '_run_codex', '_run_api'):
+        setattr(llm, name, wrap(getattr(llm, name)))
     return made
 
 
@@ -99,6 +106,8 @@ def run(script, argv, factory, *, record, source, projection_dir='/projection', 
         sys.argv = [script, *argv]
         try:
             runpy.run_path(script, run_name='__main__')
+        except ModelBudgetExceeded as exc:
+            raise HeldBack(str(exc)) from None
         except SystemExit as exc:
             if exc.code not in (0, None):
                 raise HeldBack(f'exit {exc.code}') from None
@@ -109,8 +118,6 @@ def run(script, argv, factory, *, record, source, projection_dir='/projection', 
         finally:
             write_connection_var.reset(token)
             _offline.reset(offline)
-        if calls[0] >= max_calls:
-            raise HeldBack(f'model call cap {max_calls} reached (a later call was refused)')
         runs = conn.execute('SELECT job, status FROM temp.job_runs WHERE id > ?' + (' AND job=?' if record else ''),
                             (floor, record) if record else (floor,)).fetchall()
         if record and not runs:
