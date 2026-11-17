@@ -36,13 +36,16 @@ class ModelBudgetExceeded(BaseException):
 def _cap_model_calls(limit):
     """Count each actual primary and fallback engine attempt, refusing a further attempt."""
     from pipeline import llm
+    from threading import Lock
     made = [0]
+    lock = Lock()
 
     def wrap(execute):
         def capped(*args, **kwargs):
-            if made[0] >= limit:
-                raise ModelBudgetExceeded(f'model attempt cap {limit} reached')
-            made[0] += 1
+            with lock:
+                if made[0] >= limit:
+                    raise ModelBudgetExceeded(f'model attempt cap {limit} reached')
+                made[0] += 1
             return execute(*args, **kwargs)
         return capped
 

@@ -19,6 +19,21 @@ import refactor_feed_refresh as feed_refresh
 
 
 class CollectionTargetTest(unittest.TestCase):
+    def test_model_budget_holds_under_parallel_engine_attempts(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from pipeline import llm
+        attempts = []
+        with patch.object(llm, '_run_claude_code'), patch.object(llm, '_run_codex'), \
+             patch.object(llm, '_run_api', side_effect=lambda: attempts.append(1)):
+            job._cap_table_model_calls(3)
+            def invoke(_):
+                try:
+                    llm._run_api()
+                except trial.Aborted:
+                    pass
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                list(executor.map(invoke, range(30)))
+        self.assertEqual(len(attempts), 3)
     def test_keyword_feed_defers_missing_image_analysis_without_dropping_payload(self):
         from pipeline.base import RawDoc
         from pipeline.feed_backlog import FeedBacklog
@@ -176,6 +191,45 @@ class CollectionTargetTest(unittest.TestCase):
             self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending WHERE revision_pending=1').fetchone()[0], 1)
             self.assertIsNone(queue.next())
             queue.close()
+
+    def test_feed_sync_requires_new_graph_relations_to_belong_to_published_batch(self):
+        with TemporaryDirectory() as directory:
+            source, target = [Path(directory) / name for name in ('source', 'target')]
+            for path in (source, target):
+                db = sqlite3.connect(path)
+                db.executescript('''
+                    CREATE TABLE raw_documents(id INTEGER PRIMARY KEY, body TEXT);
+                    CREATE TABLE enrichments(id INTEGER PRIMARY KEY, doc_id INTEGER);
+                    CREATE TABLE entity_links(id INTEGER PRIMARY KEY, doc_id INTEGER, entity_id INTEGER);
+                    CREATE TABLE entities(id INTEGER PRIMARY KEY);
+                    CREATE TABLE entity_keywords(id INTEGER PRIMARY KEY, entity_id INTEGER);
+                    CREATE TABLE entity_relations(id INTEGER PRIMARY KEY, src_id INTEGER, dst_id INTEGER, source_doc_id INTEGER);
+                    CREATE TABLE candidate_publish_floor(name TEXT PRIMARY KEY,value INTEGER);
+                    INSERT INTO candidate_publish_floor VALUES ('document_floor',0),('entity_floor',0),('keyword_floor',0),('relation_floor',0);
+                ''')
+                db.commit(); db.close()
+            db = sqlite3.connect(source)
+            db.executescript('''
+                INSERT INTO raw_documents VALUES(1,'new'); INSERT INTO enrichments VALUES(1,1);
+                INSERT INTO entities VALUES(1),(2); INSERT INTO entity_links VALUES(1,1,1);
+                INSERT INTO entity_keywords VALUES(1,1); INSERT INTO entity_relations VALUES(1,1,2,99);
+                UPDATE candidate_publish_floor SET value=1 WHERE name IN ('document_floor','keyword_floor','relation_floor');
+                UPDATE candidate_publish_floor SET value=2 WHERE name='entity_floor';
+            ''')
+            db.commit(); db.close()
+            with self.assertRaises(ValueError):
+                feed_sync.sync(source, target)
+            db = sqlite3.connect(target)
+            self.assertEqual(db.execute('SELECT count(*) FROM raw_documents').fetchone()[0], 0)
+            db.close()
+            db = sqlite3.connect(source)
+            db.execute('UPDATE entity_relations SET source_doc_id=1'); db.commit(); db.close()
+            result = feed_sync.sync(source, target)
+            self.assertEqual(result['raw_documents'], 1)
+            db = sqlite3.connect(target)
+            self.assertEqual(db.execute('SELECT count(*) FROM entity_relations').fetchone()[0], 1)
+            self.assertEqual(db.execute('SELECT count(*) FROM entity_keywords').fetchone()[0], 1)
+            db.close()
 
     def test_recovery_requires_one_matching_complete_queued_document(self):
         from pipeline.base import RawDoc

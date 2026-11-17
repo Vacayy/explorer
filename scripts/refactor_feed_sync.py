@@ -47,8 +47,8 @@ def sync(source_path, target_path, *, allow_noop=False):
         if allow_noop and not any(rows for _, rows in additions.values()):
             dst.rollback()
             return {'raw_documents': 0, 'enrichments': 0, 'entity_links': 0}
-        if not 1 <= len(documents) <= 5 or any(additions[t][1] for t in ('entity_keywords', 'entity_relations')):
-            raise ValueError('Expected one to five documents and no new keyword or relation rows')
+        if not 1 <= len(documents) <= 5:
+            raise ValueError('Expected one to five documents')
         doc_ids = {row[0] for row in documents}
         for table in ('enrichments', 'entity_links'):
             cols, rows = additions[table]
@@ -59,14 +59,23 @@ def sync(source_path, target_path, *, allow_noop=False):
             raise ValueError('Expected one completed enrichment per document')
         link_columns, links = additions['entity_links']
         linked = {row[link_columns.index('entity_id')] for row in links}
+        relation_columns, relations = additions['entity_relations']
+        if any(row[relation_columns.index('source_doc_id')] not in doc_ids for row in relations):
+            raise ValueError('An added relation belongs to another document')
+        for row in relations:
+            linked.update((row[relation_columns.index('src_id')], row[relation_columns.index('dst_id')]))
+        keyword_columns, keywords = additions['entity_keywords']
+        linked.update(row[keyword_columns.index('entity_id')] for row in keywords)
         if any(row[0] not in linked for row in additions['entities'][1]):
-            raise ValueError('An added entity is not linked to the new document')
-        for table in ('raw_documents', 'enrichments', 'entities', 'entity_links'):
+            raise ValueError('An added entity is not connected to the new documents')
+        for table in ('raw_documents', 'enrichments', 'entities', 'entity_keywords', 'entity_relations', 'entity_links'):
             cols, rows = additions[table]
             dst.executemany(f'INSERT INTO "{table}" VALUES ({",".join("?" for _ in cols)})', rows)
         dst.execute("UPDATE candidate_publish_floor SET value=? WHERE name='document_floor'", (max(doc_ids),))
-        if additions['entities'][1]:
-            dst.execute("UPDATE candidate_publish_floor SET value=? WHERE name='entity_floor'", (additions['entities'][1][-1][0],))
+        for table, floor in (('entities', 'entity_floor'), ('entity_keywords', 'keyword_floor'),
+                             ('entity_relations', 'relation_floor')):
+            if additions[table][1]:
+                dst.execute('UPDATE candidate_publish_floor SET value=? WHERE name=?', (additions[table][1][-1][0], floor))
         if dst.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
             raise ValueError('Target integrity check failed')
         dst.commit()

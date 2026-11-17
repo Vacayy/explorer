@@ -16,6 +16,7 @@ import json
 import os
 import sqlite3
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -260,14 +261,15 @@ def _cap_table_model_calls(limit):
             for name, original in originals.items():
                 setattr(llm, name, original)
 
-    made, refused, originals = [0], Refusals(), {}
+    made, refused, originals, lock = [0], Refusals(), {}, threading.Lock()
 
     def wrap(execute):
         def capped(*args, **kwargs):
-            if made[0] >= limit:
-                refused.append(1)
-                raise trial.Aborted(f'model attempt cap {limit} reached')
-            made[0] += 1
+            with lock:
+                if made[0] >= limit:
+                    refused.append(1)
+                    raise trial.Aborted(f'model attempt cap {limit} reached')
+                made[0] += 1
             return execute(*args, **kwargs)
         return capped
 
@@ -461,11 +463,14 @@ def _feed_document_known(source, key):
 def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-backlog.sqlite', youtube=None, telegram=None):
     """One blog reference, one queued document; a failure keeps this isolated feed on hold."""
     from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference
-    if os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1':
+    keyword_only = os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1'
+    strict_images = keyword_only or os.environ.get('COLLECT_FEED_STRICT_IMAGES') == '1'
+    if keyword_only:
         if MAX_MODEL_CALLS != 0:
             raise ValueError('Keyword-only feed requires a zero model attempt cap')
         from pipeline import enrich
         enrich.llm_available = lambda: False
+    if strict_images:
         from pipeline import image_reading
         from pipeline.telegram_deferred import cached_images
         image_reading.read_images = cached_images  # use existing interpretation or defer the entire document
@@ -531,7 +536,7 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
                 deferred_revisions += 1
             elif len(selected) < min(MAX_NEW_DOCS, 5):
                 selected.append(item)
-        if os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1':
+        if strict_images:
             from pipeline.normalize import to_markdown
             from pipeline.telegram_deferred import NeedsAnalysis
             ready = []
