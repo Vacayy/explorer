@@ -179,6 +179,28 @@ class CollectionTargetTest(unittest.TestCase):
             flag.write_text('unexpected\n'); flag.chmod(0o600)
             with self.assertRaises(ValueError):
                 job.run_minimal_blog(None, object(), queue_path=Path(directory) / 'queue', telegram_trial=flag)
+    def test_revision_trial_stages_one_snapshot_without_publishing(self):
+        from pipeline.base import RawDoc, SourceRef
+        from pipeline.feed_backlog import FeedBacklog
+        class Blog:
+            def discover(self): return []
+            def fetch_post(self, ref): return RawDoc('blog', 'https://example.test/post', raw_content='synthetic')
+        with TemporaryDirectory() as directory:
+            root = Path(directory); path = root / 'queue'; flag = root / 'revision-trial'
+            flag.write_text('feed-blog-revision-trial-v1\n'); flag.chmod(0o600)
+            queue = FeedBacklog(path)
+            queue.enqueue_ref('blog', 'feed', SourceRef('ref', meta={'post': {'url': 'https://example.test/post'}}), revision_pending=True)
+            queue.close()
+            with patch.object(job, '_feed_document_known', return_value=True), patch.object(trial, 'run_documents') as publish:
+                result = job.run_minimal_blog(None, Blog(), queue_path=path, revision_trial=flag)
+            self.assertEqual(result['revision_snapshot'], 1)
+            self.assertEqual(result['published'], 0)
+            self.assertFalse(flag.exists())
+            publish.assert_not_called()
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending WHERE revision_pending=1').fetchone()[0], 1)
+            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending_refs WHERE revision_pending=1').fetchone()[0], 1)
+            queue.close()
     def test_telegram_enable_flag_rejects_insecure_file(self):
         with TemporaryDirectory() as directory:
             flag = Path(directory) / 'telegram-enabled'

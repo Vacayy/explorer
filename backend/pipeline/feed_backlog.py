@@ -140,6 +140,13 @@ class FeedBacklog:
         seq, connector, payload = row
         return seq, connector, SourceRef(**json.loads(payload)), lane[0]
 
+    def revision_refs(self, connector):
+        """Read retained source references without removing or advancing them."""
+        rows = self.conn.execute('SELECT seq,payload FROM pending_refs WHERE connector=? AND revision_pending=1 '
+                                 'ORDER BY seq', (connector,))
+        for seq, payload in rows:
+            yield seq, SourceRef(**json.loads(payload))
+
     def acknowledge_ref(self, seq):
         """Call only after all fetched documents are durably staged."""
         with self.conn:

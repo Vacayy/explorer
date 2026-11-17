@@ -470,7 +470,8 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
                      batch_marker=Path('/trial/feed-batch-trial'), image_marker=Path('/trial/feed-image-trial'),
                      batch_enabled=Path('/trial/feed-batch-enabled'),
                      telegram_trial=Path('/trial/feed-telegram-fallback-trial'),
-                     telegram_enabled=Path('/trial/feed-telegram-fallback-enabled')):
+                     telegram_enabled=Path('/trial/feed-telegram-fallback-enabled'),
+                     revision_trial=Path('/trial/feed-blog-revision-trial')):
     """One blog reference, one queued document; a failure keeps this isolated feed on hold."""
     from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference
     keyword_only = os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1'
@@ -499,6 +500,12 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 \
                 or telegram_enabled.read_text() != 'feed-telegram-fallback-enabled-v1\n':
             raise ValueError('Unrecognized Telegram fallback enable flag')
+    revision_trial_exists = revision_trial.exists() or revision_trial.is_symlink()
+    if revision_trial_exists:
+        info = revision_trial.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 \
+                or revision_trial.read_text() != 'feed-blog-revision-trial-v1\n':
+            raise ValueError('Unrecognized blog revision trial flag')
     batch_requested = os.environ.get('COLLECT_FEED_BATCH_MODEL') == '1' or marker_exists or enabled_exists
     if batch_requested and (keyword_only or not strict_images):
         raise ValueError('Feed batch model requires strict images and model mode')
@@ -521,6 +528,17 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
     try:
         if queue.intent():
             raise trial.HeldBack('an earlier feed publication intent requires review')
+        revision_result = {'revision_snapshot': 0, 'revision_requests': 0}
+        if revision_trial_exists:
+            from pipeline.feed_revision_trial import stage_one
+            try:
+                revision_result = stage_one(queue, connector, _feed_document_known, revision_trial.unlink)
+                if revision_trial.is_file():
+                    revision_trial.unlink()  # no eligible reference
+            except trial.Aborted:
+                raise
+            except Exception as exc:
+                raise trial.HeldBack(f'revision snapshot failed: {type(exc).__name__}') from None
         image_trial = image_marker.exists() or image_marker.is_symlink()
         if image_trial:
             info = image_marker.lstat()
@@ -635,6 +653,7 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
         if not selected:
             return {'stats': {'feed': {'refs': 1}}, 'counts': {}, 'published': 0,
                     'sources': sorted(allowed),
+                    **revision_result,
                     'deferred_analysis': int(deferred_analysis),
                     'deferred_revisions': deferred_revisions,
                     'identical_revisions': identical_revisions,
@@ -692,6 +711,7 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
             else:
                 queue.acknowledge(seq)  # only after successful PG publish and local floor commit
         result['sources'] = sorted({item[1] for item in selected})
+        result.update(revision_result)
         result['deferred_analysis'] = int(deferred_analysis)
         result['deferred_revisions'] = deferred_revisions
         result['identical_revisions'] = identical_revisions
