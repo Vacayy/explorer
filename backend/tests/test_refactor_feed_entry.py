@@ -51,7 +51,7 @@ class FeedEntryTests(unittest.TestCase):
             result.generation = generation
             return result
         first, second = index('a'), index('b')
-        def build(_):
+        def build(_, **_options):
             time.sleep(0.04)
             if current['generation'] == 'failure':
                 raise ValueError('index build failed')

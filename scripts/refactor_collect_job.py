@@ -563,7 +563,8 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
                      batch_enabled=Path('/trial/feed-batch-enabled'),
                      telegram_trial=Path('/trial/feed-telegram-fallback-trial'),
                      telegram_enabled=Path('/trial/feed-telegram-fallback-enabled'),
-                     revision_trial=Path('/trial/feed-blog-revision-trial')):
+                     revision_trial=Path('/trial/feed-blog-revision-trial'),
+                     quarantine_path=Path('/trial/feed-quarantined-hosts.json')):
     """One blog reference, one queued document; a failure keeps this isolated feed on hold."""
     from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference
     keyword_only = os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1'
@@ -616,7 +617,12 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
         def blog_images(items, **kwargs):
             return cached_images(items, allow_missing=True, missing=missing_images, **kwargs)
         image_reading.read_images = blog_images  # existing notes only; preserve missing work in the queue
+    from pipeline.feed_quarantine import load_hosts, blocked_ref, SourceQuarantined, guard_network
+    hosts = load_hosts(quarantine_path)
+    skip_ref = lambda name, ref: name == 'blog' and blocked_ref(ref, hosts)
     queue = FeedBacklog(queue_path)
+    guard = guard_network(hosts)
+    guard.__enter__()
     try:
         if queue.intent():
             raise trial.HeldBack('an earlier feed publication intent requires review')
@@ -633,6 +639,8 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
             except SnapshotUnavailable as exc:
                 revision_result = {'revision_snapshot': 0, 'revision_requests': exc.attempts,
                                    'revision_error': 'source_unavailable'}
+            except SourceQuarantined:
+                revision_result = {'revision_snapshot': 0, 'revision_requests': 0, 'revision_error': 'quarantined'}
             except Exception as exc:
                 raise trial.HeldBack(f'revision snapshot failed: {type(exc).__name__}') from None
         image_trial = image_marker.exists() or image_marker.is_symlink()
@@ -666,19 +674,24 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
                 if len(unpublished_analysis) >= max_documents:
                     break
         if queue.next(allowed=allowed) is None and not unpublished_analysis:
-            if youtube is not None or telegram is not None or queue.next_pending_ref(allowed=allowed) is None:
+            if youtube is not None or telegram is not None or queue.next_pending_ref(allowed=allowed, skip=skip_ref) is None:
                 from pipeline.base import SourceRef
                 choices = [SourceRef(name) for name in sorted(allowed)]
                 selected = queue.next_ref('feed-sources', choices)
                 name = selected.key
                 source_connector = {'blog': connector, 'youtube': youtube, 'telegram': telegram}[name]
                 refs = source_connector.discover_channels() if name == 'youtube' else source_connector.discover()
+                if name == 'blog' and hosts:
+                    refs = [ref for ref in refs if not blocked_ref(ref, hosts)]
                 ref = queue.next_ref(name, refs)
                 if ref is None:
                     queue.advance_ref('feed-sources', selected)
                 else:
                     if name == 'blog':
-                        posts = connector.discover_posts(ref)
+                        try:
+                            posts = connector.discover_posts(ref)
+                        except SourceQuarantined:
+                            posts = []  # retain the source; do not contact the quarantined host
                     elif name == 'youtube':
                         posts = youtube.discover_channel(ref)
                     else:
@@ -715,13 +728,15 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
                                                             image_reader=cached_images)
             from pipeline.telegram_deferred import NeedsAnalysis
             try:
-                pending = queue.next_pending_ref(allowed=set(sources))
+                pending = queue.next_pending_ref(allowed=set(sources), skip=skip_ref)
                 fallback_page = bool((telegram_trial_exists or telegram_enabled_exists) and pending and pending[1] == 'telegram')
                 if fallback_page and telegram_trial_exists:
                     telegram_trial.unlink()  # consume before any group decision or page processing
-                fetch_pending_reference(queue, sources, retain_names={'telegram'} if fallback_page else ())
+                fetch_pending_reference(queue, sources, retain_names={'telegram'} if fallback_page else (), skip=skip_ref)
             except NeedsAnalysis:
                 deferred_analysis = True  # snapshot remains queued; another source lane may run next time
+            except SourceQuarantined:
+                pass  # failed reference remains queued without contacting the quarantined host
         selected = unpublished_analysis[:max_documents]
         deferred_revisions = 0
         for item in queue.batch(allowed=allowed, limit=25):
@@ -811,9 +826,11 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
         result['deferred_analysis'] = int(deferred_analysis)
         result['deferred_revisions'] = deferred_revisions
         result['identical_revisions'] = identical_revisions
+        result['quarantined_hosts'] = len(hosts)
         result['steps_not_connected'] = ['other feed sources', 'existing document revisions', 'chain postprocessing']
         return result
     finally:
+        guard.__exit__(None, None, None)
         queue.close()
 
 

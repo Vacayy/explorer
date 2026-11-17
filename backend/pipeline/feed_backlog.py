@@ -24,9 +24,9 @@ def stage_one_reference(queue, name, connector):
     return count
 
 
-def fetch_pending_reference(queue, connectors, *, retain_names=()):
+def fetch_pending_reference(queue, connectors, *, retain_names=(), skip=None):
     """Stage all returned documents before acknowledging a discovered reference."""
-    item = queue.next_pending_ref(allowed=set(connectors))
+    item = queue.next_pending_ref(allowed=set(connectors), skip=skip)
     if item is None:
         return 0
     seq, name, ref, lane = item
@@ -119,7 +119,18 @@ class FeedBacklog:
                               'revision_pending=max(pending_refs.revision_pending,excluded.revision_pending)',
                               (connector, ref.key, lane, payload, int(revision_pending)))
 
-    def next_pending_ref(self, allowed=None):
+    def next_pending_ref(self, allowed=None, skip=None):
+        if skip is not None:
+            seen = set()
+            while len(seen) < 200:
+                item = self.next_pending_ref(allowed=allowed)
+                if item is None or item[0] in seen:
+                    return None
+                if not skip(item[1], item[2]):
+                    return item
+                seen.add(item[0])
+                self.defer_ref(item[0])
+            return None
         if allowed is not None and not allowed:
             return None
         clause = '' if allowed is None else ' AND connector IN (' + ','.join('?' for _ in allowed) + ')'
