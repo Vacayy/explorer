@@ -20,7 +20,7 @@ def _column(table, column):
 def steps():
     """(version, name, present(conn), initialize(conn)) in application order."""
     from pipeline import postgres_identity_store, postgres_trial_quota, postgres_usage_gate
-    from pipeline import postgres_owner_legacy_fixture, postgres_study_owners
+    from pipeline import postgres_client_errors, postgres_owner_legacy_fixture, postgres_study_owners
     from routers import postgres_member_thesis_fixture, postgres_questions_fixture
     return [
         (1, 'identity (principals, sessions)', _table('principals'), postgres_identity_store.initialize),
@@ -31,6 +31,7 @@ def steps():
         (6, 'member watch groups', _column('owner_legacy_rows', 'account_id'), postgres_owner_legacy_fixture.initialize_member_rows),
         (7, 'member studies', _table('study_principals'), postgres_study_owners.initialize),
         (8, 'member thesis audits', _table('member_thesis_audits'), postgres_member_thesis_fixture.initialize),
+        (9, 'screen API error log', _table('client_errors'), postgres_client_errors.initialize),
     ]
 
 

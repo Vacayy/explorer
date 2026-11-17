@@ -42,6 +42,8 @@ _COLLECTION = re.compile(r'^/api/financials/[^/]+/collect$|^/api/spine/(regimes/
 
 
 def route_policy(method, path):
+    if path == '/api/spine/client-errors' and method == 'POST':
+        return 'compute'  # every visitor's screen reports its API errors (rate-limited); reading the log is the operator's
     if path.startswith('/api/auth/') or path in ('/api/public/chat/session', '/api/public/chat'):
         return 'auth'  # trial chat: its own cookie, CSRF and quota (routers.postgres_trial_chat)
     if path == '/api/spine/ask' or path.startswith('/api/spine/conversations'):

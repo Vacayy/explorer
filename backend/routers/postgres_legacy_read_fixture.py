@@ -80,7 +80,7 @@ READ_ROUTES = {'/api/spine/home', '/api/spine/home/ai-activity', '/api/spine/hom
                '/api/spine/trend-leaders/{code}/chart', '/api/spine/tw/chain-report/preview',
                '/api/spine/tw/chain-reports', '/api/spine/tw/expectations', '/api/spine/tw/flow',
                '/api/spine/tw/revenue', '/api/spine/tw/value-chain', '/api/spine/tw/links', '/api/spine/tw/confirm',
-               '/api/spine/tw/propagation', '/api/spine/curation', '/api/spine/us', '/api/spine/us/{ticker}',
+               '/api/spine/tw/propagation', '/api/spine/curation', '/api/spine/client-errors', '/api/spine/us', '/api/spine/us/{ticker}',
                '/api/spine/us/{ticker}/income-flow', '/api/spine/us/{ticker}/income-flow/quarters',
                '/api/spine/us/{ticker}/mentions', '/api/spine/us/{ticker}/prices/status',
                '/api/spine/us/{ticker}/worldmodel', '/api/spine/us/briefing/list', '/api/spine/us/briefing/sources',

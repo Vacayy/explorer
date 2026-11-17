@@ -217,6 +217,8 @@ app.include_router(questions_router(factory, run_llm=question_model, search=ques
                                     projection=lambda: legacy_projection))
 app.include_router(proxy_extract_router(factory, run_llm=question_model))
 app.include_router(keyword_approve_router(factory))
+from routers.postgres_client_errors_fixture import create_router as client_errors_router  # noqa: E402
+app.include_router(client_errors_router(factory))
 from pipeline.postgres_proxy_boards import create_router as proxy_board_writes_router  # noqa: E402
 app.include_router(proxy_board_writes_router())
 app.include_router(video_router(factory, search_lock=document_ui.search_lock, invalidate_search=search.close))
