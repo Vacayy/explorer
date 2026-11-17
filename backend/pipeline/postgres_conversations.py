@@ -183,13 +183,26 @@ class PostgreSQLConversations:
         return row[0] if row else None
 
     @staticmethod
-    def _owned(cursor, conversation_id, owner_chat_id, *, lock=False):
+    def _owner(owner_chat_id, alias=''):
+        """Whose conversations: a member's are their own only (channel 'member', chat_id 'principal:<id>');
+        the operator's are the web conversations and their Telegram chat, as before."""
+        if isinstance(owner_chat_id, str) and owner_chat_id.startswith('principal:'):
+            return f"({alias}channel='member' AND {alias}chat_id=%s)", (owner_chat_id,)
+        return (f"({alias}channel='web' OR {alias}chat_id IS NULL OR ({alias}chat_id=%s AND %s::text IS NOT NULL))",
+                (owner_chat_id, owner_chat_id))
+
+    @staticmethod
+    def _new_conversation(owner_chat_id):
+        """(channel, chat_id) of a conversation a request starts."""
+        if isinstance(owner_chat_id, str) and owner_chat_id.startswith('principal:'):
+            return 'member', owner_chat_id
+        return 'web', None
+
+    @classmethod
+    def _owned(cls, cursor, conversation_id, owner_chat_id, *, lock=False):
         suffix = ' FOR UPDATE' if lock else ''
-        cursor.execute(
-            "SELECT * FROM conversations WHERE id=%s AND "
-            "(channel='web' OR chat_id IS NULL OR (chat_id=%s AND %s::text IS NOT NULL))" + suffix,
-            (conversation_id, owner_chat_id, owner_chat_id),
-        )
+        predicate, params = cls._owner(owner_chat_id)
+        cursor.execute("SELECT * FROM conversations WHERE id=%s AND " + predicate + suffix, (conversation_id, *params))
         row = cursor.fetchone()
         if row is None:
             raise ConversationNotFound(conversation_id)
@@ -210,8 +223,9 @@ class PostgreSQLConversations:
                 attachments = [{'kind': 'doc', 'ref': str(document_id), 'label': title}]
             if conversation_id is None:
                 state = json.dumps({'attached_doc_ids': [document_id]} if document_id is not None else {}, ensure_ascii=False)
-                cur.execute("INSERT INTO conversations (title, channel, state_json) VALUES (%s, 'web', %s) RETURNING id",
-                            (text[:60], state))
+                channel, chat = self._new_conversation(owner_chat_id)
+                cur.execute("INSERT INTO conversations (title, channel, chat_id, state_json) VALUES (%s, %s, %s, %s) RETURNING id",
+                            (text[:60], channel, chat, state))
                 conversation_id = cur.fetchone()['id']
             else:
                 self._owned(cur, conversation_id, owner_chat_id, lock=True)
@@ -276,8 +290,9 @@ class PostgreSQLConversations:
                 attachments = None
             encoded = json.dumps(state, ensure_ascii=False)
             if conversation_id is None:
-                cur.execute("INSERT INTO conversations (title,channel,state_json) VALUES (%s,'web',%s) RETURNING id",
-                            (text[:60], encoded))
+                channel, chat = self._new_conversation(owner_chat_id)
+                cur.execute("INSERT INTO conversations (title,channel,chat_id,state_json) VALUES (%s,%s,%s,%s) RETURNING id",
+                            (text[:60], channel, chat, encoded))
                 conversation_id = cur.fetchone()['id']
             else:
                 cur.execute("UPDATE conversations SET state_json=%s,updated_at=to_char(timezone('utc', now()), 'YYYY-MM-DD HH24:MI:SS') WHERE id=%s",
@@ -375,7 +390,7 @@ class PostgreSQLConversations:
                           result.cost_usd if result else None, duration_ms, error is None, safe_error))
 
     def list(self, *, owner_chat_id=None, limit=20, stock=None):
-        owner = "(c.channel='web' OR c.chat_id IS NULL OR (c.chat_id=%s AND %s::text IS NOT NULL))"
+        owner, owner_params = self._owner(owner_chat_id, 'c.')
         with self.connect() as conn, conn.cursor(row_factory=dict_row) as cur:
             if stock:
                 # The legacy rule: conversations anchored to the company, or whose messages link it.
@@ -388,12 +403,12 @@ class PostgreSQLConversations:
                             "LEFT JOIN chat_entity_links cel ON cel.message_id=m.id "
                             f"WHERE (c.anchor_entity_id=%s OR cel.entity_id=%s) AND {owner} "
                             "ORDER BY c.updated_at DESC LIMIT %s",
-                            (company and company[0], company and company[0], owner_chat_id, owner_chat_id, max(1, min(limit, 100))))
+                            (company and company[0], company and company[0], *owner_params, max(1, min(limit, 100))))
                 return cur.fetchall()
             cur.execute("SELECT c.id, c.title, c.channel, c.anchor_entity_id, c.updated_at, "
                         "(SELECT count(*) FROM chat_messages m WHERE m.conversation_id=c.id) AS message_count "
                         f"FROM conversations c WHERE {owner} ORDER BY c.updated_at DESC, c.id DESC LIMIT %s",
-                        (owner_chat_id, owner_chat_id, max(1, min(limit, 100))))
+                        (*owner_params, max(1, min(limit, 100))))
             return cur.fetchall()
 
     def rename(self, conversation_id, title, *, owner_chat_id=None):

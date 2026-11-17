@@ -6,6 +6,7 @@ retrieval pointed at the chunk index and the projection. Document claims and AI-
 tools (`chat_tool`) use it.
 """
 import sqlite3
+from contextvars import ContextVar
 
 from psycopg.types.json import Jsonb
 
@@ -40,6 +41,8 @@ def legacy_retrieval(chunks_path, projection_path):
         conn = sqlite3.connect(chunks_path, timeout=30)
         conn.execute('ATTACH DATABASE ? AS projection', (f'file:{projection_path}?mode=ro',))
         conn.row_factory = sqlite3.Row
+        if scoped.get():
+            _scope(conn)
         return conn
 
     original = database.get_connection
@@ -93,9 +96,13 @@ def chat_tool(factory, request):
     if name not in WORKER_CHAT_TOOLS:
         raise ValueError(f'{name} does not run in the compute worker')
     allowed = chat_tools.TOOLS[name]['args'] | ({'k'} if name == 'search_docs' else set())
-    # The legacy run_tool: a missing argument or a failing tool answers with its note, as in the legacy turn.
-    result = chat_tools.run_tool({'name': name, 'args': {key: value for key, value in request['args'].items()
-                                                         if key in allowed and value is not None}})
+    token = scoped.set(bool(request.get('scoped')))
+    try:
+        # The legacy run_tool: a missing argument or a failing tool answers with its note, as in the legacy turn.
+        result = chat_tools.run_tool({'name': name, 'args': {key: value for key, value in request['args'].items()
+                                                             if key in allowed and value is not None}})
+    finally:
+        scoped.reset(token)
     items = result.items
     if name == 'get_quote':  # the legacy title says real time; these are saved closes
         items = [{**item, 'title': STORED_QUOTE_TITLE} if item.get('kind') == 'quote' else item for item in items]
@@ -103,6 +110,26 @@ def chat_tool(factory, request):
     if name == 'get_quote' and note == '시세 조회 실패':
         note = '저장된 시세 없음 (최신 시세 미반영 — 후보에서는 시세를 수집하지 않음)'
     return {'args': result.args, 'items': items, 'note': note, 'assumed': result.assumed}
+
+
+# Set for a job a requester other than the operator queued (public mode): its legacy reads see no one's
+# personal state, as the API's read shadows (pipeline.postgres_legacy_projection._scope_to_requester).
+scoped = ContextVar('retrieval_scoped', default=False)
+
+
+def _scope(conn):
+    from pipeline.postgres_legacy_projection import PERSONAL_ROWS, PERSONAL_TABLES
+    present = {row[0] for row in conn.execute("SELECT name FROM projection.sqlite_master WHERE type='table'")}
+    for table in PERSONAL_TABLES:
+        if table in present:
+            conn.execute(f'CREATE TEMP TABLE "{table}" AS SELECT * FROM projection."{table}" WHERE 0')
+    import re
+    for statement in PERSONAL_ROWS:
+        tables = set(re.findall(r'temp\.(\w+)', statement))
+        if tables <= present:
+            for table in tables:  # every table the statement names, before it runs
+                conn.execute(f'CREATE TEMP TABLE IF NOT EXISTS "{table}" AS SELECT * FROM projection."{table}"')
+            conn.execute(statement)
 
 
 def run_queued(factory, handlers):

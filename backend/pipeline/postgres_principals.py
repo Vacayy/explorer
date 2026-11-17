@@ -59,3 +59,15 @@ def remap_operator(conn, principal):
         old = operator_principal(conn)
         conn.execute('UPDATE fixture_portfolio_accounts SET principal=%s WHERE principal=%s', (principal, old))
         return old
+
+
+def conversation_owner(default):
+    """The conversation owner of a request: a member's own ('principal:<id>', pipeline.postgres_conversations);
+    the operator, and every request in the private mode, keep the existing owner (default)."""
+    from security.access_boundary import configured_access_mode
+    from pipeline.postgres_usage_gate import usage
+    context = usage.get()
+    principal = request_principal.get()
+    if configured_access_mode() == 'public' and principal is not None and (context is None or context.role != 'operator'):
+        return 'principal:' + principal
+    return default

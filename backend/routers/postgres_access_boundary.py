@@ -27,7 +27,7 @@ POLICIES = {'auth', 'public', 'compute', 'member', 'operator'}
 
 _MEMBER = re.compile(r'^/api/portfolio(/|$)')
 # Personal ledgers not yet per principal (members get 403 until converted; tracked as open items).
-_PERSONAL = re.compile(r'^/api/spine/(saved|follows|tracker/|feed/channels/read|conversations|studies|study-projects|groups|'
+_PERSONAL = re.compile(r'^/api/spine/(saved|follows|tracker/|feed/channels/read|studies|study-projects|groups|'
                        r'home/predictions/[^/]+/pin|transcript/(follow|core/pin)|trade/follow|person/followed|questions)')
 _ADMIN = re.compile(r'^/api/spine/(admin|approvals|agent-proposals|keywords|research/candidates|regimes/checks|client-errors|'
                     r'knowledge/items/[^/]+/(approve|reject)|narrative-candidates/)|^/api/spine/sources/(telegram|blog|youtube/[^/]+|collect)'
@@ -38,8 +38,8 @@ _OPERATOR_COMPUTE = re.compile(r'^/api/analysis/(runs|discovery)|^/api/spine/tw/
 def route_policy(method, path):
     if path.startswith('/api/auth/'):
         return 'auth'
-    if path == '/api/spine/ask':
-        return 'member'
+    if path == '/api/spine/ask' or path.startswith('/api/spine/conversations'):
+        return 'member'  # each member's own conversations (pipeline.postgres_conversations)
     if _MEMBER.match(path):
         return 'member'
     if _PERSONAL.match(path):  # questions too: the user's own tracked questions, read by the PG-native router

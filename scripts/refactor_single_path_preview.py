@@ -177,8 +177,9 @@ def worker_tool(name, args):
     from pipeline.chat_tools import ToolResult
     from pipeline.postgres_retrieval_jobs import enqueue
     with factory() as conn:
+        from pipeline.postgres_legacy_projection import requester_is_operator
         ident = enqueue(conn, 'chat_tool', f"{name}: {args.get('query') or args.get('entity') or args.get('topic') or ''}"[:200],
-                        {'name': name, 'args': args})
+                        {'name': name, 'args': args, 'scoped': not requester_is_operator()})
     deadline = time.monotonic() + EVIDENCE_WAIT_SECONDS
     while time.monotonic() < deadline:
         time.sleep(.3)

@@ -14,6 +14,11 @@ from routers.spine_conversations import ChatMessage, ConversationDetail, Convers
 def create_router(store, tools, *, owner_chat_id=None):
     router = APIRouter()
 
+    def owner():
+        # The request's conversation owner: a signed-in member's own conversations in the public mode.
+        from pipeline.postgres_principals import conversation_owner
+        return conversation_owner(owner_chat_id)
+
     @router.get('/api/spine/chat/targets', response_model=ChatTargetSearch)
     def targets(q: str = Query('', max_length=80), kind: TargetKind | None = None):
         if kind not in (None, 'doc', 'stock', 'person'):
@@ -45,7 +50,7 @@ def create_router(store, tools, *, owner_chat_id=None):
             refs = None
         try:
             cid, _ = store.create_question_with_refs(question, conversation_id=body.conversation_id,
-                                                    refs=refs, owner_chat_id=owner_chat_id,
+                                                    refs=refs, owner_chat_id=owner(),
                                                     max_new=5 if body.attachments is not None else 12)
         except ConversationNotFound as exc:
             raise HTTPException(404, '대화를 찾을 수 없습니다') from exc
@@ -55,7 +60,7 @@ def create_router(store, tools, *, owner_chat_id=None):
             raise HTTPException(422, '첨부할 대상을 찾을 수 없습니다') from exc
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
-        background.add_task(generate_answer, store, tools, cid, question, owner_chat_id=owner_chat_id,
+        background.add_task(generate_answer, store, tools, cid, question, owner_chat_id=owner(),
                             quote=body.quote.model_dump() if body.quote else None,
                             page_context=body.page_context.model_dump() if body.page_context else None)
         return AskResponse(answer=None, citations=[], gaps=[], model=None, conversation_id=cid,
@@ -63,7 +68,7 @@ def create_router(store, tools, *, owner_chat_id=None):
 
     @router.get('/api/spine/conversations', response_model=list[ConversationItem])
     def list_conversations(limit: int = 20, stock: str | None = None):
-        return store.list(owner_chat_id=owner_chat_id, limit=limit, stock=stock)
+        return store.list(owner_chat_id=owner(), limit=limit, stock=stock)
 
     @router.patch('/api/spine/conversations/{conversation_id}', response_model=ConversationItem)
     def rename(conversation_id: int, body: TitlePatch):
@@ -71,14 +76,14 @@ def create_router(store, tools, *, owner_chat_id=None):
         if not title:
             raise HTTPException(400, '제목이 비어 있습니다')
         try:
-            return store.rename(conversation_id, title, owner_chat_id=owner_chat_id)
+            return store.rename(conversation_id, title, owner_chat_id=owner())
         except ConversationNotFound as exc:
             raise HTTPException(404, '대화를 찾을 수 없습니다') from exc
 
     @router.get('/api/spine/conversations/{conversation_id}', response_model=ConversationDetail)
     def detail(conversation_id: int):
         try:
-            conversation, messages = store.detail(conversation_id, owner_chat_id=owner_chat_id)
+            conversation, messages = store.detail(conversation_id, owner_chat_id=owner())
         except ConversationNotFound as exc:
             raise HTTPException(404, '대화를 찾을 수 없습니다') from exc
         state = json.loads(conversation['state_json'] or '{}')
@@ -86,7 +91,7 @@ def create_router(store, tools, *, owner_chat_id=None):
             raise HTTPException(422, '격리 시험에서는 기존 복합 첨부 대화를 지원하지 않습니다')
         attached_docs, attached_refs = [], []
         for doc_id in (state.get('attached_doc_ids') or [])[:12]:
-            status = store.document_reference_status(conversation_id, doc_id, owner_chat_id=owner_chat_id)
+            status = store.document_reference_status(conversation_id, doc_id, owner_chat_id=owner())
             document = status.get('document') or {}
             title = document.get('title') or f'자료 #{doc_id}'
             if status['available']:
@@ -119,7 +124,7 @@ def create_router(store, tools, *, owner_chat_id=None):
     @router.get('/api/spine/conversations/{conversation_id}/stream')
     async def stream(conversation_id: int):
         try:
-            await run_in_threadpool(store.detail, conversation_id, owner_chat_id=owner_chat_id)
+            await run_in_threadpool(store.detail, conversation_id, owner_chat_id=owner())
         except ConversationNotFound as exc:
             raise HTTPException(404, '대화를 찾을 수 없습니다') from exc
         return await stream_conversation(conversation_id)
