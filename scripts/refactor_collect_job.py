@@ -36,7 +36,7 @@ TABLE_JOBS = {'prices', 'twrevenue', 'indexintraday', 'credit', 'retail', 'marke
 # included): a Market Today slot is one call; the US briefing is the macro light (macro.interpret), the macro issues
 # (briefing.macro) and the synthesis (briefing.synthesize), one each (cached ones make none). Their network reads are optional (index values, macro series): the legacy job still
 # writes its result when every one fails, so 'no source answered' does not hold them back.
-TABLE_MODEL_CAPS = {'markettoday': 2, 'usbriefing': 4,
+TABLE_MODEL_CAPS = {'markettoday': 2, 'usbriefing': 6,
                     # Brokers' forecasts from feed documents: one call per document, at most 25 documents per run.
                     'expfeed': 25,
                     # US earnings-call momentum (pending the PM's figures): digests of new calls (up to 22), extraction
@@ -177,6 +177,44 @@ def validate_partial_us_briefing(work, since):
     if not match or int(match[1]) < 1 or int(match[3]) < 1:
         raise trial.HeldBack('US briefing partial lacks verified movers or headline failure')
     return {'movers': int(match[1]), 'synthesis': match[2] == 'True', 'headline_failed': int(match[3])}
+
+
+
+# Rows omitted by the legacy retention cleanup remain part of the live dataset.
+BRIEFING_PRESERVE_KEYS = {
+    'market_indicators': ('snapshot_date', 'indicator'), 'macro_signals': ('as_of',),
+    'macro_news': ('url',), 'us_macro_issues': ('trade_date',),
+    'us_ticker_news': ('ticker', 'url'), 'us_movers': ('trade_date', 'rank'),
+}
+
+def preserve_briefing_rows(pg, work_path, tables):
+    """Restore PG-only keys to the work copy before its whole-table publication."""
+    import sqlite3
+    counts = {}
+    with sqlite3.connect(work_path) as work:
+        for table in sorted(set(tables) & BRIEFING_PRESERVE_KEYS.keys()):
+            info = work.execute(f'PRAGMA table_info("{table}")').fetchall()
+            columns = [row[1] for row in info]
+            keys = BRIEFING_PRESERVE_KEYS[table]
+            primary = tuple(row[1] for row in sorted((r for r in info if r[5]), key=lambda r: r[5]))
+            expected = pg.execute('SELECT columns FROM legacy_supplement_tables WHERE table_name=%s', (table,)).fetchone()
+            if not expected or primary != keys or list(expected[0]) != columns:
+                raise trial.HeldBack('briefing preservation schema mismatch')
+            query = f'INSERT OR IGNORE INTO "{table}" VALUES (' + ','.join('?' for _ in columns) + ')'
+            where = ' AND '.join(f'"{key}"=?' for key in keys)
+            seen = set()
+            before = work.total_changes
+            for (data,) in pg.execute('SELECT row_data FROM legacy_supplement_rows WHERE table_name=%s', (table,)):
+                row = data if isinstance(data, dict) else json.loads(data)
+                key = tuple(row.get(k) for k in keys)
+                if any(v is None for v in key) or key in seen or set(row) != set(columns):
+                    raise trial.HeldBack('briefing preservation key conflict')
+                seen.add(key)
+                work.execute(query, [row[c] for c in columns])
+                if work.execute(f'SELECT 1 FROM "{table}" WHERE {where}', key).fetchone() is None:
+                    raise trial.HeldBack('briefing preservation insert failed')
+            counts[table] = work.total_changes - before
+    return counts
 
 
 class ClosedIndexMarket(Exception):
@@ -1094,6 +1132,8 @@ def _run(label, pg, waited):
                 if written & DOCUMENT_TABLES:
                     entry['documents'] = _publish_documents(pg, label, started, before)
                 rest = written - DOCUMENT_TABLES
+                if label == 'usbriefing':
+                    entry['preserved_rows'] = preserve_briefing_rows(pg, trial.WORK, rest)
                 entry['applied'] = trial._apply_supplement(pg, supplement_tables(pg, rest)) if rest else {}
                 outcome = ('partial: US briefing headline failures; ' if record_status == 'partial' else 'applied: ') + \
                     ', '.join(f'{t} {n}' for t, n in (entry['applied'] or {}).items())

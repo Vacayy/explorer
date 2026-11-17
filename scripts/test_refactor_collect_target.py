@@ -736,6 +736,29 @@ class CollectionTargetTest(unittest.TestCase):
         job.require_us_briefing_synthesis(conn, '2026-11-18 00:00:00')
         conn.close()
 
+    def test_briefing_preserves_pg_only_rows_and_refuses_duplicate_keys(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'work.db'
+            conn = sqlite3.connect(path)
+            conn.execute('CREATE TABLE macro_news(url TEXT PRIMARY KEY, title TEXT)')
+            conn.execute('INSERT INTO macro_news VALUES (?,?)', ('existing', 'updated'))
+            conn.commit(); conn.close()
+            class PG:
+                rows = [({'url': 'existing', 'title': 'old'},), ({'url': 'retained', 'title': 'keep'},)]
+                def execute(self, query, args):
+                    if 'SELECT columns' in query:
+                        return types.SimpleNamespace(fetchone=lambda: (['url', 'title'],))
+                    return self.rows
+            pg = PG()
+            self.assertEqual(job.preserve_briefing_rows(pg, path, {'macro_news'}), {'macro_news': 1})
+            conn = sqlite3.connect(path)
+            self.assertEqual(conn.execute('SELECT title FROM macro_news WHERE url=?', ('existing',)).fetchone()[0], 'updated')
+            self.assertEqual(conn.execute('SELECT count(*) FROM macro_news').fetchone()[0], 2)
+            conn.close()
+            pg.rows.append(({'url': 'retained', 'title': 'collision'},))
+            with self.assertRaises(trial.HeldBack):
+                job.preserve_briefing_rows(pg, path, {'macro_news'})
+
     def test_closed_index_noop_requires_no_requests_or_other_writes(self):
         with patch('pipeline.index_intraday.due_markets', return_value=[]), \
              patch.object(trial, 'requests_by_host', {}), patch.object(trial, 'other_files', set()):
