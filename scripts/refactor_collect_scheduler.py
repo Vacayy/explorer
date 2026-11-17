@@ -48,6 +48,7 @@ CHAIN_SEQUENCE = ('chain_macro_news', 'chain', 'chain_causal', 'chain_signals', 
 JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40,t.me=40,www.youtube.com=40,.telesco.pe=40',
                  # A prior daily run used 21 Naver and 263 Yahoo requests; enforce a bounded production run.
                  'prices': 'polling.finance.naver.com=30,.finance.yahoo.com=300',
+                 'pfintraday': 'polling.finance.naver.com=30',
                  # one chart request per listed code (3,017 now), retries counted in the same cap (PM 6942746227)
                  'history': 'fchart.stock.naver.com=3200',
                  # credit (macbook-source #3 6942831447): 34 companies — issuer scan and history on the scanner host,

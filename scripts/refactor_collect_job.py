@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import refactor_collect_trial as trial  # noqa: E402 - the same harness and safeguards
 
 SENDS = {'briefing', 'pfintraday', 'pfclose', 'observealerts', 'observeweekly'}
-CONNECTED_SENDS = {'briefing', 'observeweekly', 'observealerts'}  # other sends remain refused until connected
+CONNECTED_SENDS = {'briefing', 'observeweekly', 'observealerts', 'pfintraday'}  # other sends remain refused
 NEVER = {'backfill'}  # uncapped model calls; never scheduled automatically
 # Table-collecting jobs: the unchanged script, then the supplement tables it actually wrote are replaced in PG
 # (recorded by a sqlite authorizer; writing any table that is not a supplement table holds the run back).
@@ -545,6 +545,47 @@ def run_observe_alerts():
     return bool(result['sent'])
 
 
+def run_portfolio_intraday():
+    """Run the legacy operator alerts on writable TEMP state, then persist the sent keys and fresh quotes."""
+    from pipeline import portfolio_alerts, postgres_live_tables, postgres_owner_overrides as overrides
+    from pipeline.notify import send_telegram
+    from pipeline.postgres_legacy_projection import LegacyProjection, requester_is_operator
+    if not requester_is_operator():
+        raise trial.HeldBack('operator projection is unavailable')
+    projection = LegacyProjection(trial._pg, '/projection', external=True)
+    failure = None
+    result = None
+    with trial._pg() as pg, pg.transaction():
+        pg.execute("SELECT pg_advisory_xact_lock(hashtextextended('owner-row-overrides',0))")
+        conn, _version = projection.write_connection(extra=('portfolio_quotes',))
+        try:
+            tables = ('portfolio_alerts_sent', 'portfolio_principle_state')
+            snapshot = lambda: {table: {row['key']: dict(row) for row in conn.execute(f'SELECT * FROM temp."{table}"')}
+                                for table in tables}
+            before = snapshot()
+            quotes_before = {row['stock_code']: dict(row) for row in conn.execute('SELECT * FROM temp.portfolio_quotes')}
+            try:
+                result = portfolio_alerts.run('intraday', conn=conn, send=send_telegram)
+            except (trial.Aborted, Exception) as exc:
+                failure = exc
+                conn.rollback()  # preserve only legacy steps that committed before the failure
+            after = snapshot()
+            quotes_after = {row['stock_code']: dict(row) for row in conn.execute('SELECT * FROM temp.portfolio_quotes')}
+            overrides.apply(pg, before, after)
+            changed = [row for key, row in quotes_after.items() if quotes_before.get(key) != row]
+            if changed:
+                postgres_live_tables.upsert_rows(pg, 'portfolio_quotes', 'stock_code', changed)
+        finally:
+            conn.close()
+    if failure is not None:
+        if isinstance(failure, trial.Aborted):
+            raise failure
+        raise trial.HeldBack('portfolio alert failed after state reconciliation')
+    if result.get('errors'):
+        raise trial.HeldBack('portfolio alert reported partial failure after state reconciliation')
+    return bool(result.get('sent'))
+
+
 def _run(label, pg, waited):
     import sqlite3
     from pipeline import llm, postgres_collect_runs, postgres_llm_calls
@@ -580,6 +621,16 @@ def _run(label, pg, waited):
         trial._instrument()
         try:
             outcome = 'applied: observation alert sent' if run_observe_alerts() else 'skipped: no alert changes'
+        except trial.Aborted as exc:
+            outcome = f'aborted: {exc}'
+        except trial.HeldBack as exc:
+            outcome = f'held back: {exc}'
+        except Exception as exc:
+            outcome = f'failed: {type(exc).__name__}'
+    elif label == 'pfintraday':
+        trial._instrument()
+        try:
+            outcome = 'applied: portfolio alerts sent' if run_portfolio_intraday() else 'skipped: no new portfolio alerts'
         except trial.Aborted as exc:
             outcome = f'aborted: {exc}'
         except trial.HeldBack as exc:

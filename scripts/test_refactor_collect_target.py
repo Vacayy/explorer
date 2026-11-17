@@ -25,7 +25,7 @@ class CollectionTargetTest(unittest.TestCase):
                                  {'DART_API_KEY', *engine.SEND_KEYS})
 
     def test_only_connected_send_can_be_enabled(self):
-        scheduler.check_enabled({'briefing', 'observeweekly', 'observealerts'})
+        scheduler.check_enabled({'briefing', 'observeweekly', 'observealerts', 'pfintraday'})
         with self.assertRaises(SystemExit):
             scheduler.check_enabled({'pfclose'})
 

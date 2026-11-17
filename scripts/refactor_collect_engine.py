@@ -144,9 +144,9 @@ def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=No
             'PYTHONPATH=/app/backend:/opt/local-sources', 'PYTHONDONTWRITEBYTECODE=1']
     env += [f'{key}={os.environ[key]}' for key in FORWARDED if os.environ.get(key)]
     env += [f'{key}={value}' for key, value in (extra_env or {}).items()]  # this job's own caps
-    keys = SECRET_KEYS + SEND_KEYS if job in {'briefing', 'observeweekly', 'observealerts'} else SECRET_KEYS
+    keys = SECRET_KEYS + SEND_KEYS if job in {'briefing', 'observeweekly', 'observealerts', 'pfintraday'} else SECRET_KEYS
     found = secrets(keys)
-    if job in {'briefing', 'observeweekly', 'observealerts'} and any(not found.get(key) for key in SEND_KEYS):
+    if job in {'briefing', 'observeweekly', 'observealerts', 'pfintraday'} and any(not found.get(key) for key in SEND_KEYS):
         raise ValueError('Telegram send credentials are missing')
     env += [f'{key}={value}' for key, value in found.items()]
     binds = [f'{ROOT}/backend:/app/backend:ro', f'{ROOT}/scripts:/app/scripts:ro',
