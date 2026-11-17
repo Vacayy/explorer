@@ -26,8 +26,8 @@ def summary(report):
 
 def main():
     dsn, schema = os.environ['REFACTOR_POSTGRES_DSN'], os.environ['REFACTOR_FIXTURE_SCHEMA']
-    if schema == os.environ.get('TRIAL_LIVE_SCHEMA'):
-        raise SystemExit('The rehearsal schema, never the live one')
+    if schema == os.environ.get('TRIAL_LIVE_SCHEMA') and os.environ.get('REFACTOR_T0') != 'live':
+        raise SystemExit('The rehearsal schema, never the live one (the cutover itself sets REFACTOR_T0=live)')
     base = sqlite3.connect(f'file:{BASE}?mode=ro&immutable=1', uri=True)
     source = sqlite3.connect(f'file:{SOURCE}?mode=ro', uri=True)
     with psycopg.connect(dsn, options=f'-c search_path={schema}') as pg:

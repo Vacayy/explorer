@@ -31,8 +31,8 @@ def main():
     from pipeline import postgres_collected_changes_fixture as changes
     from pipeline.postgres_collector_bridge import refresh_supplement
     dsn, schema = os.environ['REFACTOR_POSTGRES_DSN'], os.environ['REFACTOR_FIXTURE_SCHEMA']
-    if schema == os.environ.get('TRIAL_LIVE_SCHEMA'):
-        raise SystemExit('The rehearsal schema, never the live one')
+    if schema == os.environ.get('TRIAL_LIVE_SCHEMA') and os.environ.get('REFACTOR_T0') != 'live':
+        raise SystemExit('The rehearsal schema, never the live one (the cutover itself sets REFACTOR_T0=live)')
     connect = lambda: psycopg.connect(dsn, options=f'-c search_path={schema}')  # noqa: E731
     steps, out = {}, {}
 
