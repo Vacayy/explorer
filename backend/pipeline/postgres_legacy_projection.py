@@ -317,7 +317,7 @@ class LegacyProjection:
             _derive_owner_records(conn, pg, skip_overrides=() if writable else COMPUTED)
             _derive_native(conn, pg)
             if not writable and not requester_is_operator():
-                _scope_to_requester(conn)
+                _scope_to_requester(conn, pg)
             if writable and legacy:
                 for table, seq in legacy[2].items():
                     # Never hand out an ID the legacy writer already used.
@@ -387,10 +387,17 @@ def requester_is_operator():
     return context is not None and context.role == 'operator'
 
 
-def _scope_to_requester(conn):
+def _scope_to_requester(conn, pg):
     """Empty the requester's view of the operator's personal state (TEMP shadows hide the file's tables,
     so whatever a legacy reader joins, it sees no one's records)."""
     temp = {row[0] for row in conn.execute("SELECT name FROM temp.sqlite_master WHERE type='table'")}
+    if 'trade_follow' in temp:
+        # The collected item catalog without the operator's on/off choices (owner_trade_follow).
+        columns = [row[1] for row in conn.execute('PRAGMA temp.table_info("trade_follow")')]
+        conn.execute('DELETE FROM temp.trade_follow')
+        conn.executemany(f'INSERT INTO temp.trade_follow ({",".join(columns)}) VALUES ({",".join("?" for _ in columns)})',
+                         [tuple(row[0].get(c) for c in columns) for row in pg.execute(
+                             "SELECT row_data FROM legacy_snapshot_rows WHERE table_name='trade_follow' ORDER BY row_ordinal")])
     for table in PERSONAL_TABLES:
         if table in temp:
             conn.execute(f'DELETE FROM temp."{table}"')
