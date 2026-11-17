@@ -66,6 +66,10 @@ HISTORY_SHRINK_LIMIT = 0.5
 # logs/peer-monitor at T0 continues the observation chain), read as the legacy API does, then recorded and shown through
 # pipeline.postgres_peer_refresh (compare, one-transaction view switch, rollback). Only this job mounts the volume.
 PEER = 'peer'
+# Watch rule evaluation (scripts/evaluate_watch_rules.py, D-185; no model, no fetch): the group evaluate button's path
+# (routers.postgres_owner_legacy_fixture) for every ledger with groups — the operator's, then each member's own, each
+# on a connection scoped to that principal; the watch_evaluations diff goes to that principal's ledger.
+WATCH = 'watch'
 PEER_ROOT = Path(os.environ.get('PEER_ROOT', '/peer'))
 COMPUTE_JOBS = {'narratives', 'contradictions', 'promote', 'proposals', 'bigpicture', 'sectoroverview',
                 *(set(CHAIN_STEPS) - CHAIN_TABLE_STEPS)}
@@ -257,6 +261,62 @@ def _run_big_picture_event():
         return f'{type(exc).__name__}: {str(exc)[:200]}'
 
 
+def run_watch():
+    import psycopg
+    from pipeline import postgres_owner_legacy_fixture as owner_legacy
+    from pipeline.postgres_legacy_projection import LegacyProjection, write_connection_var
+    from pipeline.postgres_owner_overrides import record_outputs
+    from pipeline.postgres_principals import owner_account, request_principal
+    from pipeline.watch_rules import evaluate_all
+    from routers.postgres_owner_legacy_fixture import LOCK, _Borrowed, _diff, _rows
+    dsn, schema = os.environ['REFACTOR_POSTGRES_DSN'], trial._pg().execute('SELECT current_schema()').fetchone()[0]
+    factory = lambda: psycopg.connect(dsn, options=f'-c search_path={schema}')  # noqa: E731
+    projection = LegacyProjection(factory, '/projection', external=True)
+    from fastapi import FastAPI
+    from routers.postgres_legacy_read_fixture import install
+    # As the button: the network guard and saved data (the legacy run's US price refresh is the collection jobs' part;
+    # here it reports its failure in the summary), get_connection → the projection.
+    install(FastAPI(), projection, database_host='pg')
+    with factory() as pg:
+        members = [row[0] for row in pg.execute(
+            'SELECT DISTINCT a.principal FROM owner_legacy_rows r JOIN fixture_portfolio_accounts a ON a.id = r.account_id '
+            'ORDER BY 1')] if owner_legacy._accounts(pg) else []
+    results, mode = {}, os.environ.get('EXPLORER_ACCESS_MODE')
+    for principal in [None, *members]:  # None: the operator (private mode reads the operator's ledger)
+        if principal:
+            os.environ['EXPLORER_ACCESS_MODE'] = 'public'
+        token = request_principal.set(principal)
+        try:
+            conn, started = projection.write_connection(('job_runs',), scoped=True)  # its run record stays here
+            try:
+                before = _rows(conn)
+                borrowed = write_connection_var.set(_Borrowed(conn))
+                try:
+                    summary = evaluate_all(None, False)
+                finally:
+                    write_connection_var.reset(borrowed)
+                with factory() as pg:
+                    pg.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))', (LOCK,))
+                    changes = _diff(before, _rows(conn), owner_legacy.portfolio_group(pg))
+                    stored = [pk for table, upserts, _ in changes if table == 'watch_evaluations' for pk in upserts]
+                    if any(upserts or deletes for _, upserts, deletes in changes):
+                        account = owner_account(pg, create=True)[0] if principal else None
+                        sequences = dict(conn.execute('SELECT name,seq FROM temp.sqlite_sequence'))
+                        owner_legacy.apply(pg, started, changes,
+                                           {t: q for t, q in sequences.items() if t in owner_legacy.TABLES}, account=account)
+                        record_outputs(pg, 'scheduled watch', [('watch_evaluations', pk) for pk in stored])
+            finally:
+                conn.close()
+        finally:
+            request_principal.reset(token)
+            if mode is None:
+                os.environ.pop('EXPLORER_ACCESS_MODE', None)
+            else:
+                os.environ['EXPLORER_ACCESS_MODE'] = mode
+        results['operator' if principal is None else principal[:8]] = {'summary': summary, 'stored': len(stored)}
+    return results
+
+
 def run_compute(label):
     import psycopg
     from pipeline import postgres_scheduled_compute
@@ -304,6 +364,13 @@ def run(label):
         except trial.HeldBack as exc:  # under 90% of the published codes, or nothing collected: the file stays
             outcome = f'held back: {exc}'
         except Exception as exc:  # noqa: BLE001
+            outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'
+    elif label == WATCH:
+        try:
+            entry['watch'] = run_watch()
+            stored = sum(item['stored'] for item in entry['watch'].values())
+            outcome = f"applied: {stored} evaluations, {len(entry['watch'])} ledgers" if stored else 'skipped: nothing new'
+        except Exception as exc:  # noqa: BLE001 - nothing stored for a ledger whose diff failed
             outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'
     elif label == PEER:
         trial._instrument()
