@@ -1,16 +1,18 @@
-# Candidate route policy draft (generated from frontend routes.json, 304 routes)
+# Candidate route policy (generated from frontend routes.json and `routers/postgres_access_boundary.route_policy`)
 
-Rules: `public` = every collected-data read (no approval filter). `member` = per-principal personal ledger (portfolio). `member+quota` = model call charged to the chat usage reservation. `operator:personal` = personal ledgers not yet per-principal (members get 403 until converted). `operator:admin`, `operator:compute` (model/compute writes), `operator:collection` (not_run).
+Enforced in the public mode by `CandidateAccessBoundary`; the private (loopback) mode has no boundary.
+`public` = collected-data reads, open to everyone (personal parts come from the requester-scoped read shadow: an anonymous visitor sees none, a member their own).
+`member` = signed-in member or operator; personal ledgers are the requester's own (portfolio, saved, follows, prediction pins, read marks, tracker conditions, watch groups, studies, conversations, tracked questions).
+`compute` = open writes whose cost is limited where a model is actually called (usage gate; anonymous requests also rate-limited per network).
+`operator` = admin, collection settings, operator-only computations, and personal settings not per member yet (transcript follow/core pin, trade follow, group evaluation and watch reasons, tracker flow preparation).
+Regenerate after changing the boundary: run the snippet in the commit that last touched this file.
 
 | policy | count |
 |---|---|
-| public | 167 |
-| operator:personal | 48 |
-| operator:compute | 42 |
-| operator:admin | 25 |
-| member | 15 |
-| operator:collection | 6 |
-| member+quota | 1 |
+| member | 56 |
+| operator | 51 |
+| compute | 28 |
+| public | 169 |
 
 | method | path | policy |
 |---|---|---|
@@ -29,128 +31,126 @@ Rules: `public` = every collected-data read (no approval filter). `member` = per
 | POST | `/api/portfolio/thesis` | member |
 | GET | `/api/portfolio/transactions` | member |
 | POST | `/api/portfolio/transactions` | member |
-| POST | `/api/spine/ask` | member+quota |
-| GET | `/api/blog/sources` | operator:admin |
-| PUT | `/api/blog/sources/{source_id}/toggle` | operator:admin |
-| GET | `/api/business/{stock_code}/segments` | operator:admin |
-| GET | `/api/industries/` | operator:admin |
-| GET | `/api/ir-notes/{stock_code}` | operator:admin |
-| POST | `/api/ir-notes/{stock_code}` | operator:admin |
-| GET | `/api/spine/admin/health` | operator:admin |
-| GET | `/api/spine/admin/jobs` | operator:admin |
-| GET | `/api/spine/admin/observe` | operator:admin |
-| GET | `/api/spine/admin/runs` | operator:admin |
-| GET | `/api/spine/admin/runtime` | operator:admin |
-| POST | `/api/spine/agent-proposals/{proposal_id}/approve` | operator:admin |
-| POST | `/api/spine/agent-proposals/{proposal_id}/dismiss` | operator:admin |
-| GET | `/api/spine/approvals` | operator:admin |
-| GET | `/api/spine/client-errors` | operator:admin |
-| POST | `/api/spine/keywords/{keyword_id}/approve` | operator:admin |
-| POST | `/api/spine/knowledge/items/{knowledge_id}/approve` | operator:admin |
-| POST | `/api/spine/narrative-candidates/{tag}/approve` | operator:admin |
-| POST | `/api/spine/narrative-candidates/{tag}/dismiss` | operator:admin |
-| GET | `/api/spine/research/candidates` | operator:admin |
-| POST | `/api/spine/research/candidates/{candidate_id}/approve` | operator:admin |
-| POST | `/api/spine/sources/blog` | operator:admin |
-| POST | `/api/spine/sources/telegram` | operator:admin |
-| GET | `/api/telegram/channels` | operator:admin |
-| PUT | `/api/telegram/channels/{channel_id}/toggle` | operator:admin |
-| POST | `/api/financials/{stock_code}/collect` | operator:collection |
-| POST | `/api/spine/regimes/collect` | operator:collection |
-| POST | `/api/spine/risk/snapshot` | operator:collection |
-| POST | `/api/spine/sources/refresh` | operator:collection |
-| POST | `/api/spine/transcript/check/{ticker}` | operator:collection |
-| POST | `/api/spine/us/{ticker}/prices/collect` | operator:collection |
-| POST | `/api/analysis/discovery/cases` | operator:compute |
-| POST | `/api/analysis/discovery/cases/{case_id}/notes` | operator:compute |
-| POST | `/api/analysis/discovery/cases/{case_id}/research` | operator:compute |
-| POST | `/api/analysis/discovery/cases/{case_id}/research/{research_id}/cancel` | operator:compute |
-| POST | `/api/analysis/discovery/recommendations/{recommendation_id}/run` | operator:compute |
-| POST | `/api/analysis/discovery/strategies` | operator:compute |
-| POST | `/api/analysis/discovery/strategies/{strategy_id}/run` | operator:compute |
-| POST | `/api/analysis/discovery/strategies/{strategy_id}/versions` | operator:compute |
-| POST | `/api/analysis/refine` | operator:compute |
-| POST | `/api/analysis/runs` | operator:compute |
-| POST | `/api/analysis/runs/{run_id}/cancel` | operator:compute |
-| POST | `/api/analysis/runs/{run_id}/resume` | operator:compute |
-| POST | `/api/spine/beneficiary/upside` | operator:compute |
-| POST | `/api/spine/chart-structure/interpret` | operator:compute |
-| POST | `/api/spine/company-profile/{code}` | operator:compute |
-| POST | `/api/spine/company/{name}/profile` | operator:compute |
-| POST | `/api/spine/feed/company-evidence/summary` | operator:compute |
-| POST | `/api/spine/knowledge` | operator:compute |
-| POST | `/api/spine/knowledge/worldview/compute` | operator:compute |
-| POST | `/api/spine/narrative/compute` | operator:compute |
-| POST | `/api/spine/narrative/mer/compute` | operator:compute |
-| POST | `/api/spine/narrative/scenario/compute` | operator:compute |
-| POST | `/api/spine/person/{name}/profile` | operator:compute |
-| POST | `/api/spine/pricing/extract` | operator:compute |
-| POST | `/api/spine/proxy-boards` | operator:compute |
-| POST | `/api/spine/proxy-boards/suggest` | operator:compute |
-| PATCH | `/api/spine/proxy-boards/{board_id}` | operator:compute |
-| POST | `/api/spine/proxy-boards/{board_id}/items` | operator:compute |
-| POST | `/api/spine/questions` | operator:compute |
-| POST | `/api/spine/questions/propose` | operator:compute |
-| POST | `/api/spine/regimes/commentary` | operator:compute |
-| POST | `/api/spine/report/compute` | operator:compute |
-| POST | `/api/spine/sources/dossier/summary` | operator:compute |
-| POST | `/api/spine/sources/youtube` | operator:compute |
-| POST | `/api/spine/stock/{stock_code}/lens/compute` | operator:compute |
-| POST | `/api/spine/thesis/audit` | operator:compute |
-| POST | `/api/spine/trade/{hs_code}/beneficiaries` | operator:compute |
-| POST | `/api/spine/transcript/detail/{transcript_id}/digest` | operator:compute |
-| POST | `/api/spine/transcript/detail/{transcript_id}/reaction` | operator:compute |
-| POST | `/api/spine/transcript/expectation/{ticker}` | operator:compute |
-| POST | `/api/spine/tw/chain-report` | operator:compute |
-| POST | `/api/spine/world/big-picture/rebuild` | operator:compute |
-| GET | `/api/spine/conversations` | operator:personal |
-| GET | `/api/spine/conversations/{conversation_id}` | operator:personal |
-| PATCH | `/api/spine/conversations/{conversation_id}` | operator:personal |
-| POST | `/api/spine/feed/channels/read` | operator:personal |
-| POST | `/api/spine/feed/channels/read-all` | operator:personal |
-| GET | `/api/spine/follows` | operator:personal |
-| POST | `/api/spine/follows` | operator:personal |
-| GET | `/api/spine/groups` | operator:personal |
-| POST | `/api/spine/groups` | operator:personal |
-| GET | `/api/spine/groups/default-watch` | operator:personal |
-| GET | `/api/spine/groups/{group_id}` | operator:personal |
-| GET | `/api/spine/groups/{group_id}/digests` | operator:personal |
-| POST | `/api/spine/groups/{group_id}/evaluate` | operator:personal |
-| POST | `/api/spine/groups/{group_id}/members` | operator:personal |
-| DELETE | `/api/spine/groups/{group_id}/members/{stock_code}` | operator:personal |
-| PUT | `/api/spine/groups/{group_id}/members/{stock_code}/tracked` | operator:personal |
-| GET | `/api/spine/groups/{group_id}/reasons` | operator:personal |
-| POST | `/api/spine/groups/{group_id}/reasons` | operator:personal |
-| PUT | `/api/spine/groups/{group_id}/rules` | operator:personal |
-| GET | `/api/spine/groups/{group_id}/signals` | operator:personal |
-| POST | `/api/spine/home/predictions/{event_ticker}/pin` | operator:personal |
-| GET | `/api/spine/person/followed` | operator:personal |
-| GET | `/api/spine/saved` | operator:personal |
-| POST | `/api/spine/saved` | operator:personal |
-| PATCH | `/api/spine/saved/{item_id}` | operator:personal |
-| GET | `/api/spine/studies` | operator:personal |
-| POST | `/api/spine/studies` | operator:personal |
-| GET | `/api/spine/studies/{study_id}` | operator:personal |
-| GET | `/api/spine/studies/{study_id}/actions` | operator:personal |
-| POST | `/api/spine/studies/{study_id}/actions` | operator:personal |
-| POST | `/api/spine/studies/{study_id}/annotations` | operator:personal |
-| POST | `/api/spine/studies/{study_id}/turns/{turn_id}/recover` | operator:personal |
-| GET | `/api/spine/study-projects` | operator:personal |
-| POST | `/api/spine/study-projects` | operator:personal |
-| GET | `/api/spine/study-projects/search` | operator:personal |
-| GET | `/api/spine/study-projects/{pid}` | operator:personal |
-| PATCH | `/api/spine/study-projects/{pid}` | operator:personal |
-| POST | `/api/spine/study-projects/{pid}/clips` | operator:personal |
-| POST | `/api/spine/study-projects/{pid}/documents` | operator:personal |
-| DELETE | `/api/spine/study-projects/{pid}/documents/{sid}` | operator:personal |
-| POST | `/api/spine/study-projects/{pid}/turns/{tid}/recover` | operator:personal |
-| PATCH | `/api/spine/tracker/conditions/{cid}` | operator:personal |
-| GET | `/api/spine/tracker/status` | operator:personal |
-| GET | `/api/spine/tracker/{code}` | operator:personal |
-| POST | `/api/spine/tracker/{code}/conditions` | operator:personal |
-| GET | `/api/spine/trade/follow` | operator:personal |
-| POST | `/api/spine/transcript/core/pin` | operator:personal |
-| GET | `/api/spine/transcript/follow` | operator:personal |
+| POST | `/api/spine/ask` | member |
+| GET | `/api/spine/conversations` | member |
+| GET | `/api/spine/conversations/{conversation_id}` | member |
+| PATCH | `/api/spine/conversations/{conversation_id}` | member |
+| POST | `/api/spine/feed/channels/read` | member |
+| POST | `/api/spine/feed/channels/read-all` | member |
+| GET | `/api/spine/follows` | member |
+| POST | `/api/spine/follows` | member |
+| POST | `/api/spine/groups` | member |
+| GET | `/api/spine/groups/default-watch` | member |
+| POST | `/api/spine/groups/{group_id}/members` | member |
+| DELETE | `/api/spine/groups/{group_id}/members/{stock_code}` | member |
+| PUT | `/api/spine/groups/{group_id}/members/{stock_code}/tracked` | member |
+| PUT | `/api/spine/groups/{group_id}/rules` | member |
+| POST | `/api/spine/home/predictions/{event_ticker}/pin` | member |
+| GET | `/api/spine/questions` | member |
+| POST | `/api/spine/questions` | member |
+| GET | `/api/spine/questions/proxy/{proxy_id}` | member |
+| GET | `/api/spine/questions/{question_id}` | member |
+| GET | `/api/spine/questions/{question_id}/synthesis` | member |
+| GET | `/api/spine/saved` | member |
+| POST | `/api/spine/saved` | member |
+| PATCH | `/api/spine/saved/{item_id}` | member |
+| GET | `/api/spine/studies` | member |
+| POST | `/api/spine/studies` | member |
+| GET | `/api/spine/studies/{study_id}` | member |
+| GET | `/api/spine/studies/{study_id}/actions` | member |
+| POST | `/api/spine/studies/{study_id}/actions` | member |
+| POST | `/api/spine/studies/{study_id}/annotations` | member |
+| POST | `/api/spine/studies/{study_id}/turns/{turn_id}/recover` | member |
+| GET | `/api/spine/study-projects` | member |
+| POST | `/api/spine/study-projects` | member |
+| GET | `/api/spine/study-projects/search` | member |
+| GET | `/api/spine/study-projects/{pid}` | member |
+| PATCH | `/api/spine/study-projects/{pid}` | member |
+| POST | `/api/spine/study-projects/{pid}/clips` | member |
+| POST | `/api/spine/study-projects/{pid}/documents` | member |
+| DELETE | `/api/spine/study-projects/{pid}/documents/{sid}` | member |
+| POST | `/api/spine/study-projects/{pid}/turns/{tid}/recover` | member |
+| PATCH | `/api/spine/tracker/conditions/{cid}` | member |
+| POST | `/api/spine/tracker/{code}/conditions` | member |
+| POST | `/api/analysis/discovery/cases` | operator |
+| POST | `/api/analysis/discovery/cases/{case_id}/notes` | operator |
+| POST | `/api/analysis/discovery/cases/{case_id}/research` | operator |
+| POST | `/api/analysis/discovery/cases/{case_id}/research/{research_id}/cancel` | operator |
+| POST | `/api/analysis/discovery/recommendations/{recommendation_id}/run` | operator |
+| POST | `/api/analysis/discovery/strategies` | operator |
+| POST | `/api/analysis/discovery/strategies/{strategy_id}/run` | operator |
+| POST | `/api/analysis/discovery/strategies/{strategy_id}/versions` | operator |
+| POST | `/api/analysis/runs` | operator |
+| POST | `/api/analysis/runs/{run_id}/cancel` | operator |
+| POST | `/api/analysis/runs/{run_id}/resume` | operator |
+| GET | `/api/blog/sources` | operator |
+| PUT | `/api/blog/sources/{source_id}/toggle` | operator |
+| GET | `/api/business/{stock_code}/segments` | operator |
+| GET | `/api/industries/` | operator |
+| GET | `/api/ir-notes/{stock_code}` | operator |
+| POST | `/api/ir-notes/{stock_code}` | operator |
+| GET | `/api/spine/admin/health` | operator |
+| GET | `/api/spine/admin/jobs` | operator |
+| GET | `/api/spine/admin/observe` | operator |
+| GET | `/api/spine/admin/runs` | operator |
+| GET | `/api/spine/admin/runtime` | operator |
+| POST | `/api/spine/agent-proposals/{proposal_id}/approve` | operator |
+| POST | `/api/spine/agent-proposals/{proposal_id}/dismiss` | operator |
+| GET | `/api/spine/approvals` | operator |
+| GET | `/api/spine/client-errors` | operator |
+| POST | `/api/spine/groups/{group_id}/evaluate` | operator |
+| GET | `/api/spine/groups/{group_id}/reasons` | operator |
+| POST | `/api/spine/groups/{group_id}/reasons` | operator |
+| POST | `/api/spine/keywords/{keyword_id}/approve` | operator |
+| POST | `/api/spine/knowledge` | operator |
+| POST | `/api/spine/knowledge/items/{knowledge_id}/approve` | operator |
+| POST | `/api/spine/narrative-candidates/{tag}/approve` | operator |
+| POST | `/api/spine/narrative-candidates/{tag}/dismiss` | operator |
+| POST | `/api/spine/proxy-boards` | operator |
+| POST | `/api/spine/proxy-boards/suggest` | operator |
+| PATCH | `/api/spine/proxy-boards/{board_id}` | operator |
+| POST | `/api/spine/proxy-boards/{board_id}/items` | operator |
+| POST | `/api/spine/questions/propose` | operator |
+| GET | `/api/spine/research/candidates` | operator |
+| POST | `/api/spine/research/candidates/{candidate_id}/approve` | operator |
+| POST | `/api/spine/sources/blog` | operator |
+| POST | `/api/spine/sources/telegram` | operator |
+| GET | `/api/spine/sources/youtube` | operator |
+| POST | `/api/spine/sources/youtube` | operator |
+| GET | `/api/spine/trade/follow` | operator |
+| POST | `/api/spine/transcript/core/pin` | operator |
+| GET | `/api/spine/transcript/follow` | operator |
+| POST | `/api/spine/tw/chain-report` | operator |
+| GET | `/api/telegram/channels` | operator |
+| PUT | `/api/telegram/channels/{channel_id}/toggle` | operator |
+| POST | `/api/analysis/refine` | compute |
+| POST | `/api/financials/{stock_code}/collect` | compute |
+| POST | `/api/spine/beneficiary/upside` | compute |
+| POST | `/api/spine/chart-structure/interpret` | compute |
+| POST | `/api/spine/company-profile/{code}` | compute |
+| POST | `/api/spine/company/{name}/profile` | compute |
+| POST | `/api/spine/feed/company-evidence/summary` | compute |
+| POST | `/api/spine/knowledge/worldview/compute` | compute |
+| POST | `/api/spine/narrative/compute` | compute |
+| POST | `/api/spine/narrative/mer/compute` | compute |
+| POST | `/api/spine/narrative/scenario/compute` | compute |
+| POST | `/api/spine/person/{name}/profile` | compute |
+| POST | `/api/spine/pricing/extract` | compute |
+| POST | `/api/spine/regimes/collect` | compute |
+| POST | `/api/spine/regimes/commentary` | compute |
+| POST | `/api/spine/report/compute` | compute |
+| POST | `/api/spine/risk/snapshot` | compute |
+| POST | `/api/spine/sources/dossier/summary` | compute |
+| POST | `/api/spine/sources/refresh` | compute |
+| POST | `/api/spine/stock/{stock_code}/lens/compute` | compute |
+| POST | `/api/spine/thesis/audit` | compute |
+| POST | `/api/spine/trade/{hs_code}/beneficiaries` | compute |
+| POST | `/api/spine/transcript/check/{ticker}` | compute |
+| POST | `/api/spine/transcript/detail/{transcript_id}/digest` | compute |
+| POST | `/api/spine/transcript/detail/{transcript_id}/reaction` | compute |
+| POST | `/api/spine/transcript/expectation/{ticker}` | compute |
+| POST | `/api/spine/us/{ticker}/prices/collect` | compute |
+| POST | `/api/spine/world/big-picture/rebuild` | compute |
 | GET | `/api/analysis/discovery/cases` | public |
 | GET | `/api/analysis/discovery/cases/{case_id}` | public |
 | GET | `/api/analysis/discovery/recommendations` | public |
@@ -193,6 +193,10 @@ Rules: `public` = every collected-data read (no approval filter). `member` = per
 | GET | `/api/spine/feed/company-evidence` | public |
 | GET | `/api/spine/feed/company-prices` | public |
 | GET | `/api/spine/feed/timeline` | public |
+| GET | `/api/spine/groups` | public |
+| GET | `/api/spine/groups/{group_id}` | public |
+| GET | `/api/spine/groups/{group_id}/digests` | public |
+| GET | `/api/spine/groups/{group_id}/signals` | public |
 | GET | `/api/spine/home` | public |
 | GET | `/api/spine/home/ai-activity` | public |
 | GET | `/api/spine/home/predictions` | public |
@@ -228,6 +232,7 @@ Rules: `public` = every collected-data read (no approval filter). `member` = per
 | GET | `/api/spine/narrative/{narrative_id}/related` | public |
 | GET | `/api/spine/narratives/{narrative_id}/market-today` | public |
 | GET | `/api/spine/person` | public |
+| GET | `/api/spine/person/followed` | public |
 | GET | `/api/spine/person/home` | public |
 | GET | `/api/spine/person/resolve` | public |
 | GET | `/api/spine/person/{entity_id}` | public |
@@ -237,10 +242,6 @@ Rules: `public` = every collected-data read (no approval filter). `member` = per
 | GET | `/api/spine/proxy-boards/adapters` | public |
 | GET | `/api/spine/proxy-boards/adapters/{kind}/catalog` | public |
 | GET | `/api/spine/proxy-boards/{board_id}` | public |
-| GET | `/api/spine/questions` | public |
-| GET | `/api/spine/questions/proxy/{proxy_id}` | public |
-| GET | `/api/spine/questions/{question_id}` | public |
-| GET | `/api/spine/questions/{question_id}/synthesis` | public |
 | GET | `/api/spine/quotes` | public |
 | GET | `/api/spine/regimes` | public |
 | GET | `/api/spine/regimes/brk` | public |
@@ -267,11 +268,12 @@ Rules: `public` = every collected-data read (no approval filter). `member` = per
 | GET | `/api/spine/sources/dossier` | public |
 | GET | `/api/spine/sources/health` | public |
 | GET | `/api/spine/sources/refresh` | public |
-| GET | `/api/spine/sources/youtube` | public |
 | GET | `/api/spine/stock/{stock_code}/lens` | public |
 | GET | `/api/spine/technical-scan/{code}` | public |
 | GET | `/api/spine/thesis/audits` | public |
 | GET | `/api/spine/thesis/{audit_id}` | public |
+| GET | `/api/spine/tracker/status` | public |
+| GET | `/api/spine/tracker/{code}` | public |
 | GET | `/api/spine/trade/by-stock/{stock_code}` | public |
 | GET | `/api/spine/trade/grid` | public |
 | GET | `/api/spine/trade/highlights` | public |
