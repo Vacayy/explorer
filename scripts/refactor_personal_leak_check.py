@@ -35,7 +35,9 @@ for r in routes:
         if '{' in p: continue
         q = samples['query'].get(r['path'])
         urls.append((r['path'], urllib.parse.quote(p) + ('?' + urllib.parse.quote(q, safe='=&') if q else '')))
-VOLATILE = re.compile(r'^(as_of|generated_at|now|server_time|elapsed_ms|fetched_at|checked_at|activation)$')  # activation decays with time
+if os.environ.get('LEAK_CHECK_ONLY'):  # a focused rerun: only paths matching this pattern
+    urls = [(path, url) for path, url in urls if re.search(os.environ['LEAK_CHECK_ONLY'], path)]
+VOLATILE = re.compile(r'^(as_of|generated_at|now|server_time|elapsed_ms|fetched_at|checked_at|activation|until)$')  # activation decays with time; until echoes the request time
 def norm(x):
     if isinstance(x, dict): return {k: norm(v) for k, v in x.items() if not VOLATILE.match(k)}
     if isinstance(x, list): return [norm(v) for v in x]

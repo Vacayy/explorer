@@ -7,7 +7,8 @@ mode (EXPLORER_ACCESS_MODE=public) it first refuses to start while a schema migr
   separately provisioned login-transaction SQLite (in-progress logins only, as in development);
 - the model-call usage gate on the PG chat quota (development's trial policy and identity secret);
 - the anonymous trial chat (development's /api/public/chat contract) over the candidate document search;
-- the candidate access boundary, outermost, so it runs first.
+- the candidate access boundary, outermost, so it runs first; an ambiguous or unclassified route refuses the
+  start, and at startup one anonymous public read must pass the whole stack.
 """
 import os
 from pathlib import Path
@@ -29,7 +30,7 @@ def install_public(app, factory, *, trial_search=None, trial_read=None):
     from pipeline.postgres_identity_store import PostgreSQLIdentityStore
     from pipeline.postgres_trial_quota import PostgreSQLTrialQuota
     from routers import auth
-    from routers.postgres_access_boundary import CandidateAccessBoundary
+    from routers.postgres_access_boundary import CandidateAccessBoundary, check_routes
     from security.login_flow import AuthConfig, LoginFlow
     from security.login_transactions import LoginTransactions
     from security.trial_identity import TrialIdentity
@@ -62,4 +63,14 @@ def install_public(app, factory, *, trial_search=None, trial_read=None):
     gate.install(llm, quota)
     gate.add_middleware(app, identity=identity, factory=factory)
     app.add_middleware(CandidateAccessBoundary, routes=app.router.routes, service_factory=lambda: service)
+    check_routes(app.router.routes)  # an ambiguous or unclassified route refuses the start
+
+    @app.on_event('startup')
+    async def public_self_check():
+        """One anonymous public read through the whole stack (boundary, gate) must answer 200 before serving."""
+        import httpx
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://self-check') as client:
+            status = (await client.get('/api/spine/feed', params={'size': 1})).status_code
+        if status != 200:
+            raise RuntimeError(f'Public self-check failed: GET /api/spine/feed answered {status}')
     return True

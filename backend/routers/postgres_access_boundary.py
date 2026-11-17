@@ -73,19 +73,28 @@ def route_policies(routes):
     return policies
 
 
+def check_routes(routes, policies=None):
+    """(policies, endpoints) of the API routes; ValueError naming every ambiguous (two routes for one method and
+    path) or invalid entry. Called at public startup too, so a bad route refuses the start instead of failing
+    every request."""
+    policies = dict(route_policies(routes) if policies is None else policies)
+    registered, endpoints = {}, {}
+    for route in effective_routes(routes):
+        if is_api_route(route):
+            for method in route.methods:
+                registered[(method, route.path)] = registered.get((method, route.path), 0) + 1
+                endpoints[(method, route.path)] = route.endpoint
+    bad = sorted(key for key, policy in policies.items()
+                 if registered.get(key) != 1 or policy not in POLICIES or (policy == 'public' and key[0] not in {'GET', 'HEAD'}))
+    if bad:
+        raise ValueError('Invalid or ambiguous route policy: ' + ', '.join(f'{m} {p}' for m, p in bad))
+    return policies, endpoints
+
+
 class CandidateAccessBoundary:
     def __init__(self, app, routes, service_factory, policies=None, allow_media=True):
         self.app, self.routes, self.service_factory, self.allow_media = app, routes, service_factory, allow_media
-        self.policies = dict(route_policies(routes) if policies is None else policies)
-        registered, self.endpoints = {}, {}
-        for route in effective_routes(routes):
-            if is_api_route(route):
-                for method in route.methods:
-                    registered[(method, route.path)] = registered.get((method, route.path), 0) + 1
-                    self.endpoints[(method, route.path)] = route.endpoint
-        for key, policy in self.policies.items():
-            if registered.get(key) != 1 or policy not in POLICIES or (policy == 'public' and key[0] not in {'GET', 'HEAD'}):
-                raise ValueError(f'Invalid or ambiguous route policy: {key}')
+        self.policies, self.endpoints = check_routes(routes, policies)
 
     async def __call__(self, scope, receive, send):
         if scope['type'] == 'websocket':
