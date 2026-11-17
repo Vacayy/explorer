@@ -63,11 +63,19 @@ def create_router(factory, *, run_llm=None, search=None):
                 (sorted(held),))}
             refreshed = False
             fresh = {code for code, row in stored.items() if row.get('fetched_at') and time.time() - row['fetched_at'] < legacy.QUOTE_TTL}
-            if held and (force or legacy.market_hours()) and (force or not fresh >= held):
+            # Pilot: a member's button may reach the source once a minute (the shared IP); the operator is not limited.
+            from pipeline.postgres_usage_gate import _admit_anonymous, usage
+            context = usage.get()
+            member = context is not None and context.role == 'member'
+            if held and (force or legacy.market_hours()) and (force or not fresh >= held) \
+                    and not (member and not _admit_anonymous(factory, f'portfolio-quotes:{principal}', 1)):
                 now = time.time()
+                codes = sorted(held)
+                fetched = [q for start in range(0, len(codes), QUOTE_BATCH)  # every holding, in batches of the cap
+                           for q in live_quotes(codes[start:start + QUOTE_BATCH])]
                 rows = [{'stock_code': q['stock_code'], 'price': q['price'], 'change_pct': q.get('change_pct'),
                          'market_status': q.get('market_status'), 'traded_at': q.get('traded_at'), 'fetched_at': now}
-                        for q in live_quotes(sorted(held)) if q.get('stock_code') in held and q.get('price')]
+                        for q in fetched if q.get('stock_code') in held and q.get('price')]
                 if rows:
                     postgres_live_tables.upsert_rows(conn, 'portfolio_quotes', 'stock_code', rows)
                     stored.update({row['stock_code']: row for row in rows})
@@ -75,6 +83,7 @@ def create_router(factory, *, run_llm=None, search=None):
             if not held:
                 return {'quoted_at': None, 'count': 0, 'refreshed': False}
             times = [row.get('traded_at') for row in stored.values() if row.get('traded_at')]
+            # count: holdings with a stored quote (a holding the source did not answer stays visible as missing)
             return {'quoted_at': max(times) if times else None, 'count': len(stored), 'refreshed': refreshed}
 
     @router.get('', response_model=PortfolioSummary)
@@ -199,6 +208,9 @@ def create_router(factory, *, run_llm=None, search=None):
         return {'ok': True}
 
     return router
+
+
+QUOTE_BATCH = 50  # the quotes route's per-request cap; a larger portfolio is fetched in several requests
 
 
 def install(app, factory, *, run_llm=None, search=None):
