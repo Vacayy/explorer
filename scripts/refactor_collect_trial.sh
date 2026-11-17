@@ -24,12 +24,14 @@ container() {  # extra docker args..., then the command
   for key in TRIAL_MAX_REQUESTS TRIAL_HOST_CAPS COLLECT_FEED_SOURCES COLLECT_MAX_NEW_DOCS COLLECT_MAX_MODEL_CALLS COLLECT_PROJECTION_WAIT HISTORY_DESTINATION; do   # caps and limits from the caller
     [ -n "${!key:-}" ] && printf '%s=%s\n' "$key" "${!key}" >> "$env_file"
   done
-  local id; id=$(docker create ${CONTAINER_NAME:+--name "$CONTAINER_NAME"} --memory="${JOB_MEMORY:-2g}" --network explorer-refactor-preview-private --env-file "$env_file" --user "$USER_ID" \
+  local sources=${COLLECT_LOCAL_SOURCES:-$HOME/server-data/review/refactor-single/local-sources}   # the credit adapter, read-only
+  local extra=(); [ -d "$sources/local_sources" ] && extra=(-v "$sources:/opt/local-sources:ro")
+  local id; id=$(docker create ${extra[@]+"${extra[@]}"} ${CONTAINER_NAME:+--name "$CONTAINER_NAME"} --memory="${JOB_MEMORY:-2g}" --network explorer-refactor-preview-private --env-file "$env_file" --user "$USER_ID" \
     -v "$ROOT/backend:/app/backend:ro" -v "$ROOT/scripts:/app/scripts:ro" -v explorer-refactor-single-projection:/projection:"${PROJECTION_MODE:-ro}" \
     -v "$VOLUME:/trial" -v explorer-public-codex-auth:/provider-auth -v explorer-data-rehearsal_models:/models:ro \
     -v "$HOME/server-data/review/refactor-single/codex-gate:/control/codex-gate:ro" \
     -v "$HOME/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py:/control/codex-credential-gate.py:ro" \
-    -w /app/backend -e PYTHONPATH=/app/backend -e PYTHONDONTWRITEBYTECODE=1 "$@")
+    -w /app/backend -e PYTHONPATH=/app/backend:/opt/local-sources -e PYTHONDONTWRITEBYTECODE=1 "$@")
   rm -f "$env_file"
   [ "${NO_INTERNET:-0}" = 1 ] || docker network connect bridge "$id"   # outbound internet for this one-shot run only
   local rc=0; docker start -a "$id" || rc=$?

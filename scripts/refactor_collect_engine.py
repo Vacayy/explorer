@@ -22,6 +22,10 @@ VOLUME = 'explorer-refactor-collect-trial'
 ROOT = Path(__file__).resolve().parent.parent
 HOME = Path(os.environ.get('HOST_HOME', Path.home()))
 STATE = HOME / 'server-data/review/refactor-single/collect-trial-schema'
+# The credit adapter (local_sources/, git-excluded code from the MacBook; architect #3 6942709181): like a credential,
+# a host directory mounted read-only into job containers only, never the API or the image. Absent, credit reports
+# 'adapter missing' as on a MacBook without it.
+LOCAL_SOURCES = Path(os.environ.get('COLLECT_LOCAL_SOURCES', HOME / 'server-data/review/refactor-single/local-sources'))
 API_ENV = ('REFACTOR_POSTGRES_DSN', 'REFACTOR_TEST_DISPOSABLE', 'FASTEMBED_CACHE_PATH', 'CODEX_BIN', 'CODEX_HOME',
            'CODEX_FALLBACK_MODEL', 'HOME', 'ENRICH_ENGINE')
 FORWARDED = ('TRIAL_MAX_REQUESTS', 'TRIAL_HOST_CAPS', 'COLLECT_FEED_SOURCES', 'COLLECT_MAX_NEW_DOCS',
@@ -101,7 +105,7 @@ def check(spec):
     allowed = {f'{ROOT}/backend', f'{ROOT}/scripts', 'explorer-refactor-single-projection', VOLUME,
                'explorer-public-codex-auth', 'explorer-data-rehearsal_models',
                f'{HOME}/server-data/review/refactor-single/codex-gate',
-               f'{HOME}/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py'}
+               f'{HOME}/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py', str(LOCAL_SOURCES)}
     sources = {bind.split(':', 1)[0] for bind in host['Binds']}
     if spec['Image'] != IMAGE or sources - allowed or any('docker.sock' in bind for bind in host['Binds']):
         raise ValueError(f'Refused job container: image {spec["Image"]}, mounts {sorted(sources - allowed)}')
@@ -130,7 +134,7 @@ def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=No
     env += [f'REFACTOR_FIXTURE_SCHEMA={STATE.read_text().strip()}', 'CLAUDE_BIN=/bin/false', 'EXPLORER_ONESHOT=1',
             'TRIAL_LIVE_SCHEMA=' + next(item.split('=', 1)[1] for item in api['Config']['Env']
                                         if item.startswith('REFACTOR_FIXTURE_SCHEMA=')),
-            'PYTHONPATH=/app/backend', 'PYTHONDONTWRITEBYTECODE=1']
+            'PYTHONPATH=/app/backend:/opt/local-sources', 'PYTHONDONTWRITEBYTECODE=1']
     env += [f'{key}={os.environ[key]}' for key in FORWARDED if os.environ.get(key)]
     env += [f'{key}={value}' for key, value in (extra_env or {}).items()]  # this job's own caps
     env += [f'{key}={value}' for key, value in secrets().items()]
@@ -140,6 +144,8 @@ def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=No
              'explorer-public-codex-auth:/provider-auth', 'explorer-data-rehearsal_models:/models:ro',
              f'{HOME}/server-data/review/refactor-single/codex-gate:/control/codex-gate:ro',
              f'{HOME}/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py:/control/codex-credential-gate.py:ro']
+    if (LOCAL_SOURCES / 'local_sources').is_dir():
+        binds.append(f'{LOCAL_SOURCES}:/opt/local-sources:ro')
     units = {'g': 1 << 30, 'm': 1 << 20}
     spec = {'Image': IMAGE, 'Cmd': argv, 'Env': env, 'User': api['Config']['User'], 'WorkingDir': '/app/backend',
             'Labels': {LABEL: '1', f'{LABEL}.job': job},

@@ -55,6 +55,7 @@ SECTOR_REFRESH = 'sectorrefresh'
 # writable (the builder manages projection-*.db there and nothing else).
 MARKET_HISTORY = 'history'
 HISTORY_DESTINATION = Path(os.environ.get('HISTORY_DESTINATION', '/projection/market_history.sqlite'))
+HISTORY_SHRINK_LIMIT = 0.5
 COMPUTE_JOBS = {'narratives', 'contradictions', 'promote', 'proposals', 'bigpicture', 'sectoroverview',
                 *(set(CHAIN_STEPS) - CHAIN_TABLE_STEPS)}
 # chain: its document intake only (ingest with the registered sources, tagging included), capped per run and
@@ -129,11 +130,47 @@ def run_sector_refresh():
     return {'prices': result['after']['sector_market_prices'], 'load_seconds': result['load_seconds']}
 
 
+def _guarded_history_publish(folder, destination, *, publish):
+    """The script's publish into a staging folder beside the destination (same filesystem), then the architect's
+    conditions (#3 6942709181) before the atomic rename: integrity_check ok, at least half the published rows, the
+    as-of date not moving back. Any failure leaves the previous file in place."""
+    import shutil
+    import sqlite3
+    staging = destination.parent / '.market-history-staged'
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir()
+    try:
+        staged = staging / destination.name
+        publish(folder, staged)
+        with sqlite3.connect(f'file:{staged}?mode=ro', uri=True) as db:
+            if db.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
+                raise ValueError('Staged history failed integrity_check')
+            rows, as_of = db.execute("SELECT (SELECT count(*) FROM prices), "
+                                     "(SELECT value FROM metadata WHERE key='as_of')").fetchone()
+        if destination.exists():
+            with sqlite3.connect(f'file:{destination}?mode=ro', uri=True) as db:
+                old_rows, old_as_of = db.execute("SELECT (SELECT count(*) FROM prices), "
+                                                 "(SELECT value FROM metadata WHERE key='as_of')").fetchone()
+            if rows < HISTORY_SHRINK_LIMIT * old_rows or json.loads(as_of) < json.loads(old_as_of):
+                raise ValueError(f'Staged history {rows} rows to {json.loads(as_of)} against {old_rows} to '
+                                 f'{json.loads(old_as_of)}: kept the published file')
+        os.replace(staged, destination)
+        directory = os.open(destination.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+
 def run_market_history():
+    import functools
     import sqlite3
     import refresh_market_history as refresh
     refresh.SOURCE, refresh.DESTINATION = trial.WORK, HISTORY_DESTINATION
     refresh.ROOT = trial.WORK.parent / 'market-history'
+    refresh.history.publish = functools.partial(_guarded_history_publish, publish=refresh.history.publish)
     before = refresh._published()
     code = refresh.main()
     summary = sqlite3.connect(trial.WORK).execute("SELECT status, summary FROM job_runs WHERE job='market_history' "
