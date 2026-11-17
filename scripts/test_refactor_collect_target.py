@@ -736,6 +736,19 @@ class CollectionTargetTest(unittest.TestCase):
         job.require_us_briefing_synthesis(conn, '2026-11-18 00:00:00')
         conn.close()
 
+    def test_closed_index_noop_requires_no_requests_or_other_writes(self):
+        with patch('pipeline.index_intraday.due_markets', return_value=[]), \
+             patch.object(trial, 'requests_by_host', {}), patch.object(trial, 'other_files', set()):
+            self.assertTrue(job.closed_index_noop('indexintraday'))
+            self.assertFalse(job.closed_index_noop('prices'))
+            with patch.object(trial, 'requests_by_host', {'source': 1}):
+                self.assertFalse(job.closed_index_noop('indexintraday'))
+            with patch.object(trial, 'other_files', {'other'}):
+                self.assertFalse(job.closed_index_noop('indexintraday'))
+        with patch('pipeline.index_intraday.due_markets', return_value=['open']), \
+             patch.object(trial, 'requests_by_host', {}), patch.object(trial, 'other_files', set()):
+            self.assertFalse(job.closed_index_noop('indexintraday'))
+
     def test_partial_briefing_requires_legacy_headline_failure_and_movers(self):
         conn = sqlite3.connect(':memory:')
         conn.execute('CREATE TABLE job_runs(id INTEGER, job TEXT, status TEXT, summary TEXT, ran_at TEXT)')

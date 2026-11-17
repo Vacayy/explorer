@@ -179,6 +179,18 @@ def validate_partial_us_briefing(work, since):
     return {'movers': int(match[1]), 'synthesis': match[2] == 'True', 'headline_failed': int(match[3])}
 
 
+class ClosedIndexMarket(Exception):
+    """An expected no-op outside index trading hours."""
+
+
+def closed_index_noop(label):
+    """The legacy index collector intentionally does nothing outside market hours."""
+    if label != 'indexintraday' or trial.requests_by_host or trial.other_files:
+        return False
+    from pipeline.index_intraday import due_markets
+    return not due_markets()
+
+
 def run_sector_refresh():
     import psycopg
     from pipeline import postgres_sector_refresh as sector
@@ -1076,6 +1088,8 @@ def _run(label, pg, waited):
                 written = {t for t in trial.written if not t.startswith(DERIVED)} - LOCAL_LEDGERS
                 entry['written'] = sorted(written)
                 if not written:
+                    if closed_index_noop(label):
+                        raise ClosedIndexMarket('index markets closed')
                     raise trial.HeldBack('wrote nothing')
                 if written & DOCUMENT_TABLES:
                     entry['documents'] = _publish_documents(pg, label, started, before)
@@ -1087,6 +1101,8 @@ def _run(label, pg, waited):
                     entry['big_picture_event'] = _run_big_picture_event()
                 if pricing:  # the briefing's pricing ledger extraction, on the computation path after it is in PG
                     entry['pricing'] = _run_pricing()
+        except ClosedIndexMarket as exc:
+            outcome = f'skipped: {exc}'
         except trial.Aborted as exc:
             outcome = f'aborted: {exc}'
         except trial.HeldBack as exc:
