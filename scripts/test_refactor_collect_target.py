@@ -19,6 +19,11 @@ import refactor_feed_refresh as feed_refresh
 
 
 class CollectionTargetTest(unittest.TestCase):
+    def setUp(self):
+        patcher = patch.object(job, '_mark_identical_feed_revisions', return_value=0)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_model_budget_holds_under_parallel_engine_attempts(self):
         from concurrent.futures import ThreadPoolExecutor
         from pipeline import llm

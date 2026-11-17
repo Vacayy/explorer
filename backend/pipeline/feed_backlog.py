@@ -170,7 +170,9 @@ class FeedBacklog:
         lane = hashlib.sha256((connector + '\0' + ref).encode()).hexdigest()
         payload = json.dumps(asdict(doc), ensure_ascii=False, separators=(',', ':'))
         self.conn.execute('INSERT INTO pending(source_type,source_id,lane,connector,payload) VALUES (?,?,?,?,?) '
-                          'ON CONFLICT(source_type,source_id) DO UPDATE SET payload=excluded.payload',
+                          'ON CONFLICT(source_type,source_id) DO UPDATE SET '
+                          "defer_reason=CASE WHEN pending.defer_reason='identical' AND pending.payload<>excluded.payload "
+                          "THEN 'revision' ELSE pending.defer_reason END,payload=excluded.payload",
                           (doc.source_type, doc.source_id, lane, connector, payload))
         self.conn.commit()  # fetched material survives a later source failure
 
@@ -227,6 +229,37 @@ class FeedBacklog:
                     remaining.append(lane)
             lanes = remaining
         return result
+
+    def mark_identical_revisions(self, work, *, limit=100):
+        """Classify exact text copies without deleting their original queued payloads."""
+        from pipeline.dates import to_iso_utc
+        rows = self.conn.execute("SELECT seq,payload FROM pending WHERE revision_pending=1 "
+                                 "AND COALESCE(defer_reason,'revision')='revision' ORDER BY seq LIMIT ?", (limit,)).fetchall()
+        confirmed = []
+        for seq, payload in rows:
+            doc = RawDoc(**json.loads(payload))
+            if doc.kind != 'text':
+                continue
+            row = work.execute('SELECT content_hash,media_json,title,url,published_at,raw_content,digest_status,markdown '
+                               'FROM raw_documents WHERE source_type=? AND source_id=?',
+                               (doc.source_type, doc.source_id)).fetchone()
+            if row is None:
+                continue
+            md = doc.markdown if doc.markdown is not None else doc.raw_content or ''
+            try:
+                media = set(json.loads(row[1] or '[]'))
+            except (ValueError, TypeError):
+                continue
+            equal = (hashlib.sha256(md.encode()).hexdigest() == row[0] and set(doc.images).issubset(media)
+                     and (doc.title or '') == (row[2] or '') and (doc.url or '') == (row[3] or '')
+                     and (to_iso_utc(doc.published_at or '') or '') == (row[4] or '')
+                     and (doc.raw_content or '') == (row[5] or '') and (doc.digest_status or '') == (row[6] or '')
+                     and md == (row[7] or ''))
+            if equal:
+                confirmed.append((seq,))
+        with self.conn:
+            self.conn.executemany("UPDATE pending SET defer_reason='identical' WHERE seq=? AND revision_pending=1", confirmed)
+        return len(confirmed)
 
     def acknowledge(self, seq):
         """Call only after publication succeeds; deleting and advancing the cursor are atomic."""

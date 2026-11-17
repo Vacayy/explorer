@@ -1,4 +1,6 @@
 import tempfile
+import hashlib
+import sqlite3
 import unittest
 from pathlib import Path
 
@@ -7,6 +9,23 @@ from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference, stage_on
 
 
 class FeedBacklogTest(unittest.TestCase):
+    def test_identical_revision_is_kept_and_new_payload_reopens_review(self):
+        with tempfile.TemporaryDirectory() as directory:
+            queue = FeedBacklog(Path(directory) / 'pending.sqlite')
+            doc = RawDoc('telegram', 'id', raw_content='same')
+            queue.enqueue('telegram', 'channel', doc)
+            queue.defer_revision(queue.next()[0])
+            work = sqlite3.connect(':memory:')
+            work.execute('CREATE TABLE raw_documents(source_type,source_id,content_hash,media_json,title,url,published_at,raw_content,digest_status,markdown)')
+            work.execute('INSERT INTO raw_documents VALUES (?,?,?,?,?,?,?,?,?,?)',
+                         ('telegram', 'id', hashlib.sha256(b'same').hexdigest(), None, '', '', '', 'same', None, 'same'))
+            self.assertEqual(queue.mark_identical_revisions(work), 1)
+            self.assertEqual(queue.conn.execute('SELECT defer_reason FROM pending').fetchone()[0], 'identical')
+            queue.enqueue('telegram', 'channel', RawDoc('telegram', 'id', raw_content='changed'))
+            self.assertEqual(queue.conn.execute('SELECT defer_reason FROM pending').fetchone()[0], 'revision')
+            self.assertEqual(queue.mark_identical_revisions(work), 0)
+            work.close()
+            queue.close()
     def test_batch_rotates_source_lanes_without_acknowledging(self):
         with tempfile.TemporaryDirectory() as directory:
             queue = FeedBacklog(Path(directory) / 'pending.sqlite')

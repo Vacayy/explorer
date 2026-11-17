@@ -460,6 +460,11 @@ def _feed_document_known(source, key):
         return work.execute('SELECT 1 FROM raw_documents WHERE source_type=? AND source_id=? LIMIT 1', (source, key)).fetchone() is not None
 
 
+def _mark_identical_feed_revisions(queue):
+    with sqlite3.connect(f'file:{trial.WORK}?mode=ro', uri=True) as work:
+        return queue.mark_identical_revisions(work)
+
+
 def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-backlog.sqlite', youtube=None, telegram=None):
     """One blog reference, one queued document; a failure keeps this isolated feed on hold."""
     from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference
@@ -477,6 +482,7 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
     queue = FeedBacklog(queue_path)
     try:
         deferred_analysis = False
+        identical_revisions = _mark_identical_feed_revisions(queue)
         allowed = {'blog'} | ({'youtube'} if youtube is not None else set()) | ({'telegram'} if telegram is not None else set())
         if queue.intent():
             raise trial.HeldBack('an earlier feed publication intent requires review')
@@ -553,6 +559,7 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
                     'sources': sorted(allowed),
                     'deferred_analysis': int(deferred_analysis),
                     'deferred_revisions': deferred_revisions,
+                    'identical_revisions': identical_revisions,
                     'steps_not_connected': ['other feed sources', 'existing document revisions', 'chain postprocessing']}
 
         class QueuedDocuments:
@@ -574,6 +581,7 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
         result['sources'] = sorted({item[1] for item in selected})
         result['deferred_analysis'] = int(deferred_analysis)
         result['deferred_revisions'] = deferred_revisions
+        result['identical_revisions'] = identical_revisions
         result['steps_not_connected'] = ['other feed sources', 'existing document revisions', 'chain postprocessing']
         return result
     finally:
