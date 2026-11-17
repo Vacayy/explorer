@@ -131,6 +131,8 @@ def capture(pg, source):
                     f'SELECT DISTINCT {",".join(chr(34) + c + chr(34) for c in part)} FROM "{table}"')}
                 kept = [row for row in rows if _key(row, part) not in macbook_parts]
                 excluded[table] = {'part_on_macbook': len(rows) - len(kept)}
+                if len(kept) != len(rows):  # archived, so a candidate part the MacBook rewrote stays reviewable
+                    state[f'{table}:part'] = [row for row in rows if _key(row, part) in macbook_parts]
                 rows = kept
             if table in RETENTION:
                 column, days = RETENTION[table]
@@ -170,12 +172,15 @@ def restore(pg, captured, state):
                        'WHERE table_name=%s) WHERE table_name=%s', (table, table))
             report[table] = {'kind': 'accumulating', 'added_back': len(rows), 'renumbered': renumbered}
         for table, rows in state.items():
-            kind = 'version conflict: the MacBook version stands' if table.endswith(':version') else \
-                'state table: the MacBook rows replaced it'
-            table = table.removesuffix(':version')
+            kind = ('version conflict: the MacBook version stands' if table.endswith(':version') else
+                    'part rewritten on the MacBook: its rows stand' if table.endswith(':part') else
+                    'state table: the MacBook rows replaced it')
+            label = {'version': 'version_conflicts_archived', 'part': 'part_on_macbook_archived'}.get(
+                table.rpartition(':')[2] if ':' in table else '', 'archived')
+            table = table.split(':')[0]
             for row in rows:
                 pg.execute('INSERT INTO candidate_record_archive (ledger, record_key, candidate_row, source_row, computed, reason) '
                            'VALUES (%s,%s,%s,NULL,false,%s)', (f'supplement:{table}', Jsonb([]), Jsonb(row), kind))
             report[table] = {**report.get(table, {}), 'kind': 'accumulating' if table in ACCUMULATING else 'state',
-                             ('version_conflicts_archived' if 'version' in kind else 'archived'): len(rows)}
+                             label: len(rows)}
     return report
