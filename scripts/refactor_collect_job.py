@@ -374,8 +374,12 @@ def run_feeds(pg):
 
 
 def run(label):
+    import sqlite3
     from pipeline import llm, postgres_collect_runs, postgres_llm_calls
     pg = trial._pg()
+    if trial.WORK.exists():  # a work copy prepared before the bands existed takes them on its next run
+        with sqlite3.connect(trial.WORK) as work:
+            trial.band_ids(work)
     started = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
     entry = {}
     if label in SENDS or label in NEVER:
