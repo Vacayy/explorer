@@ -46,8 +46,8 @@ requests_by_host, statuses, per_host, errors = Counter(), Counter(), Counter(), 
 stopped = []  # the first stop reason; kept, because a source may swallow the exception raised at the stop
 
 
-class Aborted(RuntimeError):
-    """A source answered 403/429 (or a block page): stop, never retry, never apply."""
+class Aborted(BaseException):
+    """A source hit a stop rule; ordinary library retry handlers must not swallow it."""
 
 
 class HeldBack(RuntimeError):

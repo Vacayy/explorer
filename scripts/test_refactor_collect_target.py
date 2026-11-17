@@ -12,6 +12,16 @@ import refactor_collect_scheduler as scheduler
 
 
 class CollectionTargetTest(unittest.TestCase):
+    def test_source_stop_is_not_swallowed_by_library_retry(self):
+        def retrying_client():
+            try:
+                raise trial.Aborted('request cap')
+            except Exception:
+                return 'retry'
+
+        with self.assertRaises(trial.Aborted):
+            retrying_client()
+
     def test_target_guard(self):
         live = 'refactor_fixture_' + 'a' * 32
         clone = 'refactor_fixture_' + 'b' * 32

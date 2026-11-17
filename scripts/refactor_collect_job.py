@@ -466,6 +466,8 @@ def _run(label, pg, waited):
         try:
             entry['history'] = run_market_history()
             outcome = f"{'skipped' if entry['history']['status'] == 'skipped' else 'applied'}: {entry['history']['summary']}"
+        except trial.Aborted as exc:
+            outcome = f'aborted: {exc}'
         except trial.HeldBack as exc:  # under 90% of the published codes, or nothing collected: the file stays
             outcome = f'held back: {exc}'
         except Exception as exc:  # noqa: BLE001
@@ -496,6 +498,8 @@ def _run(label, pg, waited):
             entry['peer'] = run_peer()
             outcome = (f"applied: {entry['peer']['as_of']}, {entry['peer']['companies']} companies" if entry['peer']['shown']
                        else f"skipped: {entry['peer']['as_of']} already shown")
+        except trial.Aborted as exc:
+            outcome = f'aborted: {exc}'
         except (trial.HeldBack, ValueError) as exc:  # a stop, or the comparison: the shown runtime stays
             outcome = f'held back: {exc}'
         except Exception as exc:  # noqa: BLE001 - a fetch failure: the collector records its attempt, nothing shown
