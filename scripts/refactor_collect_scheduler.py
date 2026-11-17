@@ -32,14 +32,11 @@ sys.path.insert(0, str(ROOT / 'scripts'))  # refactor_collect_engine, refactor_c
 LOCK = Path(os.environ.get('COLLECT_SCHEDULER_LOCK', Path.home() / 'server-data/review/refactor-single/collect-scheduler.lock'))
 JOB_SECONDS = int(os.environ.get('COLLECT_JOB_SECONDS', '3600'))  # one job's time limit (the MacBook chain step limit)
 TICK_SECONDS = 20
-# One heavy job at a time on the 7.7GiB VM (architect #3 6948283672): the scheduler runs one job at a time already;
-# a job with a limit of 3GiB or more also waits while the projection builder or the compute worker (outside the
-# scheduler) uses BUSY_BYTES or more, up to HEAVY_WAIT_SECONDS, and the wait is recorded with the run.
-HEAVY_NEIGHBOURS = ('explorer-refactor-single-projection-builder', 'explorer-refactor-single-compute-worker')
-BUSY_BYTES = 1 << 30
-HEAVY_WAIT_SECONDS = 1800
+# One heavy job at a time on the 7.7GiB VM: the scheduler runs one job at a time, and a heavy job also takes the PG
+# heavy lock the projection builder takes (refactor_collect_job.HEAVY, pipeline.postgres_heavy_lock).
 JOB_MEMORY = {'proposals': '3584m',  # measured peak 2.9GiB (weekly); every other job 2g
-              'questions': '3584m'}  # the search model and index: 2.2GiB measured, killed at 2g
+              'questions': '3584m',  # the search model and index: 2.2GiB measured, killed at 2g
+              'callmomentum': '3584m', 'callfresh': '3584m'}
 # The MacBook's 30-minute chain (scripts/run_chain.sh) in its order: one container per step, each recorded; a step
 # that fails does not stop the next (as there). Not here: probe_llm (the gate does it), briefing catch-up (sends),
 # vault export and the search index (the projection builder). Image backfill runs with at most 10 calls.
@@ -135,29 +132,10 @@ def run_job(label, log=print):
         _run_one(step, log)
 
 
-def _heavy(label):
-    limit = JOB_MEMORY.get(label, '2g')
-    return int(limit[:-1]) * {'g': 1024, 'm': 1}[limit[-1]] >= 3072
-
-
-def _wait_for_heavy(label, log=print):
-    """Seconds waited for the builder and the compute worker to drop below BUSY_BYTES (at most HEAVY_WAIT_SECONDS)."""
-    import refactor_collect_engine as engine
-    started = time.monotonic()
-    while time.monotonic() - started < HEAVY_WAIT_SECONDS:
-        busy = [name for name in HEAVY_NEIGHBOURS if engine.memory_in_use(name) >= BUSY_BYTES]
-        if not busy:
-            break
-        log(f'{label} waits: {", ".join(busy)} busy')
-        time.sleep(TICK_SECONDS)
-    return round(time.monotonic() - started)
-
-
 def _run_one(label, log=print):
     import refactor_collect_engine as engine
     started = time.monotonic()
     started_utc = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
-    waited = _wait_for_heavy(label, log) if _heavy(label) else 0
     if label in HOST_JOBS:
         import subprocess
         try:
@@ -174,8 +152,7 @@ def _run_one(label, log=print):
                               name=f'explorer-collect-{label}-{os.getpid()}', memory=JOB_MEMORY.get(label, '2g'),
                               internet=os.environ.get('NO_INTERNET') != '1', limit=JOB_SECONDS,
                               extra_env={**({'TRIAL_HOST_CAPS': JOB_HOST_CAPS[label]} if label in JOB_HOST_CAPS else {}),
-                                         **JOB_ENV.get(label, {}),
-                                         **({'COLLECT_WAITED_SECONDS': str(waited)} if waited else {})} or None)
+                                         **JOB_ENV.get(label, {})} or None)
     if code is None:  # stopped at the limit (the container is removed): recorded as failed, nothing applied
         engine.run(['python', '/app/scripts/refactor_collect_job.py', '--stopped', label, started_utc,
                     f'stopped at the {JOB_SECONDS}s limit'], internet=False, limit=300)

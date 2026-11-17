@@ -44,6 +44,20 @@ def run(directory):
             return False
         if time.time() - manifest.stat().st_mtime < COLLECTION_BUILD_SECONDS:
             return False
+    from pipeline.postgres_heavy_lock import try_lock
+    held = factory()  # one heavy job at a time (pipeline.postgres_heavy_lock): busy → try again next cycle
+    held.autocommit = True
+    if not try_lock(held):
+        held.close()
+        print(json.dumps({'skipped': 'heavy lock busy'}), flush=True)
+        return False
+    try:
+        return _build(factory, directory, current, collection)
+    finally:
+        held.close()  # releases the lock
+
+
+def _build(factory, directory, current, collection):
     if current and (directory / current['file']).exists():
         # A build that died before its file was linked (memory, a restart) left that file; no reader ever had it, and
         # repeated failures must not fill the volume.

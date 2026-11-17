@@ -88,6 +88,10 @@ WATCH = 'watch'
 # No network; its model calls are capped per run (QUESTIONS_MAX_CALLS). The Telegram alerts that follow the legacy
 # job are sends (on at the cutover).
 QUESTIONS = 'questions'
+# Memory-heavy jobs take the shared heavy lock (pipeline.postgres_heavy_lock) for their whole run; busy for
+# HEAVY_WAIT_SECONDS, the run is recorded as deferred and not started (architect #3 6948497320: never forced).
+HEAVY = {'questions', 'proposals', 'callmomentum', 'callfresh', 'history'}
+HEAVY_WAIT_SECONDS = int(os.environ.get('COLLECT_HEAVY_WAIT_SECONDS', '1800'))
 QUESTIONS_MAX_CALLS = int(os.environ.get('COLLECT_QUESTIONS_MAX_CALLS', '80'))  # PM #3 6948235108: the legacy's result first
 PEER_ROOT = Path(os.environ.get('PEER_ROOT', '/peer'))
 COMPUTE_JOBS = {'narratives', 'contradictions', 'promote', 'proposals', 'bigpicture', 'sectoroverview',
@@ -418,9 +422,29 @@ def run_feeds(pg):
 
 
 def run(label):
+    from pipeline import postgres_collect_runs
+    pg = trial._pg()
+    if label not in HEAVY:
+        return _run(label, pg, 0)
+    import psycopg
+    from pipeline.postgres_heavy_lock import wait_lock
+    held = psycopg.connect(os.environ['REFACTOR_POSTGRES_DSN'], autocommit=True)  # kept open: the lock lives with it
+    try:
+        waited = wait_lock(held, seconds=HEAVY_WAIT_SECONDS)
+        if waited is None:
+            started = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+            outcome = 'deferred: heavy lock busy'
+            print(json.dumps({'run': postgres_collect_runs.record(pg, label, started, outcome), 'label': label,
+                              'outcome': outcome}))
+            return None
+        return _run(label, pg, waited)
+    finally:
+        held.close()  # releases the heavy lock
+
+
+def _run(label, pg, waited):
     import sqlite3
     from pipeline import llm, postgres_collect_runs, postgres_llm_calls
-    pg = trial._pg()
     if trial.WORK.exists():  # a work copy prepared before the bands existed takes them on its next run
         with sqlite3.connect(trial.WORK) as work:
             trial.band_ids(work)
@@ -550,8 +574,8 @@ def run(label):
             outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'
     if trial.other_files:
         entry['other_sqlite_written'] = sorted(trial.other_files)
-    if os.environ.get('COLLECT_WAITED_SECONDS'):  # waited for the builder or the compute worker (one heavy job at a time)
-        entry['waited_for_heavy_seconds'] = int(os.environ['COLLECT_WAITED_SECONDS'])
+    if waited:  # waited for the heavy lock (the builder or another heavy job held it)
+        entry['waited_for_heavy_seconds'] = waited
     calls = pg.execute('SELECT count(*) FROM llm_calls WHERE created_at>=%s', (started,)).fetchone()[0]
     run_id = postgres_collect_runs.record(pg, label, started, outcome, requests=dict(trial.requests_by_host),
                                          model_calls=calls, result=entry)
