@@ -13,9 +13,38 @@ import refactor_collect_trial as trial
 import refactor_collect_scheduler as scheduler
 import refactor_collect_engine as engine
 import refactor_collect_job as job
+import refactor_feed_recover as recover
 
 
 class CollectionTargetTest(unittest.TestCase):
+    def test_recovery_requires_one_matching_complete_queued_document(self):
+        from pipeline.base import RawDoc
+        from pipeline.feed_backlog import FeedBacklog
+        with TemporaryDirectory() as directory:
+            queue = FeedBacklog(Path(directory) / 'queue.sqlite')
+            queue.enqueue('blog', 'source', RawDoc('blog', 'id', raw_content='body'))
+            work = sqlite3.connect(':memory:')
+            work.executescript('''
+                CREATE TABLE raw_documents(id INTEGER,source_type TEXT,source_id TEXT,raw_content TEXT,markdown TEXT,content_hash TEXT);
+                CREATE TABLE enrichments(id INTEGER,doc_id INTEGER,content_hash TEXT,summary TEXT);
+                CREATE TABLE entities(id INTEGER); CREATE TABLE entity_keywords(id INTEGER); CREATE TABLE entity_relations(id INTEGER);
+                CREATE TABLE candidate_publish_floor(name TEXT PRIMARY KEY,value INTEGER);
+                INSERT INTO candidate_publish_floor VALUES ('document_floor',0),('entity_floor',0),('keyword_floor',0),('relation_floor',0);
+                INSERT INTO raw_documents VALUES (1,'blog','id','body','body','hash');
+                INSERT INTO enrichments VALUES (1,1,'hash','summary');
+            ''')
+            seq, _, _ = recover.validate(work, queue)
+            self.assertEqual(seq, queue.next()[0])
+            work.execute("UPDATE enrichments SET content_hash='wrong'")
+            with self.assertRaises(ValueError):
+                recover.validate(work, queue)
+            work.execute("UPDATE enrichments SET content_hash='hash'")
+            work.execute("UPDATE candidate_publish_floor SET value=1 WHERE name='document_floor'")
+            with self.assertRaises(ValueError):
+                recover.validate(work, queue)
+            recover.validate(work, queue, receipt_exists=True)
+            queue.close()
+            work.close()
     def test_model_budget_counts_primary_and_fallback_engine_attempts(self):
         from pipeline import llm
         from pipeline.llm_policies import resolve
