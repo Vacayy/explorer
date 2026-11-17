@@ -191,6 +191,8 @@ def _run_one(label, log=print):
                               name=f'explorer-collect-{label}-{os.getpid()}', memory=JOB_MEMORY.get(label, '2g'),
                               internet=os.environ.get('NO_INTERNET') != '1', limit=JOB_SECONDS,
                               extra_env={**({'TRIAL_HOST_CAPS': JOB_HOST_CAPS[label]} if label in JOB_HOST_CAPS else {}),
+                                         **({'COLLECT_MAX_MODEL_CALLS': '0'} if label == 'chain'
+                                            and os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1' else {}),
                                          **JOB_ENV.get(label, {})} or None)
     if code is None:  # stopped at the limit (the container is removed): recorded as failed, nothing applied
         engine.run(['python', '/app/scripts/refactor_collect_job.py', '--stopped', label, started_utc,

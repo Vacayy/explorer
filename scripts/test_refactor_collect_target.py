@@ -240,6 +240,13 @@ class CollectionTargetTest(unittest.TestCase):
             self.assertTrue(scheduler.FEED_HOLD.exists())
             self.assertTrue(scheduler.HOLD.exists())
 
+    def test_zero_model_cap_is_scoped_to_keyword_feed(self):
+        with patch.dict(os.environ, {'COLLECT_FEED_KEYWORD_ONLY': '1', 'COLLECT_MAX_MODEL_CALLS': '5'}), \
+             patch.object(engine, 'run', return_value=(0, '{"outcome":"applied: ok"}')) as run:
+            self.assertTrue(scheduler._run_one('chain', lambda *_: None))
+            self.assertEqual(run.call_args.kwargs['extra_env']['COLLECT_MAX_MODEL_CALLS'], '0')
+            self.assertEqual(os.environ['COLLECT_MAX_MODEL_CALLS'], '5')
+
     def test_us_briefing_requires_synthesis(self):
         conn = sqlite3.connect(':memory:')
         conn.execute('CREATE TABLE job_runs(id INTEGER, job TEXT, summary TEXT, ran_at TEXT)')
