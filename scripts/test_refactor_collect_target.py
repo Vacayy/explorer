@@ -736,6 +736,68 @@ class CollectionTargetTest(unittest.TestCase):
         job.require_us_briefing_synthesis(conn, '2026-11-18 00:00:00')
         conn.close()
 
+    def test_legacy_close_synthetic_send_is_deduplicated(self):
+        from pipeline import portfolio_alerts as alerts, portfolio_flow, portfolio_principles, stock_tracker
+        conn = sqlite3.connect(':memory:'); conn.row_factory = sqlite3.Row
+        sent = []
+        summary = {'holdings': [{'code': 'TEST', 'name': 'Synthetic', 'weight_pct': 1}], 'as_of': '2026-11-18'}
+        with patch.object(alerts.pf, 'summary', return_value=summary), \
+             patch.object(stock_tracker, 'alert', return_value=0), \
+             patch.object(alerts, 'refresh_events', return_value={}), \
+             patch.object(portfolio_flow, 'flow', return_value=[]), \
+             patch.object(portfolio_flow, 'ensure_digests', return_value={}), \
+             patch.object(portfolio_flow, 'summary_lines', return_value=[]), \
+             patch.object(alerts, 'daily_summary', return_value=('summary:synthetic', 'synthetic message')), \
+             patch.object(alerts, 'upcoming_soon', return_value=None), \
+             patch.object(alerts, 'technical_signals', return_value=[]), \
+             patch.object(alerts, 'new_disclosures', return_value=[]), \
+             patch.object(portfolio_principles, 'alert', return_value=0):
+            send = lambda text: sent.append(text) or True
+            first = alerts.run('close', conn=conn, send=send)
+            second = alerts.run('close', conn=conn, send=send)
+        self.assertEqual(first['sent'], 1)
+        self.assertEqual(second['sent'], 0)
+        self.assertEqual(len(sent), 1)
+        conn.close()
+
+    def test_close_adapter_preserves_duplicate_event_rows_and_shared_sent_keys(self):
+        from pipeline import portfolio_alerts, postgres_owner_overrides as overrides, postgres_legacy_projection as projection
+        conn = sqlite3.connect(':memory:'); conn.row_factory = sqlite3.Row
+        conn.executescript("""
+            CREATE TEMP TABLE portfolio_alerts_sent(key TEXT PRIMARY KEY);
+            CREATE TEMP TABLE portfolio_principle_state(key TEXT PRIMARY KEY);
+            CREATE TEMP TABLE catalysts(id INTEGER PRIMARY KEY, natural_key TEXT);
+            CREATE TEMP TABLE portfolio_event_estimates(stock_code TEXT, kind TEXT);
+            CREATE TEMP TABLE transcript_calendar(ticker TEXT);
+            CREATE TEMP TABLE entity_digests(entity_id INTEGER, period TEXT, period_start TEXT);
+            CREATE TEMP TABLE portfolio_quotes(stock_code TEXT);
+            INSERT INTO catalysts VALUES (1,'same'),(2,'same');
+        """)
+        conn.commit(); captured = {}; sent = []
+        class PG:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def transaction(self): return self
+            def execute(self, *args): return None
+        class Projection:
+            def __init__(self, *args, **kwargs): pass
+            def write_connection(self, **kwargs): return conn, 1
+        def fake_close(mode, conn, send):
+            self.assertEqual(mode, 'close')
+            conn.execute("DELETE FROM catalysts WHERE natural_key='same'")
+            conn.execute("INSERT INTO catalysts VALUES (3,'same')")
+            conn.execute("INSERT INTO portfolio_alerts_sent VALUES ('summary:day')")
+            conn.commit(); send('synthetic'); return {'sent': 1}
+        def fake_apply(pg, before, after): captured.update({'before': before, 'after': after})
+        with patch.object(trial, '_pg', return_value=PG()), patch.object(projection, 'LegacyProjection', Projection), \
+             patch.object(projection, 'requester_is_operator', return_value=True), \
+             patch.object(portfolio_alerts, 'run', side_effect=fake_close), patch.object(overrides, 'apply', side_effect=fake_apply):
+            result = job.run_portfolio_close(send=lambda x: sent.append(x) or True)
+        self.assertEqual(result['sent'], 1)
+        self.assertEqual(set(captured['after']['catalysts']), {'1', '2', '3'})
+        self.assertIn('summary:day', captured['after']['portfolio_alerts_sent'])
+        self.assertEqual(sent, ['synthetic'])
+
     def test_briefing_preserves_pg_only_rows_and_refuses_duplicate_keys(self):
         with TemporaryDirectory() as directory:
             path = Path(directory) / 'work.db'
@@ -787,6 +849,15 @@ class CollectionTargetTest(unittest.TestCase):
                 job.validate_partial_us_briefing(conn, '2026-11-18 00:00:00')
         conn.close()
 
+    def test_close_partial_does_not_release_other_jobs_failures(self):
+        with patch.object(engine, 'run', return_value=(0, '{"outcome":"partial: portfolio close reported errors"}')):
+            self.assertTrue(scheduler._run_one('pfclose', lambda *_: None))
+            self.assertFalse(scheduler._run_one('prices', lambda *_: None))
+        with patch.object(engine, 'run', return_value=(0, '{"outcome":"partial: portfolio close model cap reached"}')):
+            self.assertTrue(scheduler._run_one('pfclose', lambda *_: None))
+        with patch.object(engine, 'run', return_value=(0, '{"outcome":"partial: unknown"}')):
+            self.assertFalse(scheduler._run_one('pfclose', lambda *_: None))
+
     def test_partial_job_record_is_opt_in_and_errors_stay_held(self):
         with TemporaryDirectory() as directory:
             path = Path(directory) / 'work.db'
@@ -822,9 +893,9 @@ class CollectionTargetTest(unittest.TestCase):
                                  {'DART_API_KEY', *engine.SEND_KEYS})
 
     def test_only_connected_send_can_be_enabled(self):
-        scheduler.check_enabled({'briefing', 'observeweekly', 'observealerts', 'pfintraday'})
+        scheduler.check_enabled({'briefing', 'observeweekly', 'observealerts', 'pfintraday', 'pfclose'})
         with self.assertRaises(SystemExit):
-            scheduler.check_enabled({'pfclose'})
+            scheduler.check_enabled({'backfill'})
 
     def test_calendar_due_time_is_not_repeated_within_same_minute(self):
         jobs = [('briefing', [], {'Hour': 7, 'Minute': 0})]

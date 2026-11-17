@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import refactor_collect_trial as trial  # noqa: E402 - the same harness and safeguards
 
 SENDS = {'briefing', 'pfintraday', 'pfclose', 'observealerts', 'observeweekly'}
-CONNECTED_SENDS = {'briefing', 'observeweekly', 'observealerts', 'pfintraday'}  # other sends remain refused
+CONNECTED_SENDS = {'briefing', 'observeweekly', 'observealerts', 'pfintraday', 'pfclose'}
 NEVER = {'backfill'}  # uncapped model calls; never scheduled automatically
 # Table-collecting jobs: the unchanged script, then the supplement tables it actually wrote are replaced in PG
 # (recorded by a sqlite authorizer; writing any table that is not a supplement table holds the run back).
@@ -957,6 +957,74 @@ def run_portfolio_intraday():
     return bool(result.get('sent'))
 
 
+
+CLOSE_MODEL_ATTEMPTS = 10  # primary and fallback attempts combined
+CLOSE_OVERRIDE_TABLES = ('portfolio_alerts_sent', 'portfolio_principle_state', 'catalysts',
+                         'portfolio_event_estimates', 'transcript_calendar', 'entity_digests')
+
+def close_snapshots(conn, overrides):
+    """Capture close-alert rows by their actual unique key, not event natural keys."""
+    out = {}
+    for table in CLOSE_OVERRIDE_TABLES:
+        rows = {}
+        for row in conn.execute(f'SELECT * FROM temp."{table}"'):
+            value = dict(row)
+            key = overrides._key(table, value)
+            if key in rows:
+                raise trial.HeldBack('portfolio close has duplicate row keys')
+            rows[key] = value
+        out[table] = rows
+    return out
+
+def run_portfolio_close(send=None):
+    """Run the legacy close path against writable projection shadows and existing ledgers."""
+    import database
+    from pipeline import portfolio_alerts, portfolio_events, portfolio_flow, transcript, digests  # preload bindings
+    from pipeline import postgres_owner_overrides as overrides, postgres_live_tables
+    from pipeline.notify import send_telegram
+    from pipeline.postgres_legacy_projection import LegacyProjection, requester_is_operator
+    from routers.postgres_owner_legacy_fixture import _Borrowed
+    if not requester_is_operator():
+        raise trial.HeldBack('operator projection is unavailable')
+    projection = LegacyProjection(trial._pg, '/projection', external=True)
+    failure, result = None, None
+    with trial._pg() as pg, pg.transaction():
+        pg.execute("SELECT pg_advisory_xact_lock(hashtextextended('owner-row-overrides',0))")
+        conn, _version = projection.write_connection(extra=('portfolio_quotes', *CLOSE_OVERRIDE_TABLES))
+        original = database.get_connection
+        rebound = [m for m in list(sys.modules.values()) if getattr(m, 'get_connection', None) is original]
+        try:
+            before = close_snapshots(conn, overrides)
+            quotes_before = {row['stock_code']: dict(row) for row in conn.execute('SELECT * FROM temp.portfolio_quotes')}
+            for module in rebound:
+                module.get_connection = lambda: _Borrowed(conn)
+            database.get_connection = lambda: _Borrowed(conn)
+            try:
+                result = portfolio_alerts.run('close', conn=conn, send=send or send_telegram)
+            except (trial.Aborted, Exception) as exc:
+                failure = exc
+                conn.rollback()
+            after = close_snapshots(conn, overrides)
+            # Legacy replacement by natural key may delete several distinct event IDs. Keep those existing IDs.
+            for key, row in before['catalysts'].items():
+                after['catalysts'].setdefault(key, row)
+            overrides.apply(pg, before, after)
+            quotes_after = {row['stock_code']: dict(row) for row in conn.execute('SELECT * FROM temp.portfolio_quotes')}
+            changed = [row for key, row in quotes_after.items() if quotes_before.get(key) != row]
+            if changed:
+                postgres_live_tables.upsert_rows(pg, 'portfolio_quotes', 'stock_code', changed)
+        finally:
+            for module in rebound:
+                module.get_connection = original
+            database.get_connection = original
+            conn.close()
+    if failure is not None:
+        if isinstance(failure, trial.Aborted):
+            raise failure
+        raise trial.HeldBack('portfolio close failed after state reconciliation')
+    return result
+
+
 def _run(label, pg, waited):
     import sqlite3
     from pipeline import llm, postgres_collect_runs, postgres_llm_calls
@@ -988,6 +1056,24 @@ def _run(label, pg, waited):
             outcome = f'held back: {exc}'
         except Exception as exc:
             outcome = f'failed: {type(exc).__name__}'
+    elif label == 'pfclose':
+        trial._instrument()
+        postgres_llm_calls.install(llm, trial._pg)
+        refused = _cap_table_model_calls(CLOSE_MODEL_ATTEMPTS)
+        try:
+            result = run_portfolio_close()
+            if refused or result.get('errors'):
+                outcome = 'partial: portfolio close reported errors'
+            else:
+                outcome = 'applied: portfolio close sent' if result.get('sent') else 'skipped: no close alerts'
+        except trial.Aborted as exc:
+            outcome = 'partial: portfolio close model cap reached' if refused else f'aborted: {exc}'
+        except trial.HeldBack as exc:
+            outcome = f'held back: {exc}'
+        except Exception as exc:
+            outcome = f'failed: {type(exc).__name__}'
+        finally:
+            refused.restore()
     elif label == 'observealerts':
         trial._instrument()
         try:
