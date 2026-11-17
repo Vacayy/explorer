@@ -30,6 +30,9 @@ class CollectionTargetTest(unittest.TestCase):
         from pipeline.feed_backlog import FeedBacklog
         with TemporaryDirectory() as directory:
             path = Path(directory) / 'queue.sqlite'
+            marker = Path(directory) / 'batch-marker'
+            marker.write_text('feed-batch-trial-v1\n')
+            marker.chmod(0o600)
             queue = FeedBacklog(path)
             queue.enqueue('blog', 'feed', RawDoc('blog', 'a', title='a', raw_content='first'))
             queue.enqueue('blog', 'feed', RawDoc('blog', 'b', title='b', raw_content='second'))
@@ -42,14 +45,16 @@ class CollectionTargetTest(unittest.TestCase):
                 before_publish()
                 return {'counts': {'new': 2}, 'stats': {}, 'published': [1, 2]}
 
-            with patch.dict(os.environ, {'COLLECT_FEED_BATCH_MODEL': '1', 'COLLECT_FEED_STRICT_IMAGES': '1',
+            with patch.dict(os.environ, {'COLLECT_FEED_BATCH_MODEL': '0', 'COLLECT_FEED_STRICT_IMAGES': '1',
                                          'COLLECT_FEED_KEYWORD_ONLY': '0'}), \
-                 patch.object(job, 'MAX_NEW_DOCS', 5), patch.object(job, '_feed_document_known', return_value=False), \
+                 patch.object(job, 'MAX_NEW_DOCS', 5), patch.object(job, 'MAX_MODEL_CALLS', 2), \
+                 patch.object(job, '_feed_document_known', return_value=False), \
                  patch.object(image_reading, 'read_images'), \
                  patch.object(feed_enrichment, 'enrich_documents', return_value=[{'summary': 'one'}, {'summary': 'two'}]), \
                  patch.object(trial, 'run_documents', side_effect=run_docs):
-                job.run_minimal_blog(None, object(), queue_path=path)
+                job.run_minimal_blog(None, object(), queue_path=path, batch_marker=marker)
             self.assertEqual(set(applied), {'one', 'two'})
+            self.assertFalse(marker.exists())
             queue = FeedBacklog(path)
             self.assertIsNone(queue.next())
             queue.close()

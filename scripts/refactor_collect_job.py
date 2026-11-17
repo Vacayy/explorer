@@ -15,6 +15,7 @@ Jobs not connected yet are recorded as 'unsupported' and not run.
 import json
 import os
 import sqlite3
+import stat
 import sys
 import threading
 import time
@@ -465,13 +466,24 @@ def _mark_identical_feed_revisions(queue):
         return queue.mark_identical_revisions(work)
 
 
-def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-backlog.sqlite', youtube=None, telegram=None):
+def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-backlog.sqlite', youtube=None, telegram=None,
+                     batch_marker=Path('/trial/feed-batch-trial')):
     """One blog reference, one queued document; a failure keeps this isolated feed on hold."""
     from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference
     keyword_only = os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1'
     strict_images = keyword_only or os.environ.get('COLLECT_FEED_STRICT_IMAGES') == '1'
-    if os.environ.get('COLLECT_FEED_BATCH_MODEL') == '1' and (keyword_only or not strict_images):
+    marker_exists = batch_marker.exists() or batch_marker.is_symlink()
+    if marker_exists:
+        info = batch_marker.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 \
+                or batch_marker.read_text() != 'feed-batch-trial-v1\n':
+            raise ValueError('Unrecognized feed batch trial marker')
+    batch_requested = os.environ.get('COLLECT_FEED_BATCH_MODEL') == '1' or marker_exists
+    if batch_requested and (keyword_only or not strict_images):
         raise ValueError('Feed batch model requires strict images and model mode')
+    if batch_requested and not 1 <= MAX_MODEL_CALLS <= 2:
+        raise ValueError('Feed batch trial requires an engine attempt cap of at most two')
+    max_documents = 5 if batch_requested else min(MAX_NEW_DOCS, 5)
     if keyword_only:
         if MAX_MODEL_CALLS != 0:
             raise ValueError('Keyword-only feed requires a zero model attempt cap')
@@ -542,7 +554,7 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
             if _feed_document_known(item[2].source_type, item[2].source_id):
                 queue.defer_revision(item[0])
                 deferred_revisions += 1
-            elif len(selected) < min(MAX_NEW_DOCS, 5):
+            elif len(selected) < max_documents:
                 selected.append(item)
         if strict_images:
             from pipeline.normalize import to_markdown
@@ -574,7 +586,9 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
         batch = None
         consumed = [0]
         old_enrich = None
-        if os.environ.get('COLLECT_FEED_BATCH_MODEL') == '1' and not keyword_only and len(selected) > 1:
+        if batch_requested and len(selected) > 1:
+            if marker_exists:
+                batch_marker.unlink()  # one scheduled trial only, even on a later model failure
             from pipeline import enrich, feed_enrichment
             documents = [{'title': item[2].title, 'markdown': item[2].markdown} for item in selected]
             try:
@@ -601,7 +615,7 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
                 raise trial.HeldBack('feed batch did not apply every model result')
 
         try:
-            result = trial.run_documents(pg, [QueuedDocuments()], min(MAX_NEW_DOCS, 5), before_publish=check_cap)
+            result = trial.run_documents(pg, [QueuedDocuments()], max_documents, before_publish=check_cap)
         finally:
             if old_enrich is not None:
                 enrich.enrich = old_enrich
