@@ -778,6 +778,25 @@ class CollectionTargetTest(unittest.TestCase):
                         scheduler.run_job('prices', lambda *_: None)
                     self.assertTrue(marker.exists())
 
+    def test_recorded_backup_space_refusal_does_not_block_collection(self):
+        with TemporaryDirectory() as directory:
+            marker = Path(directory) / 'hold'
+            with patch.object(scheduler, 'HOLD', marker), \
+                 patch.object(scheduler, '_run_one', return_value=scheduler.SAFE_BACKUP_REFUSAL):
+                self.assertFalse(scheduler.run_job('pgbackup', lambda *_: None))
+                self.assertFalse(marker.exists())
+
+    def test_only_recorded_preflight_backup_refusal_is_safe(self):
+        from types import SimpleNamespace
+        refused = SimpleNamespace(returncode=1, stdout='not enough VM space for a backup\n', stderr='')
+        with patch('subprocess.run', return_value=refused), patch.object(engine, 'run', return_value=(0, '')):
+            self.assertIs(scheduler._run_one('pgbackup', lambda *_: None), scheduler.SAFE_BACKUP_REFUSAL)
+        with patch('subprocess.run', return_value=refused), patch.object(engine, 'run', return_value=(1, '')):
+            self.assertFalse(scheduler._run_one('pgbackup', lambda *_: None))
+        failed = SimpleNamespace(returncode=1, stdout='different failure\n', stderr='')
+        with patch('subprocess.run', return_value=failed), patch.object(engine, 'run', return_value=(0, '')):
+            self.assertFalse(scheduler._run_one('pgbackup', lambda *_: None))
+
 
 if __name__ == '__main__':
     unittest.main()

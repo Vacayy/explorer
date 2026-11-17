@@ -85,6 +85,8 @@ HOST_JOBS = {'pgbackup': ('sh', '-c', 'scripts/refactor_pg_backup.sh backup'),
              'pgrestorecheck': ('sh', '-c', 'scripts/refactor_pg_backup.sh check "$(ls -t "$HOME"/server-data/backups/refactor-pg/'
                                             '*-candidate.dump | head -1)"')}
 HOST_OK = {'pgbackup': '-candidate.dump', 'pgrestorecheck': 'restore check ok'}
+SAFE_BACKUP_REFUSAL = object()
+SAFE_BACKUP_MESSAGES = {'not enough host space for a backup', 'not enough VM space for a backup'}
 
 
 def load_jobs():
@@ -154,7 +156,12 @@ def run_job(label, log=print):
             if not refreshed:
                 log('feed refresh failed: isolated feed remains held')
                 return False
-        if not _run_one(step, log):
+        result = _run_one(step, log)
+        if result is SAFE_BACKUP_REFUSAL:
+            marker_path.unlink()  # the refusal happened before any backup file or work-copy mutation
+            log('backup refused for space; collection remains enabled')
+            return False  # the backup itself still failed and is recorded as such
+        if not result:
             log(f'collection held after {step}: inspect the work copy and run before clearing the hold')
             return False
         if sync_feed:
@@ -183,9 +190,11 @@ def _run_one(label, log=print):
             kind = 'applied' if done.returncode == 0 and HOST_OK[label] in done.stdout else 'failed'
         except subprocess.TimeoutExpired:
             last, kind = f'stopped at the {JOB_SECONDS}s limit', 'failed'
-        engine.run(['python', '/app/scripts/refactor_collect_job.py', '--stopped', label, started_utc, last, kind],
-                   internet=False, limit=300)
+        recorded, _ = engine.run(['python', '/app/scripts/refactor_collect_job.py', '--stopped', label, started_utc, last, kind],
+                                 internet=False, limit=300)
         log(f'{label} {kind} {time.monotonic() - started:.0f}s {last}')
+        if label == 'pgbackup' and kind == 'failed' and last in SAFE_BACKUP_MESSAGES and recorded == 0:
+            return SAFE_BACKUP_REFUSAL
         return kind == 'applied'
     feed_env = {}
     if label == 'chain' and os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1':
