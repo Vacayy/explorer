@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from psycopg.rows import dict_row
 from pipeline import study, study_projects, study_coach
 from pipeline.postgres_graph_fixture import _guard
+from pipeline import postgres_study_owners as owners
 from pipeline.postgres_chat_generation import generate_answer
 
 NOW = "to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')"
@@ -53,7 +54,9 @@ class StudyTurnsFixture:
                 cur.execute('SELECT 1 FROM conversations WHERE id=%s', (cid,))
                 if cid is None or not cur.fetchone():
                     label = ('스터디 프로젝트 · ' if project else '스터디 · ') + owner['title'][:80 if project else 90]
-                    cur.execute("INSERT INTO conversations(channel,title,state_json,chat_id) VALUES('web',%s,'{}',%s) RETURNING id", (label,self.owner_chat_id))
+                    member = (owners.project_owner if project else owners.session_owner)(c, owner_id)
+                    channel, chat = owners.conversation_of(member, self.owner_chat_id)
+                    cur.execute("INSERT INTO conversations(channel,title,state_json,chat_id) VALUES(%s,%s,'{}',%s) RETURNING id", (channel,label,chat))
                     cid = cur.fetchone()['id']
                 cur.execute('SELECT role FROM chat_messages WHERE conversation_id=%s ORDER BY id DESC LIMIT 1', (cid,))
                 last = cur.fetchone()
@@ -90,7 +93,7 @@ class StudyTurnsFixture:
                     return
                 context=json.loads(row['context_json'])
                 result=generate_answer(self.chat_store,self.tools,row['conversation_id'],row['question'],
-                                       owner_chat_id=self.owner_chat_id,study_context=context)
+                                       owner_chat_id=owners.chat_owner(c,row['conversation_id'],self.owner_chat_id),study_context=context)
                 cur.execute(f"UPDATE {table} SET status=%s,error=%s,context_json=%s,finished_at={NOW} WHERE id=%s AND status='pending'",
                     ('error' if result.get('error') else 'complete',result.get('error'),json.dumps(context,ensure_ascii=False),turn_id))
 

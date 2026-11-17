@@ -1,4 +1,6 @@
 """Explicitly mounted project routes for private PG study trials."""
+from contextvars import copy_context
+
 from fastapi import APIRouter, BackgroundTasks
 from routers.spine_study_projects import Create, Edit, Documents, Clip, Question
 
@@ -27,7 +29,7 @@ def create_router(store, turns=None):
             store.check(pid)  # the requester's own project
             result=turns.queue(pid,body,project=True)
             if result['created']:
-                background.add_task(turns.execute,result['id'],project=True)
+                background.add_task(copy_context().run,turns.execute,result['id'],project=True)
             return result
         @router.post('/{pid}/turns/{tid}/recover')
         def recover(pid: int, tid: int):

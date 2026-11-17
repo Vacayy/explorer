@@ -1,4 +1,6 @@
 """Explicitly mounted isolated study read/annotation routes only."""
+from contextvars import copy_context
+
 from fastapi import APIRouter, BackgroundTasks
 from routers.spine_study import Annotation, EditAnnotation, OpenStudy, StudyQuestion
 from models.study_actions import AnnotationActionRequest
@@ -37,13 +39,13 @@ def create_router(store, turns=None, actions=None):
         def action(study_id: int, body: AnnotationActionRequest, background: BackgroundTasks):
             store.check(study_id)
             result=actions.queue(study_id,body)
-            background.add_task(actions.drain,result['owner_key'])
+            background.add_task(copy_context().run,actions.drain,result['owner_key'])
             return result
 
         @router.post('/{study_id}/actions/resume')
         def resume(study_id: int, background: BackgroundTasks):
             store.check(study_id)
-            background.add_task(actions.drain,actions.owner_for(study_id))
+            background.add_task(copy_context().run,actions.drain,actions.owner_for(study_id))
             return {'ok':True}
 
         @router.post('/{study_id}/actions/{action_id}/cancel')
@@ -55,7 +57,7 @@ def create_router(store, turns=None, actions=None):
         def recover(study_id: int,action_id: int,background: BackgroundTasks):
             store.check(study_id)
             result=actions.recover(study_id,action_id)
-            background.add_task(actions.drain,actions.owner_for(study_id))
+            background.add_task(copy_context().run,actions.drain,actions.owner_for(study_id))
             return result
 
     if turns is not None:
@@ -64,7 +66,7 @@ def create_router(store, turns=None, actions=None):
             store.check(study_id)  # the requester's own study
             result = turns.queue(study_id,body)
             if result['created']:
-                background.add_task(turns.execute,result['id'])
+                background.add_task(copy_context().run,turns.execute,result['id'])
             return result
 
         @router.post('/{study_id}/turns/{turn_id}/recover')

@@ -30,8 +30,7 @@ _MEMBER = re.compile(r'^/api/portfolio(/|$)|^/api/spine/(saved|follows)(/|$)|^/a
 # A member's own groups (pipeline.postgres_owner_legacy_fixture.member_rows); evaluation and reasons stay the operator's.
 _MEMBER_GROUPS = re.compile(r'^/api/spine/groups(/default-watch|/[^/]+(/members(/[^/]+(/tracked)?)?|/rules)?)?$')  # each member's own ledger
 # Personal ledgers not yet per principal (members get 403 until converted; tracked as open items).
-_PERSONAL = re.compile(r'^/api/spine/(tracker/[^/]+/prepare$|studies/[^/]+/(ask|actions|turns)|study-projects/[^/]+/(ask|turns)|'
-                       r'groups/[^/]+/(evaluate|reasons)$|'
+_PERSONAL = re.compile(r'^/api/spine/(tracker/[^/]+/prepare$|groups/[^/]+/(evaluate|reasons)$|'
                        r'transcript/(follow|core/pin)|trade/follow)')
 _ADMIN = re.compile(r'^/api/spine/(admin|approvals|agent-proposals|keywords|research/candidates|regimes/checks|client-errors|'
                     r'knowledge/items/[^/]+/(approve|reject)|narrative-candidates/)|^/api/spine/sources/(telegram|blog|youtube/[^/]+|collect)'
@@ -51,7 +50,7 @@ def route_policy(method, path):
     if _MEMBER.match(path):
         return 'member'
     if re.match(r'^/api/spine/(studies|study-projects)(/|$)', path) and not _PERSONAL.match(path):
-        return 'member'  # each member's own studies (pipeline.postgres_study_owners); study chat and actions stay the operator's
+        return 'member'  # each member's own studies, their chat and actions (pipeline.postgres_study_owners)
     if path == '/api/spine/groups/default-watch' or (_MEMBER_GROUPS.match(path) and method not in {'GET', 'HEAD'}):
         return 'member'  # default-watch creates the requester's default group on first read
     if _PERSONAL.match(path):  # questions too: the user's own tracked questions, read by the PG-native router

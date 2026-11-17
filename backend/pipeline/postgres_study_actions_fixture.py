@@ -2,6 +2,7 @@
 from fastapi import HTTPException
 from psycopg.rows import dict_row
 from pipeline.postgres_graph_fixture import _guard
+from pipeline import postgres_study_owners as owners
 from pipeline.study_actions import _public
 
 
@@ -114,7 +115,8 @@ class StudyActionsFixture:
                             cur.execute(f"UPDATE study_annotation_actions SET status='cancelled',error=%s,finished_at={NOW} WHERE id=%s",('표시가 삭제되거나 프로젝트에서 자료가 제거되어 취소했습니다.',row['id']))
                             continue
                         context=json.loads(row['context_json'])
-                        cur.execute("INSERT INTO conversations(channel,title,state_json,chat_id) VALUES('web',%s,'{}',%s) RETURNING id",('스터디 · '+context['title'][:70]+' · '+LABELS[row['intent']],self.owner_chat_id));cid=cur.fetchone()['id']
+                        channel,chat=owners.conversation_of(owners.session_owner(c,row['study_id']),self.owner_chat_id)
+                        cur.execute("INSERT INTO conversations(channel,title,state_json,chat_id) VALUES(%s,%s,'{}',%s) RETURNING id",(channel,'스터디 · '+context['title'][:70]+' · '+LABELS[row['intent']],chat));cid=cur.fetchone()['id']
                         for pair in context.get('followup_chain',[]):
                             for role,content in (('user',pair['question']),('assistant',pair['answer'])):
                                 cur.execute('INSERT INTO chat_messages(conversation_id,role,content) VALUES(%s,%s,%s)',(cid,role,content[:6000]))
@@ -122,7 +124,7 @@ class StudyActionsFixture:
                         token=uuid.uuid4().hex
                         cur.execute(f"UPDATE study_annotation_actions SET status='running',conversation_id=%s,claim_token=%s,started_at={NOW} WHERE id=%s",(cid,token,row['id']))
                 try:
-                    result=generate_answer(self.chat_store,self.tools,cid,row['question'],owner_chat_id=self.owner_chat_id,study_context=context)
+                    result=generate_answer(self.chat_store,self.tools,cid,row['question'],owner_chat_id=chat,study_context=context)
                     if not result.get('answer') and not result.get('error'):result['error']='AI 답변이 비어 있습니다. 다시 시도해 주세요.'
                 except Exception:result={'error':'답변 생성에 실패했습니다. 표시는 저장되어 있습니다.'}
                 result['research']=context.get('research')

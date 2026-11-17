@@ -89,3 +89,31 @@ def check_project(conn, project_id):
     predicate, params = project_visible(conn)
     if conn.execute(f'SELECT 1 FROM study_projects p WHERE p.id=%s AND {predicate}', (project_id, *params)).fetchone() is None:
         raise HTTPException(404, '스터디 프로젝트를 찾을 수 없습니다.')
+
+
+def session_owner(conn, study_id):
+    """The member key ('principal:<id>') owning a study session (its project's for a project document), None: the operator's."""
+    if not mapped(conn):
+        return None
+    row = conn.execute('SELECT coalesce((SELECT principal FROM study_principals WHERE study_id=s.id),'
+                       '(SELECT principal FROM study_project_principals WHERE project_id=s.project_id)) '
+                       'FROM study_sessions s WHERE s.id=%s', (study_id,)).fetchone()
+    return row[0] if row else None
+
+
+def project_owner(conn, project_id):
+    if not mapped(conn):
+        return None
+    row = conn.execute('SELECT principal FROM study_project_principals WHERE project_id=%s', (project_id,)).fetchone()
+    return row[0] if row else None
+
+
+def conversation_of(member, operator_chat_id):
+    """(channel, chat_id) of a study conversation: a member's own (pipeline.postgres_conversations), else as before."""
+    return ('member', member) if member else ('web', operator_chat_id)
+
+
+def chat_owner(conn, conversation_id, operator_chat_id):
+    """The owner key a study conversation's answer is generated under."""
+    row = conn.execute('SELECT channel,chat_id FROM conversations WHERE id=%s', (conversation_id,)).fetchone()
+    return row[1] if row and row[0] == 'member' else operator_chat_id
