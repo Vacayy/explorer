@@ -61,7 +61,7 @@ def repoint(conn, store):
                      .format(view=sql.Identifier(table), src=sql.Identifier(store, table)))
 
 
-def refresh(admin, candidate_factory, store_factory_for, projection_path, *, base):
+def refresh(admin, candidate_factory, store_factory_for, projection_path, *, base, drop_previous=True):
     """Load a new store from the projection, check it, switch the views; returns the measurements and timings."""
     import sqlite3
     import time
@@ -97,7 +97,8 @@ def refresh(admin, candidate_factory, store_factory_for, projection_path, *, bas
             raise ValueError(f'Refresh would shrink or move back: {sorted(shrunk)}')
         with candidate_factory() as candidate, candidate.transaction():
             repoint(candidate, store)
-        if previous != base:  # the base is the rollback point and stays
+        # The base is the rollback point and stays; a cloned schema (a rehearsal) shares its source's store: kept.
+        if drop_previous and previous != base:
             admin.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(previous)))
         return {'store': store, 'previous': previous, 'before': before, 'after': after,
                 'load_seconds': round(loaded - started, 1), 'total_seconds': round(time.monotonic() - started, 1)}
