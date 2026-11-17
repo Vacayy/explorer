@@ -22,6 +22,8 @@ class LoginRequired(PermissionError):
     pass
 
 
+# Reads that call an outside source on every uncached request: anonymous callers share the computation minute limit.
+EXTERNAL_READS = {'/api/spine/quotes'}
 ANONYMOUS_PER_MINUTE = 20  # anonymous computation requests per network per minute (models stay refused anyway)
 
 
@@ -109,7 +111,7 @@ def add_middleware(app, *, identity, factory, anonymous_per_minute=ANONYMOUS_PER
                                         request.headers.get('x-explorer-client-ip'))
         if role == 'member':
             context.actor_hash, context.network_hash = identity.account_hash(user.id), network
-        elif role is None and request.method not in {'GET', 'HEAD', 'OPTIONS'}:
+        elif role is None and (request.method not in {'GET', 'HEAD', 'OPTIONS'} or request.url.path in EXTERNAL_READS):
             # Anonymous computations (the boundary already refused anonymous personal and admin writes).
             from starlette.concurrency import run_in_threadpool
             if not await run_in_threadpool(_admit_anonymous, factory, network, anonymous_per_minute):

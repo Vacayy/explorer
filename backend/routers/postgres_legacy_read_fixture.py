@@ -91,6 +91,10 @@ READ_ROUTES = {'/api/spine/home', '/api/spine/home/ai-activity', '/api/spine/hom
 
 
 _offline = ContextVar('legacy_read_offline', default=False)
+# A route-scoped exception to the guard (architect #3 6941713176): host names this request may still reach while
+# offline, and the addresses they resolved to (only those may be connected to).
+_external_hosts = ContextVar('legacy_read_external_hosts', default=frozenset())
+_external_addresses = ContextVar('legacy_read_external_addresses', default=None)
 log = logging.getLogger(__name__)
 
 
@@ -105,13 +109,20 @@ def _install_network_guard(database_host):
     allowed = {database_host} | {info[4][0] for info in resolve(database_host, None)}
 
     def guarded_connect(self, address):
-        if _offline.get() and isinstance(address, tuple) and address[0] not in allowed:
+        if _offline.get() and isinstance(address, tuple) and address[0] not in allowed \
+                and address[0] not in (_external_addresses.get() or ()):
             _refuse('connect', address)
         return connect(self, address)
 
     def guarded_resolve(host, *args, **kwargs):
         if _offline.get() and host not in allowed:
-            _refuse('resolve', host)
+            if host not in _external_hosts.get():
+                _refuse('resolve', host)
+            infos = resolve(host, *args, **kwargs)
+            addresses = _external_addresses.get()
+            if addresses is not None:
+                addresses.update(info[4][0] for info in infos)
+            return infos
         return resolve(host, *args, **kwargs)
     socket.socket.connect, socket.getaddrinfo = guarded_connect, guarded_resolve
     try:
@@ -125,6 +136,12 @@ def _install_network_guard(database_host):
             _refuse('curl request', url)
         return request(self, method, url, *args, **kwargs)
     Session.request = guarded_request
+
+
+QUOTE_HOST = 'polling.finance.naver.com'
+QUOTE_CODES = 50
+QUOTE_BACKOFF = 30
+_quote_backoff = [0.0]
 
 
 def install(app, projection, *, database_host):
@@ -215,8 +232,29 @@ def install(app, projection, *, database_host):
 
     @router.get('/api/spine/quotes', response_model=list[Quote])
     def quotes(codes: str):
-        # A live Naver polling proxy; this API has no outbound network (no screen calls it).
-        raise HTTPException(503, 'Live quotes are unavailable on the candidate')
+        # The legacy live-price proxy (Naver polling, 10-second cache), the only legacy read allowed to go out, and
+        # only to that host. At most QUOTE_CODES codes; after an upstream failure the source is left alone for
+        # QUOTE_BACKOFF seconds (the cached value, or nothing, answers meanwhile). Anonymous callers share the
+        # per-network minute limit (pipeline.postgres_usage_gate).
+        import time as _time
+        from pipeline import quotes as live
+        wanted = [code.strip() for code in codes.split(',') if code.strip()]
+        if len(wanted) > QUOTE_CODES or any(not re.fullmatch(r'[0-9A-Z]{6}', code) for code in wanted):
+            raise HTTPException(422, f'Up to {QUOTE_CODES} six-character stock codes')
+        if _time.monotonic() < _quote_backoff[0]:
+            key = ','.join(sorted(set(wanted)))
+            return [Quote(**q) for q in (live._cache.get(key) or (0, []))[1]]
+        hosts, addresses = _external_hosts.set(frozenset({QUOTE_HOST})), _external_addresses.set(set())
+        offline = _offline.set(True)
+        try:
+            got = live.fetch_quotes(wanted)
+        finally:
+            _offline.reset(offline)
+            _external_addresses.reset(addresses)
+            _external_hosts.reset(hosts)
+        if wanted and not got:
+            _quote_backoff[0] = _time.monotonic() + QUOTE_BACKOFF
+        return [Quote(**q) for q in got]
 
     @router.get('/api/spine/us/briefing', response_model=UsBriefing)
     def us_briefing(force: bool = False, trade_date: str | None = None):
