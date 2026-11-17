@@ -87,6 +87,10 @@ PARTITIONS = {'kr_movers': ('trade_date',), 'us_movers': ('trade_date',), 'prici
               'catalysts': ('stock_code', 'event_type', 'event_date')}
 # Pruned by age (macro_news.py RETAIN_DAYS): only candidate rows inside the MacBook's window go back.
 RETENTION = {'macro_news': ('fetched_at', 14)}
+# Version-keyed records (architect #3 6946114914): both sides may issue the same next version of a topic. Same key,
+# different content: the MacBook's version stands, the candidate's is archived and counted (never renumbered in: a
+# raised version would turn 'latest' around).
+VERSIONED = {table for table, key in ACCUMULATING.items() if {'version', 'seq'} & set(key)}
 NEVER = {'job_runs'}
 
 
@@ -109,8 +113,17 @@ def capture(pg, source):
             columns = tuple(r[1] for r in info if r[5]) or tuple(r[1] for r in info)
         have = {tuple(str(v) for v in row) for row in source.execute(
             f'SELECT {",".join(chr(34) + c + chr(34) for c in columns)} FROM "{table}"')}
-        rows = [data for (data,) in pg.execute('SELECT row_data FROM legacy_supplement_rows WHERE table_name=%s '
-                                               'ORDER BY row_ordinal', (table,)) if _key(data, columns) not in have]
+        candidate = [data for (data,) in pg.execute('SELECT row_data FROM legacy_supplement_rows WHERE table_name=%s '
+                                                    'ORDER BY row_ordinal', (table,))]
+        rows = [data for data in candidate if _key(data, columns) not in have]
+        if table in VERSIONED:
+            content = [r[1] for r in info if r[1] != 'id']
+            macbook = {tuple(str(row[content.index(c)]) for c in columns): tuple(str(v) for v in row)
+                       for row in source.execute(f'SELECT {",".join(chr(34) + c + chr(34) for c in content)} FROM "{table}"')}
+            diverged = [data for data in candidate if _key(data, columns) in macbook
+                        and macbook[_key(data, columns)] != _key(data, content)]
+            if diverged:
+                state[f'{table}:version'] = diverged
         if rows and table in ACCUMULATING:
             if table in PARTITIONS:
                 part = PARTITIONS[table]
@@ -157,9 +170,12 @@ def restore(pg, captured, state):
                        'WHERE table_name=%s) WHERE table_name=%s', (table, table))
             report[table] = {'kind': 'accumulating', 'added_back': len(rows), 'renumbered': renumbered}
         for table, rows in state.items():
+            kind = 'version conflict: the MacBook version stands' if table.endswith(':version') else \
+                'state table: the MacBook rows replaced it'
+            table = table.removesuffix(':version')
             for row in rows:
                 pg.execute('INSERT INTO candidate_record_archive (ledger, record_key, candidate_row, source_row, computed, reason) '
-                           "VALUES (%s,%s,%s,NULL,false,'state table: the MacBook rows replaced it')",
-                           (f'supplement:{table}', Jsonb([]), Jsonb(row)))
-            report[table] = {'kind': 'state', 'archived': len(rows)}
+                           'VALUES (%s,%s,%s,NULL,false,%s)', (f'supplement:{table}', Jsonb([]), Jsonb(row), kind))
+            report[table] = {**report.get(table, {}), 'kind': 'accumulating' if table in ACCUMULATING else 'state',
+                             ('version_conflicts_archived' if 'version' in kind else 'archived'): len(rows)}
     return report
