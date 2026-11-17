@@ -466,6 +466,9 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
             raise ValueError('Keyword-only feed requires a zero model attempt cap')
         from pipeline import enrich
         enrich.llm_available = lambda: False
+        from pipeline import image_reading
+        from pipeline.telegram_deferred import cached_images
+        image_reading.read_images = cached_images  # use existing interpretation or defer the entire document
     queue = FeedBacklog(queue_path)
     try:
         deferred_analysis = False
@@ -528,6 +531,18 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
                 deferred_revisions += 1
             elif len(selected) < min(MAX_NEW_DOCS, 5):
                 selected.append(item)
+        if os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1':
+            from pipeline.normalize import to_markdown
+            from pipeline.telegram_deferred import NeedsAnalysis
+            ready = []
+            for item in selected:
+                try:
+                    item[2].markdown = to_markdown(item[2])
+                    ready.append(item)
+                except NeedsAnalysis:
+                    queue.defer_revision(item[0], reason='analysis')
+                    deferred_analysis = True
+            selected = ready
         if not selected:
             return {'stats': {'feed': {'refs': 1}}, 'counts': {}, 'published': 0,
                     'sources': sorted(allowed),
@@ -547,8 +562,8 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
                 raise trial.HeldBack(f'feed model call cap {MAX_MODEL_CALLS} reached')
 
         result = trial.run_documents(pg, [QueuedDocuments()], min(MAX_NEW_DOCS, 5), before_publish=check_cap)
-        if result['counts'].get('existing_skipped'):
-            raise trial.HeldBack('a selected document became existing during collection; retain the batch')
+        if result['counts'].get('existing_skipped') or any(isinstance(v, str) for v in result['stats'].values()):
+            raise trial.HeldBack('a selected document failed or became existing; retain the batch')
         for seq, _, _ in selected:
             queue.acknowledge(seq)  # only after successful PG publish and local floor commit
         result['sources'] = sorted({item[1] for item in selected})

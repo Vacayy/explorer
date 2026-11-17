@@ -80,6 +80,8 @@ class FeedBacklog:
         if 'revision_pending' not in {row[1] for row in self.conn.execute('PRAGMA table_info(pending)')}:
             self.conn.execute('ALTER TABLE pending ADD COLUMN revision_pending INTEGER NOT NULL DEFAULT 0 '
                               'CHECK(revision_pending IN (0,1))')
+        if 'defer_reason' not in {row[1] for row in self.conn.execute('PRAGMA table_info(pending)')}:
+            self.conn.execute('ALTER TABLE pending ADD COLUMN defer_reason TEXT')
         if 'revision_pending' not in {row[1] for row in self.conn.execute('PRAGMA table_info(pending_refs)')}:
             self.conn.execute('ALTER TABLE pending_refs ADD COLUMN revision_pending INTEGER NOT NULL DEFAULT 0 '
                               'CHECK(revision_pending IN (0,1))')
@@ -189,13 +191,15 @@ class FeedBacklog:
                                                     ' ORDER BY seq LIMIT 1', (lane[0], *params)).fetchone()
         return seq, connector, RawDoc(**json.loads(payload))
 
-    def defer_revision(self, seq):
-        """Keep an existing document's collected payload until revision publishing is connected."""
+    def defer_revision(self, seq, *, reason='revision'):
+        """Keep an existing document or an item awaiting image analysis for later."""
+        if reason not in {'revision', 'analysis'}:
+            raise ValueError('Unknown deferral reason')
         with self.conn:
             row = self.conn.execute('SELECT lane FROM pending WHERE seq=? AND revision_pending=0', (seq,)).fetchone()
             if row is None or self.conn.execute('SELECT 1 FROM publication_intent WHERE seq=?', (seq,)).fetchone():
                 raise ValueError('Pending document cannot be deferred')
-            self.conn.execute('UPDATE pending SET revision_pending=1 WHERE seq=?', (seq,))
+            self.conn.execute('UPDATE pending SET revision_pending=1,defer_reason=? WHERE seq=?', (reason, seq))
             self.conn.execute('UPDATE feed_cursor SET lane=? WHERE singleton=1', (row[0],))
 
     def batch(self, *, allowed, limit):

@@ -19,6 +19,26 @@ import refactor_feed_refresh as feed_refresh
 
 
 class CollectionTargetTest(unittest.TestCase):
+    def test_keyword_feed_defers_missing_image_analysis_without_dropping_payload(self):
+        from pipeline.base import RawDoc
+        from pipeline.feed_backlog import FeedBacklog
+        from pipeline import enrich, image_reading, normalize
+        from pipeline.telegram_deferred import NeedsAnalysis
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'queue.sqlite'
+            queue = FeedBacklog(path)
+            queue.enqueue('blog', 'feed', RawDoc('blog', 'image', kind='html'))
+            queue.close()
+            with patch.dict(os.environ, {'COLLECT_FEED_KEYWORD_ONLY': '1'}), \
+                 patch.object(job, 'MAX_MODEL_CALLS', 0), patch.object(job, '_feed_document_known', return_value=False), \
+                 patch.object(enrich, 'llm_available'), patch.object(image_reading, 'read_images'), \
+                 patch.object(normalize, 'to_markdown', side_effect=NeedsAnalysis('missing cache')):
+                result = job.run_minimal_blog(None, object(), queue_path=path)
+            self.assertEqual(result['deferred_analysis'], 1)
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.conn.execute("SELECT count(*) FROM pending WHERE defer_reason='analysis'").fetchone()[0], 1)
+            self.assertIsNone(queue.next())
+            queue.close()
     def test_telegram_page_is_preserved_when_grouping_needs_analysis(self):
         from pipeline.base import SourceRef
         from pipeline.feed_backlog import FeedBacklog
