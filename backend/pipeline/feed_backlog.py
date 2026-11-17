@@ -24,6 +24,27 @@ def stage_one_reference(queue, name, connector):
     return count
 
 
+def fetch_pending_reference(queue, connectors):
+    """Stage all returned documents before acknowledging a discovered reference."""
+    item = queue.next_pending_ref()
+    if item is None:
+        return 0
+    seq, name, ref, lane = item
+    complete = False
+    try:
+        count = 0
+        for doc in connectors[name].fetch(ref):
+            queue.enqueue(name, lane, doc)
+            count += 1
+        if count:
+            queue.acknowledge_ref(seq)
+            complete = True
+        return count
+    finally:
+        if not complete:
+            queue.defer_ref(seq)
+
+
 class FeedBacklog:
     def __init__(self, path):
         self.path = Path(path)
@@ -86,7 +107,7 @@ class FeedBacklog:
         if row is None:
             row = self.conn.execute('SELECT seq,connector,payload FROM pending_refs WHERE lane=? ORDER BY seq LIMIT 1', lane).fetchone()
         seq, connector, payload = row
-        return seq, connector, SourceRef(**json.loads(payload))
+        return seq, connector, SourceRef(**json.loads(payload)), lane[0]
 
     def acknowledge_ref(self, seq):
         """Call only after all fetched documents are durably staged."""

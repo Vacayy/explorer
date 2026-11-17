@@ -3,10 +3,27 @@ import unittest
 from pathlib import Path
 
 from pipeline.base import RawDoc, SourceRef
-from pipeline.feed_backlog import FeedBacklog, stage_one_reference
+from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference, stage_one_reference
 
 
 class FeedBacklogTest(unittest.TestCase):
+    def test_reference_ack_only_after_documents_are_durable(self):
+        class Connector:
+            def fetch(self, ref):
+                yield RawDoc('youtube', ref.key)
+                raise RuntimeError('interrupted after one document')
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'pending.sqlite'
+            queue = FeedBacklog(path)
+            queue.enqueue_ref('youtube', 'channel', SourceRef('video'))
+            with self.assertRaises(RuntimeError):
+                fetch_pending_reference(queue, {'youtube': Connector()})
+            queue.close()
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.next_pending_ref()[2].key, 'video')
+            self.assertEqual(queue.next()[2].source_id, 'video')
+            queue.close()
     def test_discovered_refs_survive_restart_and_empty_fetch_can_yield(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'pending.sqlite'

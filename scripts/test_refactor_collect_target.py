@@ -16,6 +16,31 @@ import refactor_collect_job as job
 
 
 class CollectionTargetTest(unittest.TestCase):
+    def test_minimal_feed_keeps_unpublished_documents_after_failure(self):
+        from pipeline.base import RawDoc, SourceRef
+        from pipeline.feed_backlog import FeedBacklog
+
+        class Connector:
+            def discover(self):
+                return [SourceRef('feed')]
+
+            def fetch(self, _ref):
+                return [RawDoc('blog', 'first'), RawDoc('blog', 'second')]
+
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'backlog.sqlite'
+            with patch.object(trial, 'run_documents', side_effect=RuntimeError('simulated publication failure')):
+                with self.assertRaises(RuntimeError):
+                    job.run_minimal_blog(None, Connector(), queue_path=path)
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending').fetchone()[0], 2)
+            queue.close()
+            result = {'counts': {'new': 1}, 'stats': {}, 'published': 1}
+            with patch.object(trial, 'run_documents', return_value=result):
+                job.run_minimal_blog(None, Connector(), queue_path=path)
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending').fetchone()[0], 1)
+            queue.close()
     def test_media_is_readonly_and_feed_only(self):
         def spec(label, mount):
             return {'Image': engine.IMAGE, 'Labels': {engine.LABEL: '1', engine.LABEL + '.job': label},

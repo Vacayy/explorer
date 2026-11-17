@@ -420,6 +420,8 @@ def run_compute(label):
 
 def run_feeds(pg, refused=None):
     from pipeline.registry import CONNECTORS
+    if os.environ.get('COLLECT_FEED_MINIMAL_BLOG') == '1':
+        return run_minimal_blog(pg, CONNECTORS['blog'](), refused)
     names = [name for name in FEED_SOURCES.split(',') if name]
     unknown = set(names) - set(CONNECTORS)
     if unknown:
@@ -432,6 +434,40 @@ def run_feeds(pg, refused=None):
     result['steps_not_connected'] = ['extract_doc_causal', 'compute_signals', 'compute_narratives --urgent',
                                      'extract_events', 'backfill_images', 'scan_actions', 'compute_digests']
     return result
+
+
+def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-backlog.sqlite'):
+    """One blog reference, one queued document; a failure keeps this isolated feed on hold."""
+    from pipeline.feed_backlog import FeedBacklog, stage_one_reference
+    queue = FeedBacklog(queue_path)
+    try:
+        if queue.intent():
+            raise trial.HeldBack('an earlier feed publication intent requires review')
+        if queue.next() is None:
+            stage_one_reference(queue, 'blog', connector)
+        item = queue.next()
+        if item is None:
+            raise trial.HeldBack('blog reference returned no documents')
+        seq, _, doc = item
+
+        class OneDocument:
+            def discover(self):
+                return [None]
+
+            def fetch(self, _ref):
+                return [doc]
+
+        def check_cap():
+            if refused:
+                raise trial.HeldBack(f'feed model call cap {MAX_MODEL_CALLS} reached')
+
+        result = trial.run_documents(pg, [OneDocument()], 1, before_publish=check_cap)
+        queue.acknowledge(seq)  # only after successful PG publish and local floor commit
+        result['sources'] = ['blog']
+        result['steps_not_connected'] = ['other feed sources', 'existing document revisions', 'chain postprocessing']
+        return result
+    finally:
+        queue.close()
 
 
 def run(label):
