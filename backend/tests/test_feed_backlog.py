@@ -7,6 +7,19 @@ from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference, stage_on
 
 
 class FeedBacklogTest(unittest.TestCase):
+    def test_disabled_sources_remain_queued_without_blocking_enabled_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            queue = FeedBacklog(Path(directory) / 'pending.sqlite')
+            queue.enqueue_ref('youtube', 'channel', SourceRef('video'))
+            queue.enqueue_ref('blog', 'feed', SourceRef('post'))
+            queue.enqueue('youtube', 'channel', RawDoc('youtube', 'video'))
+            queue.enqueue('blog', 'feed', RawDoc('blog', 'post'))
+            self.assertEqual(queue.next_pending_ref(allowed={'blog'})[1], 'blog')
+            self.assertEqual(queue.next(allowed={'blog'})[1], 'blog')
+            self.assertEqual(queue.next_pending_ref(allowed={'youtube'})[1], 'youtube')
+            self.assertEqual(queue.next(allowed={'youtube'})[1], 'youtube')
+            self.assertIsNone(queue.next(allowed=set()))
+            queue.close()
     def test_reference_ack_only_after_documents_are_durable(self):
         class Connector:
             def fetch(self, ref):

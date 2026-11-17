@@ -463,10 +463,11 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
         enrich.llm_available = lambda: False
     queue = FeedBacklog(queue_path)
     try:
+        allowed = {'blog'} | ({'youtube'} if youtube is not None else set())
         if queue.intent():
             raise trial.HeldBack('an earlier feed publication intent requires review')
-        if queue.next() is None:
-            if youtube is not None or queue.next_pending_ref() is None:
+        if queue.next(allowed=allowed) is None:
+            if youtube is not None or queue.next_pending_ref(allowed=allowed) is None:
                 from pipeline.base import SourceRef
                 choices = [SourceRef('blog')] + ([SourceRef('youtube')] if youtube is not None else [])
                 selected = queue.next_ref('feed-sources', choices)
@@ -490,7 +491,7 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
             if youtube is not None:
                 sources['youtube'] = youtube
             fetch_pending_reference(queue, sources)
-        item = queue.next()
+        item = queue.next(allowed=allowed)
         if item is None:
             return {'stats': {'feed': {'refs': 1}}, 'counts': {}, 'published': 0,
                     'sources': ['blog'] + (['youtube'] if youtube is not None else []),

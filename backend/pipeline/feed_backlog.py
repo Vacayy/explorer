@@ -26,7 +26,7 @@ def stage_one_reference(queue, name, connector):
 
 def fetch_pending_reference(queue, connectors):
     """Stage all returned documents before acknowledging a discovered reference."""
-    item = queue.next_pending_ref()
+    item = queue.next_pending_ref(allowed=set(connectors))
     if item is None:
         return 0
     seq, name, ref, lane = item
@@ -93,19 +93,24 @@ class FeedBacklog:
                               'ON CONFLICT(connector,ref_key) DO UPDATE SET payload=excluded.payload',
                               (connector, ref.key, lane, payload))
 
-    def next_pending_ref(self):
+    def next_pending_ref(self, allowed=None):
+        if allowed is not None and not allowed:
+            return None
+        clause = '' if allowed is None else ' AND connector IN (' + ','.join('?' for _ in allowed) + ')'
+        params = () if allowed is None else tuple(sorted(allowed))
         last = self.conn.execute('SELECT lane FROM ref_cursor WHERE singleton=1').fetchone()[0] or ''
-        lane = self.conn.execute('SELECT lane FROM pending_refs WHERE lane>? GROUP BY lane ORDER BY lane LIMIT 1',
-                                 (last,)).fetchone()
+        lane = self.conn.execute('SELECT lane FROM pending_refs WHERE lane>?' + clause + ' GROUP BY lane ORDER BY lane LIMIT 1',
+                                 (last, *params)).fetchone()
         if lane is None:
-            lane = self.conn.execute('SELECT lane FROM pending_refs GROUP BY lane ORDER BY lane LIMIT 1').fetchone()
+            lane = self.conn.execute('SELECT lane FROM pending_refs WHERE 1=1' + clause + ' GROUP BY lane ORDER BY lane LIMIT 1', params).fetchone()
         if lane is None:
             return None
         seen = self.conn.execute('SELECT seq FROM ref_lane_cursor WHERE lane=?', lane).fetchone()
-        row = self.conn.execute('SELECT seq,connector,payload FROM pending_refs WHERE lane=? AND seq>? '
-                                'ORDER BY seq LIMIT 1', (lane[0], seen[0] if seen else 0)).fetchone()
+        row = self.conn.execute('SELECT seq,connector,payload FROM pending_refs WHERE lane=? AND seq>?' + clause +
+                                ' ORDER BY seq LIMIT 1', (lane[0], seen[0] if seen else 0, *params)).fetchone()
         if row is None:
-            row = self.conn.execute('SELECT seq,connector,payload FROM pending_refs WHERE lane=? ORDER BY seq LIMIT 1', lane).fetchone()
+            row = self.conn.execute('SELECT seq,connector,payload FROM pending_refs WHERE lane=?' + clause +
+                                    ' ORDER BY seq LIMIT 1', (lane[0], *params)).fetchone()
         seq, connector, payload = row
         return seq, connector, SourceRef(**json.loads(payload)), lane[0]
 
@@ -160,16 +165,21 @@ class FeedBacklog:
                           (doc.source_type, doc.source_id, lane, connector, payload))
         self.conn.commit()  # fetched material survives a later source failure
 
-    def next(self):
+    def next(self, allowed=None):
         """Oldest document in the next nonempty source lane, rotating between lanes."""
+        if allowed is not None and not allowed:
+            return None
+        clause = '' if allowed is None else ' AND connector IN (' + ','.join('?' for _ in allowed) + ')'
+        params = () if allowed is None else tuple(sorted(allowed))
         last = self.conn.execute('SELECT lane FROM feed_cursor WHERE singleton=1').fetchone()[0] or ''
-        lane = self.conn.execute('SELECT lane FROM pending WHERE lane>? GROUP BY lane ORDER BY lane LIMIT 1',
-                                 (last,)).fetchone()
+        lane = self.conn.execute('SELECT lane FROM pending WHERE lane>?' + clause + ' GROUP BY lane ORDER BY lane LIMIT 1',
+                                 (last, *params)).fetchone()
         if lane is None:
-            lane = self.conn.execute('SELECT lane FROM pending GROUP BY lane ORDER BY lane LIMIT 1').fetchone()
+            lane = self.conn.execute('SELECT lane FROM pending WHERE 1=1' + clause + ' GROUP BY lane ORDER BY lane LIMIT 1', params).fetchone()
         if lane is None:
             return None
-        seq, connector, payload = self.conn.execute('SELECT seq,connector,payload FROM pending WHERE lane=? ORDER BY seq LIMIT 1', lane).fetchone()
+        seq, connector, payload = self.conn.execute('SELECT seq,connector,payload FROM pending WHERE lane=?' + clause +
+                                                    ' ORDER BY seq LIMIT 1', (lane[0], *params)).fetchone()
         return seq, connector, RawDoc(**json.loads(payload))
 
     def acknowledge(self, seq):
