@@ -51,7 +51,7 @@ case "$1" in
     REFACTOR_POSTGRES_DSN=$(docker exec explorer-refactor-single-path printenv REFACTOR_POSTGRES_DSN)
     export REFACTOR_POSTGRES_DSN
     out="$DIR/$(date -u +%Y%m%dT%H%M%SZ)-candidate.dump"
-    docker run --rm --pull=never --network explorer-refactor-preview-private --cpus 1 --memory 1g --pids-limit 100 \
+    docker run --rm --pull=never --log-driver none --network explorer-refactor-preview-private --cpus 1 --memory 1g --pids-limit 100 \
       --read-only --cap-drop ALL --security-opt no-new-privileges -e REFACTOR_POSTGRES_DSN --entrypoint sh "$image" \
       -c 'exec pg_dump -d "$REFACTOR_POSTGRES_DSN" -Fc -Z 6 "$@"' sh $(printf -- '-n %s ' $SCHEMAS) > "$out.tmp"
     shasum -a 256 "$out.tmp" | sed "s|$out.tmp|$(basename "$out")|" > "$out.sha256"
