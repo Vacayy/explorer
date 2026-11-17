@@ -66,11 +66,19 @@ class FailoverTests(unittest.TestCase):
         self.assertEqual(chunks, [result.text])
 
     def test_disabled_and_tool_evidence_calls_do_not_switch(self):
-        for tools, setting in [((), 'none'), (('WebSearch', 'WebFetch'), 'codex-exec'), (('Read',), 'codex-exec')]:
+        for tools, setting in [((), 'none'), (('WebSearch', 'WebFetch'), 'none')]:
             with patch.dict(os.environ, {'LLM_FALLBACK_ENGINE': setting}), patch.object(llm, '_run_claude_code', side_effect=RuntimeError('offline')), patch.object(llm, '_run_codex') as fallback:
                 with self.assertRaises(RuntimeError):
                     llm.run('p', task='study.web' if tools else 'document.tag')
                 fallback.assert_not_called()
+
+    def test_web_research_switches_to_codex_web_search(self):
+        with patch.object(llm, '_run_claude_code', side_effect=RuntimeError('offline')), patch.object(llm, '_run_codex', return_value=llm.LLMResult('{}', 'test-codex', 'codex-exec')) as fallback:
+            llm.run('p', task='study.web')
+        self.assertTrue(fallback.call_args.kwargs['web'])
+        with patch.object(llm, '_run_claude_code', side_effect=RuntimeError('offline')), patch.object(llm, '_run_codex', return_value=llm.LLMResult('ok', 'test-codex', 'codex-exec')) as fallback:
+            llm.run('p', task='chat.answer')
+        self.assertFalse(fallback.call_args.kwargs['web'])
 
     def test_schema_and_images_forwarded(self):
         for options in ({'task':'narrative.reverify', 'json_schema': {'type':'object'}}, {'task':'image.read', 'images':('/image.png',)}):
@@ -122,6 +130,25 @@ class CodexAdapterTests(unittest.TestCase):
         self.assertEqual(result.usage, {'input':12,'cache_read':4,'output':3})
         self.assertIsNone(result.cost_usd)
         self.assertNotIn('required', schema)
+
+    def test_web_search_only_when_asked_and_opened_pages_become_evidence(self):
+        items = [{'type': 'item.completed', 'item': {'type': 'web_search', 'action': {'type': 'search', 'query': 'q'}}},
+                 {'type': 'item.completed', 'item': {'type': 'web_search', 'action': {'type': 'open_page', 'url': 'https://a.example/x'}}},
+                 {'type': 'turn.completed', 'usage': {}}]
+        seen = {}
+        def execute(args, **kw):
+            seen['args'] = args
+            Path(args[args.index('-o')+1]).write_text('answer')
+            return SimpleNamespace(returncode=0, stdout='\n'.join(map(json.dumps, items)), stderr='')
+        with patch.object(llm.shutil, 'which', return_value='/codex'), patch.object(llm.subprocess, 'run', side_effect=execute):
+            result = llm._run_codex('INPUT', system='RULES', model='m', effort=None, timeout=9, web=True)
+        self.assertIn('web_search="live"', seen['args'])
+        self.assertIn('shell_tool', seen['args'])
+        self.assertEqual([(e['name'], e['input']) for e in result.tool_results],
+                         [('WebSearch', {'query': 'q'}), ('WebFetch', {'url': 'https://a.example/x'})])
+        with patch.object(llm.shutil, 'which', return_value='/codex'), patch.object(llm.subprocess, 'run', side_effect=execute):
+            with self.assertRaises(RuntimeError):  # web search without the web task is still refused
+                llm._run_codex('INPUT', system='RULES', model='m', effort=None, timeout=9)
 
     def test_rejects_incomplete_empty_failed_and_tool_results(self):
         for kw in ({'event':'turn.failed'}, {'event':'thread.started'}, {'text':' '}, {'item':'mcp_tool_call'}, {'rc':1}):

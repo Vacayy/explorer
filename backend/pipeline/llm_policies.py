@@ -41,6 +41,9 @@ class TaskPolicy:
     api_max_tokens: int = 4096
 
 
+# Web tasks whose Codex fallback may use Codex web search (and nothing else); see llm._run_codex.
+WEB_FALLBACK_TASKS = frozenset({'company.profile', 'chain.analyze', 'study.web'})
+
 # Only configuration lives here; prompts, SQL and domain validation stay in features.
 TASKS = MappingProxyType({
     "backfill.change_summary": TaskSpec("haiku", timeout=120),
@@ -174,9 +177,11 @@ def resolve(task: str, *, engine: str = "claude-code", environ=None) -> TaskPoli
     fallback_model = _setting(env, prefix + "FALLBACK_MODEL", _setting(env, "CODEX_FALLBACK_MODEL", "gpt-6.1-sol"))
     if not fallback_model or any(c.isspace() for c in fallback_model):
         raise ValueError(f"{task}: 유효하지 않은 대체 모델 설정")
-    # Claude native web evidence cannot be synthesized from Codex completion text.
+    # Claude native web evidence cannot be synthesized from Codex completion text; the web tasks below fall back
+    # to Codex's own web search instead (user direction: Codex as the LLM backup), with its opened pages as evidence.
     fallback = None
-    if engine == "claude-code" and fallback_engine == "codex-exec" and not (set(spec.tools) - {"Read"}):
+    if engine == "claude-code" and fallback_engine == "codex-exec" and (
+            not (set(spec.tools) - {"Read"}) or task in WEB_FALLBACK_TASKS):
         fallback = ModelTarget("codex-exec", fallback_model, effort)
     if engine == "api" and (spec.tools or spec.schema):
         raise ValueError(f"{task}: API 엔진은 이 작업의 도구/구조화 출력 계약을 지원하지 않습니다")
