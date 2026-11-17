@@ -21,6 +21,16 @@ for schema in $SCHEMAS; do
   [[ "$schema" =~ ^refactor_fixture_[0-9a-f]{32}$ ]] || { echo 'invalid backup schema'; exit 1; }
 done
 vm_free() { docker exec "$DB" df -k /var/lib/postgresql/data | awk 'NR==2{print $4}'; }
+restore_space_kb() {
+  schema_literals=$(printf "'%s'," $SCHEMAS | sed 's/,$//')
+  live_bytes=$(docker exec "$DB" psql -U fixture -d fixture -Atc "SELECT COALESCE(sum(pg_total_relation_size(c.oid)),0)
+    FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE c.relkind IN ('r','m') AND n.nspname IN ($schema_literals)")
+  [[ "$live_bytes" =~ ^[0-9]+$ ]] || { echo 'could not determine VM space requirement' >&2; return 1; }
+  required_kb=$((live_bytes / 1024 + 1048576))
+  [ "$required_kb" -ge "$MIN_VM_FREE_KB" ] || required_kb=$MIN_VM_FREE_KB
+  printf '%s\n' "$required_kb"
+}
 case "$1" in
   backup)
     mkdir -p "$DIR" && chmod 700 "$DIR"
@@ -31,6 +41,10 @@ case "$1" in
     host_free_kb=$(df -Pk "$DIR" | awk 'NR==2 {print $4}')
     [[ "$host_free_kb" =~ ^[0-9]+$ ]] || { echo 'could not determine host free space'; exit 1; }
     [ "$host_free_kb" -gt "$((database_bytes / 1024 + 3145728))" ] || { echo 'not enough host space for a backup'; exit 1; }
+    # A real dump temporarily consumed several GiB in the VM: refuse under
+    # the same conservative budget used for a full restore.
+    required_kb=$(restore_space_kb)
+    [ "$(vm_free)" -gt "$required_kb" ] || { echo 'not enough VM space for a backup'; exit 1; }
     # Compress in a bounded disposable container using the already-local PG image.
     image=$(docker inspect "$DB" --format '{{.Image}}')
     [[ "$image" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'invalid local PG image'; exit 1; }
@@ -47,14 +61,8 @@ case "$1" in
   check)
     dump=$2
     (cd "$(dirname "$dump")" && shasum -a 256 -c "$(basename "$dump").sha256" >/dev/null) || { echo 'checksum mismatch'; exit 1; }
-    schema_literals=$(printf "'%s'," $SCHEMAS | sed 's/,$//')
     # A compressed dump may expand to the whole database size; keep an additional GiB free.
-    live_bytes=$(docker exec "$DB" psql -U fixture -d fixture -Atc "SELECT COALESCE(sum(pg_total_relation_size(c.oid)),0)
-      FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-      WHERE c.relkind IN ('r','m') AND n.nspname IN ($schema_literals)")
-    [[ "$live_bytes" =~ ^[0-9]+$ ]] || { echo 'could not determine restore space requirement'; exit 1; }
-    required_kb=$((live_bytes / 1024 + 1048576))
-    [ "$required_kb" -ge "$MIN_VM_FREE_KB" ] || required_kb=$MIN_VM_FREE_KB
+    required_kb=$(restore_space_kb)
     [ "$(vm_free)" -gt "$required_kb" ] || { echo 'not enough VM space for a restore check'; exit 1; }
     scratch="explorer_restore_$(date -u +%Y%m%d%H%M%S)_$$"
     exists=$(docker exec "$DB" psql -U fixture -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname='$scratch'")

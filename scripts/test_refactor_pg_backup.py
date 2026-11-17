@@ -85,6 +85,12 @@ printf 'fs blocks used available capacity mount\\nfs 99999999 1 %s 1%% /data\\n'
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(list(self.backups.iterdir()), [])
 
+    def test_backup_refuses_when_vm_has_insufficient_space(self):
+        env = dict(self.env, TEST_VM_FREE_KB='1024')
+        result = subprocess.run(['bash', str(SCRIPT), 'backup'], env=env, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(list(self.backups.iterdir()), [])
+
 
 if __name__ == '__main__':
     unittest.main()
