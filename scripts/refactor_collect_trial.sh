@@ -4,7 +4,9 @@
 # credentials are given; Claude is blocked so tagging uses the Codex fallback.
 #   scripts/refactor_collect_trial.sh setup                 # clone schema + trial volume + work copy
 #   scripts/refactor_collect_trial.sh run <job> [feed_url]  # blog needs a feed URL
+#   scripts/refactor_collect_trial.sh job <label>           # one scheduled job (refactor_collect_job.py)
 #   scripts/refactor_collect_trial.sh teardown              # drop clone schema and trial volume
+# NO_INTERNET=1 keeps the one-shot container off the outbound network (path checks without source requests).
 set -euo pipefail
 API=explorer-refactor-single-path
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -26,7 +28,7 @@ container() {  # extra docker args..., then the command
     -v "$HOME/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py:/control/codex-credential-gate.py:ro" \
     -w /app/backend -e PYTHONPATH=/app/backend -e PYTHONDONTWRITEBYTECODE=1 "$@")
   rm -f "$env_file"
-  docker network connect bridge "$id"   # outbound internet for this one-shot run only
+  [ "${NO_INTERNET:-0}" = 1 ] || docker network connect bridge "$id"   # outbound internet for this one-shot run only
   local rc=0; docker start -a "$id" || rc=$?
   docker rm -f "$id" >/dev/null
   return $rc
@@ -47,6 +49,9 @@ case "$1" in
     else
       container "$IMAGE" python /app/scripts/refactor_collect_trial.py run "$2"
     fi
+    ;;
+  job)   # one scheduled job (scripts/refactor_collect_scheduler.py --run), recorded in collect_runs
+    container "$IMAGE" python /app/scripts/refactor_collect_job.py "$2"
     ;;
   teardown)
     NEW=$(cat "$STATE")
