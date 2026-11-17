@@ -137,6 +137,17 @@ class CollectionTargetTest(unittest.TestCase):
             self.assertEqual(len(retained), 1)
             self.assertIn('<img', retained[0][2].raw_content)
             queue.close()
+            class EmptyBlog:
+                def discover(self): return []
+            with patch.dict(os.environ, {'COLLECT_FEED_STRICT_IMAGES': '1', 'COLLECT_FEED_KEYWORD_ONLY': '0'}), \
+                 patch.object(job, 'MAX_MODEL_CALLS', 2), patch.object(job, '_feed_document_known', return_value=True), \
+                 patch.object(image_reading, 'read_images'), patch.object(trial, 'run_documents') as publish:
+                again = job.run_minimal_blog(None, EmptyBlog(), queue_path=path)
+            self.assertEqual(again['published'], 0)
+            publish.assert_not_called()
+            queue = FeedBacklog(path)
+            self.assertEqual(len(list(queue.analysis_pending())), 1)
+            queue.close()
     def test_telegram_page_is_preserved_when_grouping_needs_analysis(self):
         from pipeline.base import SourceRef
         from pipeline.feed_backlog import FeedBacklog
