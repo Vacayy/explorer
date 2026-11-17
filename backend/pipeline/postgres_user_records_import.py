@@ -156,3 +156,95 @@ def apply(pg, base, source, *, operator):
 
 def _dumps(value):
     return json.dumps(value, ensure_ascii=False, default=str)
+
+
+# Outputs the user asked for, kept as collected-table rows rather than candidate tables (architect #3 6944631236):
+# reports and source digests in the override ledger, YouTube digest jobs in the video overlay. These tables are not
+# supplement tables, so the publication never refreshes them: new MacBook rows and MacBook changes of base rows come
+# here, by the same rule. (table, key column, natural key for 'the same record', renumbered, store)
+REQUESTED = (('reports', 'id', None, True, 'override'),
+             ('source_digests', 'id', ('kind', 'key'), True, 'override'),
+             ('youtube_digest_jobs', 'doc_id', None, False, 'video'))
+
+
+def _visible(pg, table, key):
+    return {str(data[key]): (ordinal, data) for ordinal, data in pg.execute(
+        'SELECT row_ordinal, row_data FROM legacy_snapshot_rows WHERE table_name=%s', (table,))}
+
+
+def _store(pg, store, table, key_value, row, ordinal):
+    if store == 'override':
+        pg.execute('INSERT INTO owner_row_overrides (table_name, key, row_data, row_ordinal) VALUES (%s,%s,%s,%s) '
+                   'ON CONFLICT (table_name, key) DO UPDATE SET row_data=excluded.row_data, updated_at=now()',
+                   (table, key_value, Jsonb(row, dumps=_dumps), ordinal))
+    else:
+        pg.execute('INSERT INTO video_digest_overlay_rows VALUES (%s,%s,%s) ON CONFLICT (table_name, row_ordinal) '
+                   'DO UPDATE SET row_data=excluded.row_data', (table, ordinal, Jsonb(row, dumps=_dumps)))
+
+
+def apply_requested(pg, base, source):
+    """New MacBook rows and MacBook changes of base rows of the requested outputs; one transaction."""
+    _guard(pg)
+    report = {}
+    with pg.transaction():
+        _initialize(pg)
+        for table, key, natural, renumber, store in REQUESTED:
+            columns, src = _rows(source, table, (key,))
+            if not columns:
+                continue
+            _, old = _rows(base, table, (key,))
+            content = [c for c in columns if c != key]
+            visible = _visible(pg, table, key)
+            mapped = {old_id: new for old_id, new in pg.execute(
+                'SELECT old_id, new_id FROM candidate_id_remap WHERE kind=%s', (f'macbook:{table}',))}
+            counts = {'added': 0, 'applied': 0, 'conflict': 0, 'removed_on_macbook': 0, 'skipped_mapped': 0}
+
+            def settle(target_key, ordinal, before, after):
+                """A record the candidate also has: MacBook value unless already equal; archive a diverged candidate value."""
+                current = visible.get(target_key, (None, None))[1]
+                if current is not None and _digest(current, content) == _digest(after, content):
+                    return
+                if current is not None and (before is None or _digest(current, content) != _digest(before, content)):
+                    pg.execute('INSERT INTO candidate_record_archive (ledger, record_key, candidate_row, source_row, computed) '
+                               'VALUES (%s,%s,%s,%s,false)', (table, Jsonb([target_key]), Jsonb(current, dumps=_dumps),
+                                                              Jsonb(after, dumps=_dumps)))
+                    counts['conflict'] += 1
+                _store(pg, store, table, target_key, {**after, key: current[key] if current else after[key]}, ordinal)
+                counts['applied'] += 1
+            next_ordinal = max([o for o, _ in visible.values()] + [0]) + 1
+            next_id = max([int(k) for k in visible] + [max([int(k[0]) for k in src] + [0])]) + 1 if renumber else None
+            for (ident,), row in sorted(src.items(), key=lambda item: str(item[0])):
+                if (ident,) in old:
+                    continue
+                if renumber and ident in mapped:
+                    counts['skipped_mapped'] += 1
+                    continue
+                same = None
+                if natural:
+                    same = next((k for k, (_, data) in visible.items()
+                                 if all(data.get(c) == row.get(c) for c in natural)), None)
+                elif not renumber and str(ident) in visible:
+                    same = str(ident)
+                if same is not None:
+                    settle(same, visible[same][0], None, row)
+                    if renumber:
+                        pg.execute('INSERT INTO candidate_id_remap (kind, old_id, new_id, origin) VALUES (%s,%s,%s,%s)',
+                                   (f'macbook:{table}', ident, int(same), 'macbook'))
+                    continue
+                if renumber:
+                    new, next_id = next_id, next_id + 1
+                    pg.execute('INSERT INTO candidate_id_remap (kind, old_id, new_id, origin) VALUES (%s,%s,%s,%s)',
+                               (f'macbook:{table}', ident, new, 'macbook'))
+                    row = {**row, key: new}
+                ordinal = -int(row[key]) if store == 'video' else next_ordinal
+                next_ordinal += store != 'video'
+                _store(pg, store, table, str(row[key]), row, ordinal)
+                counts['added'] += 1
+            for (ident,), before in old.items():
+                after = src.get((ident,))
+                if after is None:
+                    counts['removed_on_macbook'] += 1
+                elif _digest(after, content) != _digest(before, content) and str(ident) in visible:
+                    settle(str(ident), visible[str(ident)][0], before, after)
+            report[table] = {k: v for k, v in counts.items() if v}
+    return {table: counts for table, counts in report.items() if counts}

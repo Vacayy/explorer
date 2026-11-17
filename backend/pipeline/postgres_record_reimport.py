@@ -26,6 +26,8 @@ LEDGERS = (('owner_follows', 'follows', ('entity_id',), ()),
            ('fixture_portfolio_principles', 'portfolio_principles', ('text',), ('rules_json', 'notes_json')))
 # Ledgers holding only the operator's choices over a collected catalogue: an item without a ledger row is unchanged.
 CHOICES = {'owner_trade_follow'}
+# Outputs the user requested, handled with the user's own records (postgres_user_records_import, R3b).
+REQUESTED = {'reports', 'source_digests', 'youtube_digest_jobs'}
 # Portfolio transactions have no natural key: compared as multisets of their content.
 TRANSACTIONS = ('trade_date', 'kind', 'stock_code', 'amount', 'price', 'note')
 COMPUTED = {'owner_legacy_rows[watch_evaluations]'}  # also every owner_row_overrides table but feature_flags (below)
@@ -101,8 +103,8 @@ def _sides(pg, base, source):
     for table, column in pg.execute('SELECT table_name, key_column FROM owner_override_keys ORDER BY 1, ctid'):
         keys[table] = column.split('|')  # a composite key is one row, its columns joined by '|'
     for table, in pg.execute('SELECT DISTINCT table_name FROM owner_row_overrides ORDER BY 1').fetchall():
-        if table not in keys or not _exists(source, table):
-            continue
+        if table not in keys or not _exists(source, table) or table in REQUESTED:
+            continue  # the user's requested outputs: R3b (postgres_user_records_import.apply_requested)
         have = [row[1] for row in source.execute(f'PRAGMA table_info("{table}")')]
         joined = lambda side: {('|'.join(k),): v for k, v in side.items()}  # noqa: E731
         b, src = joined(_legacy(base, table, tuple(keys[table]), have)), joined(_legacy(source, table, tuple(keys[table]), have))
@@ -112,6 +114,12 @@ def _sides(pg, base, source):
                 candidate.pop((key,), None)
             else:
                 candidate[(key,)] = (_digest([_norm(data.get(col)) for col in have]), data)
+        if keys[table] == ['id']:
+            # A surrogate id the base never had names different records on the two sides (each issued it after the
+            # base): never the same record, so not compared here (#3 report: renumbering such candidate rows).
+            fresh = {k for k in set(candidate) | set(src) if k not in b}
+            candidate = {k: v for k, v in candidate.items() if k not in fresh}
+            src = {k: v for k, v in src.items() if k not in fresh}
         sides[f'owner_row_overrides[{table}]'] = (b, candidate, src, ('override', table))
     for table in TABLES:
         if not _exists(source, table):

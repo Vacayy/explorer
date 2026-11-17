@@ -46,6 +46,10 @@ def main():
             out['r3b'] = user_records.apply(pg, base, source, operator=operator)
             out['r3b_seconds'] = round(time.monotonic() - started, 1)
             out['r3b_rerun'] = user_records.apply(pg, base, source, operator=operator)
+            started = time.monotonic()
+            out['requested'] = user_records.apply_requested(pg, base, source)
+            out['requested_seconds'] = round(time.monotonic() - started, 1)
+            out['requested_rerun'] = user_records.apply_requested(pg, base, source)
     print(json.dumps(out, ensure_ascii=False, default=str))
 
 
