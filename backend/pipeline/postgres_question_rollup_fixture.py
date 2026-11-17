@@ -6,6 +6,7 @@ shared graph ledger with matching source records. Not mounted to a user API.
 from psycopg.types.json import Jsonb
 from pipeline import questions
 from pipeline.postgres_graph_fixture import _guard, GRAPH_LOCK
+from pipeline.postgres_question_members import member_question
 from pipeline.postgres_questions_fixture import _projection
 
 INPUT_TABLES=('questions','sub_questions','proxy_registry','proxy_observations','entity_relations','narrative_edge_evidence')
@@ -131,6 +132,7 @@ def rollup_question_native(connect, question_id, *, run_llm):
     with connect() as pg:
         _guard(pg)
         before = capture(pg)
+        shared_graph = not member_question(pg, question_id)  # a member's confirmation stays on the question
     question, subs, proxies, observations = before
     if question is None:
         return {'error': '질문 없음'}
@@ -152,7 +154,7 @@ def rollup_question_native(connect, question_id, *, run_llm):
     divergence = questions._divergence(lead_v, confirm_v)
     now_confirmed = confirm_v == 'leaning_yes' and divergence == 'aligned' and question['narrative_id'] is not None
     graph_before = None
-    if now_confirmed and not question['edge_confirmed']:
+    if now_confirmed and not question['edge_confirmed'] and shared_graph:
         with connect() as pg:
             _guard(pg)
             graph_before = capture_graph(pg, question['narrative_id'])

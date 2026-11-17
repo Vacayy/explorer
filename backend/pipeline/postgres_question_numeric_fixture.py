@@ -7,6 +7,7 @@ import json
 from psycopg.types.json import Jsonb
 from pipeline import transcript
 from pipeline.postgres_graph_fixture import _guard
+from pipeline.postgres_question_members import operator_only
 from pipeline.postgres_questions_fixture import _projection
 
 
@@ -123,7 +124,8 @@ def extract_all_numeric_native(connect, *, run_llm, limit=40):
                        'WHERE NOT EXISTS (SELECT 1 FROM proxy_registry WHERE key=%s)', (key, label, tickers, unit, hint, key))
     with connect() as pg:
         _guard(pg)
-        proxies = [row[0] for row in pg.execute('SELECT id FROM proxy_registry WHERE active=1 ORDER BY id')]
+        proxies = [row[0] for row in pg.execute('SELECT p.id FROM proxy_registry p LEFT JOIN sub_questions s ON s.id=p.sub_question_id '
+                                                'WHERE p.active=1 AND ' + operator_only(pg, 's.question_id') + ' ORDER BY p.id')]
     result = _extract(connect, proxies, run_llm=run_llm, limit=limit)
     project_numeric_observations_native(connect)
     return result
@@ -237,7 +239,7 @@ def project_numeric_observations(connect):
 
 
 def project_numeric_observations_native(connect, *, question_id=None):
-    """Project numeric question observations into the native PG graph ledger."""
+    """Project numeric question observations into the native PG graph ledger (never a member's question)."""
     with connect() as pg:
         _guard(pg)
         present = {r[0] for r in pg.execute("SELECT table_name FROM legacy_snapshot_tables "
@@ -254,7 +256,7 @@ def project_numeric_observations_native(connect, *, question_id=None):
             "JOIN legacy_snapshot_rows t ON t.table_name='transcripts' AND t.row_data->>'id'=o.transcript_id::text "
             "JOIN legacy_snapshot_rows f ON f.table_name='transcript_follow' AND f.row_data->>'ticker'=t.row_data->>'ticker' "
             "WHERE o.source_type='transcript' AND o.value_num IS NOT NULL AND f.row_data->>'entity_id' IS NOT NULL "
-            "AND o.observed_at IS NOT NULL AND (%s::bigint IS NULL OR s.question_id=%s) "
+            "AND o.observed_at IS NOT NULL AND (%s::bigint IS NULL OR s.question_id=%s) AND " + operator_only(pg, 's.question_id') + " "
             "ON CONFLICT(entity_id,date,metric,source) DO NOTHING", (question_id, question_id))
         return {'projected': result.rowcount}
 

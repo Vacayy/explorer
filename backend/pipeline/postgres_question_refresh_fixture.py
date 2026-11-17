@@ -2,7 +2,8 @@
 
 Same steps and budgets as `questions.refresh_all`, through the native PG paths:
 numeric transcript observations, corpus sentiment, numeric graph projection,
-then re-judging every tracking question. The collector SQLite never judges
+then re-judging every tracking question. Members' questions are not judged here
+(`postgres_question_members`). The collector SQLite never judges
 questions. Each re-judgment writes only verdict fields and only if nothing it
 read changed meanwhile (`rollup_question_native` returns `stale` otherwise), so a
 user edit made during the run wins and the question is judged again next run.
@@ -10,6 +11,7 @@ Not connected: narrative auto-proposal (flag off by default) and the Telegram
 thesis/reason alerts that follow the legacy job.
 """
 from pipeline.postgres_graph_fixture import _guard
+from pipeline.postgres_question_members import operator_only
 from pipeline.postgres_question_numeric_fixture import extract_numeric_native, project_numeric_observations_native
 from pipeline.postgres_question_rollup_fixture import rollup_question_native
 from pipeline.postgres_question_sentiment_fixture import extract_sentiment_native
@@ -21,7 +23,8 @@ SENTIMENT_BUDGET = 20  # legacy extract_sentiment_proxies(budget=20)
 def refresh_all_native(connect, *, run_llm, search):
     with connect() as pg:
         _guard(pg)
-        ids = [row[0] for row in pg.execute("SELECT id FROM questions WHERE status='tracking' ORDER BY id")]
+        ids = [row[0] for row in pg.execute("SELECT id FROM questions WHERE status='tracking' AND "
+                                              + operator_only(pg, 'questions.id') + ' ORDER BY id')]
     out = {'numeric': 0, 'sentiment': 0, 'projected': 0, 'rerolled': 0, 'stale': [], 'failed': []}
     remaining = NUMERIC_LIMIT
     for question_id in ids:
