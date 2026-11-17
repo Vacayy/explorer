@@ -12,6 +12,8 @@ every GET is read again. Shared data does not move when only personal ledgers ch
 response that changes is a leak; caches are not cleared, so a stale shared result shows up too. Routes
 whose anonymous response also differs after the undo vary with time (e.g. decaying activation) and are
 reported apart, as are routes that already differ between two back-to-back anonymous reads.
+With OBSERVER_SESSION (another signed-in member's "<token> <csrf>" file) the session file may be a member's:
+that member's ledgers change and the observer's responses are judged the same way as the anonymous ones.
 """
 import json, os, re, sys, urllib.request, urllib.parse
 FRONT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'frontend') + '/'
@@ -36,10 +38,13 @@ def norm(x):
     if isinstance(x, dict): return {k: norm(v) for k, v in x.items() if not VOLATILE.match(k)}
     if isinstance(x, list): return [norm(v) for v in x]
     return x
+sessions = {'op': (token, csrf)}
+if os.environ.get('OBSERVER_SESSION'):
+    sessions['obs'] = tuple(open(os.environ['OBSERVER_SESSION']).read().split())
 def call(method, url, who=None, body=None):
     h = {'x-observe-skip': '1'}
-    if who: h['cookie'] = f'__Host-explorer-session={token}'
-    if who and method != 'GET': h.update({'origin': ORIGIN, 'x-csrf-token': csrf})
+    if who: h['cookie'] = f'__Host-explorer-session={sessions[who][0]}'
+    if who and method != 'GET': h.update({'origin': ORIGIN, 'x-csrf-token': sessions[who][1]})
     rq = urllib.request.Request(BASE + url, method=method, headers=h, data=json.dumps(body).encode() if body is not None else None)
     if body is not None: rq.add_header('content-type', 'application/json')
     try:
@@ -50,6 +55,7 @@ def sweep(who=None):
     return {path: (lambda s, b: (s, json.dumps(norm(b), sort_keys=True, ensure_ascii=False)))(*call('GET', u, who)) for path, u in urls}
 print('GET urls', len(urls), flush=True)
 A1, A2, O1 = sweep(), sweep(), sweep('op')
+W1 = sweep('obs') if 'obs' in sessions else None
 noisy = {p for p in A1 if A1[p] != A2[p]}
 print('anon status', {s: sum(1 for v in A1.values() if v[0] == s) for s in {v[0] for v in A1.values()}}, 'noisy', sorted(noisy), flush=True)
 undo = []
@@ -69,15 +75,21 @@ try:
         s, _ = call('POST', '/api/spine/feed/channels/read', 'op', {'channel': sys.argv[5], 'read_until': '2099-01-01T00:00:00Z'}); print('perturb read mark', s)
         s, _ = call('POST', '/api/spine/trade/follow', 'op', {'hs_code': sys.argv[6], 'active': False}); print('perturb trade follow', s)
     B, O2 = sweep(), sweep('op')
+    W2 = sweep('obs') if W1 is not None else None
 finally:
     for m, u, *body in undo: print('undo', u, call(m, u, 'op', *body)[0])
 if len(sys.argv) > 6:
     import subprocess
     print('cleanup', subprocess.run(os.environ['LEAK_CHECK_CLEANUP'], shell=True).returncode)
 A3 = sweep()  # after the undo: personal state is back, time is not
+W3 = sweep('obs') if W1 is not None else None
 timed = sorted(p for p in A1 if p not in noisy and A1[p] != B[p] and A1[p] != A3[p])
 print('time-varying (changed and did not come back after the undo, not a leak):', timed)
 leaks = sorted(p for p in A1 if p not in noisy and A1[p] != B[p] and A1[p] == A3[p])
 changed_op = sorted(p for p in O1 if O1[p] != O2[p])
 print('ANON LEAKS (anonymous response changed with the operator\'s personal ledger):', leaks)
 print('operator responses that changed (personal parts reflected):', changed_op)
+if W1 is not None:
+    w_leaks = sorted(p for p in W1 if p not in noisy and W1[p] != W2[p] and W1[p] == W3[p])
+    print('OBSERVER LEAKS (another member\'s response changed with this session\'s personal ledger):', w_leaks)
+    print('observer time-varying:', sorted(p for p in W1 if p not in noisy and W1[p] != W2[p] and W1[p] != W3[p]))
