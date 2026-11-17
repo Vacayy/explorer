@@ -36,7 +36,7 @@ TABLE_JOBS = {'prices', 'twrevenue', 'indexintraday', 'credit', 'retail', 'marke
 # included): a Market Today slot is one call; the US briefing is the macro light (macro.interpret), the macro issues
 # (briefing.macro) and the synthesis (briefing.synthesize), one each (cached ones make none). Their network reads are optional (index values, macro series): the legacy job still
 # writes its result when every one fails, so 'no source answered' does not hold them back.
-TABLE_MODEL_CAPS = {'markettoday': 2, 'usbriefing': 6, 'trade': 6,
+TABLE_MODEL_CAPS = {'markettoday': 2, 'usbriefing': 6, 'trade': 6, 'usfund': 60,
                     # Brokers' forecasts from feed documents: one call per document, at most 25 documents per run.
                     'expfeed': 25,
                     # US earnings-call momentum (pending the PM's figures): digests of new calls (up to 22), extraction
@@ -186,6 +186,30 @@ BRIEFING_PRESERVE_KEYS = {
     'macro_news': ('url',), 'us_macro_issues': ('trade_date',),
     'us_ticker_news': ('ticker', 'url'), 'us_movers': ('trade_date', 'rank'),
 }
+
+USFUND_KEYS = {
+    'us_quarterly': ('ticker', 'q', 'metric'),
+    'us_segments': ('ticker', 'q', 'segment_name'),
+    'us_customer_concentration': ('ticker', 'period_end', 'period_kind', 'customer', 'benchmark'),
+    'consensus_snapshots': ('ticker', 'snap_date', 'period'),
+}
+
+def validate_usfund_keys(pg, work_path, tables):
+    """Do not publish a whole replacement if a live natural key would disappear."""
+    import sqlite3
+    with sqlite3.connect(work_path) as work:
+        for table in sorted(set(tables) & USFUND_KEYS.keys()):
+            keys = USFUND_KEYS[table]
+            info = work.execute(f'PRAGMA table_info("{table}")').fetchall()
+            primary = tuple(row[1] for row in sorted((r for r in info if r[5]), key=lambda r: r[5]))
+            if primary != keys:
+                raise trial.HeldBack('US fundamentals key schema mismatch')
+            existing = set(work.execute('SELECT ' + ','.join(f'"{key}"' for key in keys) + f' FROM "{table}"'))
+            for (data,) in pg.execute('SELECT row_data FROM legacy_supplement_rows WHERE table_name=%s', (table,)):
+                row = data if isinstance(data, dict) else json.loads(data)
+                key = tuple(row.get(k) for k in keys)
+                if any(value is None for value in key) or key not in existing:
+                    raise trial.HeldBack(f'US fundamentals existing keys missing in {table}')
 
 def preserve_briefing_rows(pg, work_path, tables):
     """Restore PG-only keys to the work copy before its whole-table publication."""
@@ -1220,6 +1244,8 @@ def _run(label, pg, waited):
                 rest = written - DOCUMENT_TABLES
                 if label == 'usbriefing':
                     entry['preserved_rows'] = preserve_briefing_rows(pg, trial.WORK, rest)
+                if label == 'usfund':
+                    validate_usfund_keys(pg, trial.WORK, rest)
                 entry['applied'] = trial._apply_supplement(pg, supplement_tables(pg, rest)) if rest else {}
                 outcome = ('partial: US briefing headline failures; ' if record_status == 'partial' else 'applied: ') + \
                     ', '.join(f'{t} {n}' for t, n in (entry['applied'] or {}).items())

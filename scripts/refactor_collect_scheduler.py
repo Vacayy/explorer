@@ -57,6 +57,8 @@ JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40,t.me=40,www.youtube.com=40,.tel
                  'credit': 'scanner.tradingview.com=150,symbol-search.tradingview.com=60,data.tradingview.com=150,fred.stlouisfed.org=12',
                  # Four categories, up to 18 trending events and pinned-event lookups/candles.
                  'kalshi': 'api.elections.kalshi.com=60',
+                 # Company facts, income statements and customer concentration across followed US issuers.
+                 'usfund': 'data.sec.gov=300,www.sec.gov=300',
                  # peer: one daily-price page per catalog company (104 now)
                  'peer': 'stock.naver.com=120',
                  # US briefing: macro series from FRED (three tries when all fail), Yahoo quotes·charts·headlines for the
