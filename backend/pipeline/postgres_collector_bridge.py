@@ -38,7 +38,11 @@ def refresh_supplement(pg, collector_path, tables):
                 'SELECT table_name,columns FROM legacy_supplement_tables WHERE table_name=ANY(%s)', (list(tables),))}
             if set(known) != set(tables):
                 raise ValueError('Only existing supplement tables can be refreshed')
+            from pipeline import postgres_live_tables
+            live = postgres_live_tables.ready(pg)
             for name in tables:
+                if live:
+                    postgres_live_tables.mark(pg, name)  # which counter this table's statements bump
                 columns = [row['name'] for row in source.execute(f'PRAGMA table_info("{name}")')]
                 if columns != known[name]:
                     raise ValueError(f'Collector schema differs: {name}')

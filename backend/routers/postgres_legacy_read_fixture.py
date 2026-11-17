@@ -146,7 +146,10 @@ def install(app, projection, *, database_host):
     # Each requester reads only its own personal state (pipeline.postgres_legacy_projection), so a result
     # computed for one requester is never handed to another.
     from pipeline.postgres_legacy_projection import requester_scope
-    shared_result._db_state = lambda: (os.path.realpath(projection.stable_path), requester_scope())
+    from pipeline import postgres_live_tables
+    # Live tables come from PG per connection, not the file: their version is part of the key too.
+    shared_result._db_state = lambda: (os.path.realpath(projection.stable_path), requester_scope(),
+                                       postgres_live_tables._cache['version'])
 
     import importlib
     # The owner-gated experimental portfolio adapter is replaced by the legacy reads.

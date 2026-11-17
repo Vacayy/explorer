@@ -320,6 +320,8 @@ class LegacyProjection:
             _derive_native(conn, pg)
             from pipeline import postgres_client_errors
             postgres_client_errors.derive(conn, pg)  # small and frequent: never part of the file
+            from pipeline import postgres_live_tables
+            postgres_live_tables.derive(conn, pg)  # frequently collected small tables: from PG, not the file
             if (not writable or scoped) and not requester_is_operator():
                 _scope_to_requester(conn, pg)  # `scoped`: a member's own groups, written by that member
             if writable and legacy:

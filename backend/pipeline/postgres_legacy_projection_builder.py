@@ -2,7 +2,8 @@
 
 The builder container runs this module every few seconds as a fresh process
 (so each build's memory is returned): if the candidate's projection version
-moved since the manifest, it builds a new SQLite projection, re-embeds changed
+moved since the manifest, it builds a new SQLite projection (when only collected tables changed, at most every
+COLLECTION_BUILD_SECONDS; pipeline.postgres_live_tables), re-embeds changed
 documents, then atomically replaces `current.json` and `current.db`. The API
 (`LegacyProjection(external=True)`) only switches to the file the manifest
 names. Writes landing during a build are picked up by the next run, so bursts
@@ -17,10 +18,13 @@ from pathlib import Path
 
 import psycopg
 
+from pipeline import postgres_live_tables
 from pipeline.postgres_legacy_projection import build_projection, projection_version
 
 KEEP = 2  # the current file and the one before it, for readers still on it
 KEEP_SECONDS = 120  # and any written in the last two minutes (readers switch every 10s)
+# Collected tables (not the live ones) show within this; the MacBook's chain also ran every 30 minutes.
+COLLECTION_BUILD_SECONDS = int(os.environ.get('COLLECTION_BUILD_SECONDS', '900'))
 
 
 def run(directory):
@@ -33,8 +37,14 @@ def run(directory):
     current = json.loads(manifest.read_text()) if manifest.exists() else None
     with factory() as pg:
         version = projection_version(pg)
+        _live, collection = postgres_live_tables.versions(pg)
     if current and current['version'] == version:
-        return False
+        # Only collected tables changed: fold them into one rebuild at most every COLLECTION_BUILD_SECONDS.
+        if collection is None or current.get('collection') == collection:
+            return False
+        if time.time() - manifest.stat().st_mtime < COLLECTION_BUILD_SECONDS:
+            return False
+    started = time.monotonic()
     path, version, legacy_version = build_projection(factory, directory)
     refreshed = _reembed(factory)
     chunked = _rechunk(directory, path)
@@ -44,13 +54,18 @@ def run(directory):
             temporary.symlink_to(target)
         else:
             temporary.write_text(json.dumps({'file': path.name, 'version': version, 'legacy_version': legacy_version,
-                                             'reembedded': refreshed}))
+                                             'reembedded': refreshed, 'collection': collection}))
         os.replace(temporary, directory / name)
     # Readers switch files every CHECK_SECONDS; back-to-back builds must not remove a file one may still be on.
     for old in sorted(directory.glob('projection-*.db'), key=lambda item: item.stat().st_mtime)[:-KEEP]:
         if time.time() - old.stat().st_mtime > KEEP_SECONDS:
             old.unlink(missing_ok=True)
-    print(json.dumps({'built': path.name, 'version': version, 'reembedded': len(refreshed), 'chunked': chunked}), flush=True)
+    measure = {'seconds': round(time.monotonic() - started, 1), 'bytes': path.stat().st_size,
+               'cause': 'collection' if current and current['version'] == version else 'change'}
+    with open(directory / 'builds.jsonl', 'a') as log:  # rebuild count, time and size per day (PM 6938809334)
+        log.write(json.dumps({'at': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime()), **measure}) + '\n')
+    print(json.dumps({'built': path.name, 'version': version, 'reembedded': len(refreshed), 'chunked': chunked, **measure}),
+          flush=True)
     return True
 
 

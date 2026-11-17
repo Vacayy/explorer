@@ -27,6 +27,9 @@ NEVER = {'backfill'}  # uncapped model calls; never scheduled automatically
 # (recorded by a sqlite authorizer; writing any table that is not a supplement table holds the run back).
 TABLE_JOBS = {'prices', 'twrevenue', 'indexintraday', 'credit', 'retail', 'market', 'krmovers', 'extseries',
               'sectorbench', 'kalshi', 'trade', 'usfund', 'krcompany'}
+# Legacy computations over saved data: the computation-button path (pipeline.postgres_scheduled_compute) — their
+# overrides, graph diff and run records go to PG; model calls go through the usual gate and llm_calls.
+COMPUTE_JOBS = {'narratives', 'contradictions', 'promote', 'proposals', 'bigpicture', 'sectoroverview'}
 # chain: its document intake only (ingest with the registered sources, tagging included), capped per run and
 # published; the chain's later steps (causal extraction, signals, narratives, digests…) are not connected yet.
 FEED_SOURCES = os.environ.get('COLLECT_FEED_SOURCES', 'blog,note,memo,scrap')  # YouTube·Telegram excluded before cutover
@@ -51,6 +54,16 @@ def supplement_tables(pg, written):
     return sorted(written)
 
 
+def run_compute(label):
+    import psycopg
+    from pipeline import postgres_scheduled_compute
+    argv, record = job_argv(label)
+    dsn, schema = os.environ['REFACTOR_POSTGRES_DSN'], trial._pg().execute('SELECT current_schema()').fetchone()[0]
+    os.chdir('/app')
+    return postgres_scheduled_compute.run(argv[0], argv[1:], lambda: psycopg.connect(dsn, options=f'-c search_path={schema}'),
+                                          record=record, source=f'scheduled {label}')
+
+
 def run_feeds(pg):
     from pipeline.registry import CONNECTORS
     names = [name for name in FEED_SOURCES.split(',') if name]
@@ -71,6 +84,16 @@ def run(label):
     entry = {}
     if label in SENDS or label in NEVER:
         outcome = f'refused: {"sends messages" if label in SENDS else "uncapped model calls"}'
+    elif label in COMPUTE_JOBS:
+        from pipeline.postgres_scheduled_compute import HeldBack
+        postgres_llm_calls.install(llm, trial._pg)
+        try:
+            entry['stored'] = run_compute(label)
+            outcome = f"applied: {entry['stored']}"
+        except HeldBack as exc:
+            outcome = f'held back: {exc}'
+        except Exception as exc:  # noqa: BLE001 - any failure: nothing stored
+            outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'
     elif label not in TABLE_JOBS and label != 'chain':
         outcome = 'unsupported: not connected to the candidate yet'
     else:
