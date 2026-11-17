@@ -395,6 +395,18 @@ class CollectionTargetTest(unittest.TestCase):
             self.assertEqual(run.call_args.kwargs['extra_env']['COLLECT_MAX_MODEL_CALLS'], '0')
             self.assertEqual(os.environ['COLLECT_MAX_MODEL_CALLS'], '5')
 
+    def test_model_feed_is_limited_to_one_document_and_two_attempts(self):
+        with patch.dict(os.environ, {'COLLECT_FEED_KEYWORD_ONLY': '0', 'COLLECT_FEED_STRICT_IMAGES': '1',
+                                     'COLLECT_FEED_MODEL_ATTEMPTS': '2'}), \
+             patch.object(engine, 'run', return_value=(0, '{"outcome":"applied: ok"}')) as run:
+            self.assertTrue(scheduler._run_one('chain', lambda *_: None))
+            self.assertEqual(run.call_args.kwargs['extra_env']['COLLECT_MAX_MODEL_CALLS'], '2')
+            self.assertEqual(run.call_args.kwargs['extra_env']['COLLECT_MAX_NEW_DOCS'], '1')
+        with patch.dict(os.environ, {'COLLECT_FEED_KEYWORD_ONLY': '0', 'COLLECT_FEED_STRICT_IMAGES': '1',
+                                     'COLLECT_FEED_MODEL_ATTEMPTS': '3'}):
+            with self.assertRaises(ValueError):
+                scheduler._run_one('chain', lambda *_: None)
+
     def test_us_briefing_requires_synthesis(self):
         conn = sqlite3.connect(':memory:')
         conn.execute('CREATE TABLE job_runs(id INTEGER, job TEXT, summary TEXT, ran_at TEXT)')

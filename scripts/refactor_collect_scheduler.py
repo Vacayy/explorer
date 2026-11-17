@@ -187,12 +187,19 @@ def _run_one(label, log=print):
                    internet=False, limit=300)
         log(f'{label} {kind} {time.monotonic() - started:.0f}s {last}')
         return kind == 'applied'
+    feed_env = {}
+    if label == 'chain' and os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1':
+        feed_env = {'COLLECT_MAX_MODEL_CALLS': '0'}
+    elif label == 'chain' and os.environ.get('COLLECT_FEED_STRICT_IMAGES') == '1':
+        limit = int(os.environ.get('COLLECT_FEED_MODEL_ATTEMPTS', '2'))
+        if not 1 <= limit <= 2:
+            raise ValueError('Invalid feed model attempt limit')
+        feed_env = {'COLLECT_MAX_MODEL_CALLS': str(limit), 'COLLECT_MAX_NEW_DOCS': '1'}
     code, output = engine.run(['python', '/app/scripts/refactor_collect_job.py', label], job=label,
                               name=f'explorer-collect-{label}-{os.getpid()}', memory=JOB_MEMORY.get(label, '2g'),
                               internet=os.environ.get('NO_INTERNET') != '1', limit=JOB_SECONDS,
                               extra_env={**({'TRIAL_HOST_CAPS': JOB_HOST_CAPS[label]} if label in JOB_HOST_CAPS else {}),
-                                         **({'COLLECT_MAX_MODEL_CALLS': '0'} if label == 'chain'
-                                            and os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1' else {}),
+                                         **feed_env,
                                          **JOB_ENV.get(label, {})} or None)
     if code is None:  # stopped at the limit (the container is removed): recorded as failed, nothing applied
         engine.run(['python', '/app/scripts/refactor_collect_job.py', '--stopped', label, started_utc,
