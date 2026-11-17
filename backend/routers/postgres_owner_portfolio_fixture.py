@@ -9,7 +9,7 @@ parsing and holding theses (native question creation with the stock code, as the
 """
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.routing import APIRoute
 
 from models.portfolio import (HistoryPoint, Principle, PrincipleCreate, PrincipleParse, PrincipleParseRequest, PrincipleText, PortfolioSummary,
@@ -47,6 +47,35 @@ def create_router(factory, *, run_llm=None, search=None):
             principal = owner(conn)[1]
             market = ledger.FixturePortfolioMarket(conn, captured_quotes=True)
             return ledger.read_portfolio(conn, principal, names=market.names(), prices=market.prices)
+
+    @router.post('/quotes/refresh')
+    def refresh_quotes(force: bool = Query(True, description="false면 장 시간·30분 TTL을 지킨다(화면 진입·주기 갱신)")):
+        """The legacy refresh (pipeline.portfolio.refresh_now): the requester's held codes from the Naver polling quotes,
+        in market hours with a 30-minute TTL unless forced; stored as shared portfolio_quotes rows (per code)."""
+        import time
+        from pipeline import portfolio as legacy, postgres_live_tables
+        from routers.postgres_legacy_read_fixture import live_quotes
+        with factory() as conn:
+            principal = owner(conn)[1]
+            held = set(legacy.replay(ledger._transactions(conn, ledger._account(conn, principal, lock=False))).positions)
+            stored = {row['stock_code']: row for (row,) in conn.execute(
+                "SELECT row_data FROM legacy_snapshot_rows WHERE table_name='portfolio_quotes' AND row_data->>'stock_code'=ANY(%s)",
+                (sorted(held),))}
+            refreshed = False
+            fresh = {code for code, row in stored.items() if row.get('fetched_at') and time.time() - row['fetched_at'] < legacy.QUOTE_TTL}
+            if held and (force or legacy.market_hours()) and (force or not fresh >= held):
+                now = time.time()
+                rows = [{'stock_code': q['stock_code'], 'price': q['price'], 'change_pct': q.get('change_pct'),
+                         'market_status': q.get('market_status'), 'traded_at': q.get('traded_at'), 'fetched_at': now}
+                        for q in live_quotes(sorted(held)) if q.get('stock_code') in held and q.get('price')]
+                if rows:
+                    postgres_live_tables.upsert_rows(conn, 'portfolio_quotes', 'stock_code', rows)
+                    stored.update({row['stock_code']: row for row in rows})
+                refreshed = True
+            if not held:
+                return {'quoted_at': None, 'count': 0, 'refreshed': False}
+            times = [row.get('traded_at') for row in stored.values() if row.get('traded_at')]
+            return {'quoted_at': max(times) if times else None, 'count': len(stored), 'refreshed': refreshed}
 
     @router.get('', response_model=PortfolioSummary)
     def summary():

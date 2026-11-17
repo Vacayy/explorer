@@ -13,9 +13,11 @@ import json
 import re
 import threading
 
+from psycopg.types.json import Jsonb
+
 from pipeline.postgres_graph_fixture import _guard
 
-LIVE_TABLES = ('index_intraday', 'kalshi_candles', 'kalshi_events', 'kalshi_event_cache')
+LIVE_TABLES = ('index_intraday', 'kalshi_candles', 'kalshi_events', 'kalshi_event_cache', 'portfolio_quotes')
 _cache = {'version': None, 'rows': {}}
 _lock = threading.Lock()
 
@@ -93,3 +95,19 @@ def derive(conn, pg):
                          [[row.get(column) if isinstance(row, dict) else json.loads(row).get(column) for column in columns]
                           for row in rows])
     return live
+
+
+def upsert_rows(pg, table, key, rows):
+    """Replace or add supplement rows of `table` by `key` (a live table: shown from the next request)."""
+    with pg.transaction():
+        pg.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))', ('supplement:' + table,))
+        mark(pg, table)
+        for row in rows:
+            updated = pg.execute("UPDATE legacy_supplement_rows SET row_data=%s WHERE table_name=%s AND row_data->>%s=%s",
+                                 (Jsonb(row), table, key, str(row[key]))).rowcount
+            if not updated:
+                pg.execute("INSERT INTO legacy_supplement_rows(table_name,row_ordinal,row_data) VALUES "
+                           "(%s,(SELECT COALESCE(max(row_ordinal),-1)+1 FROM legacy_supplement_rows WHERE table_name=%s),%s)",
+                           (table, table, Jsonb(row)))
+        pg.execute('UPDATE legacy_supplement_tables SET row_count=(SELECT count(*) FROM legacy_supplement_rows '
+                   'WHERE table_name=%s) WHERE table_name=%s', (table, table))

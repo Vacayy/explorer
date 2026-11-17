@@ -144,6 +144,26 @@ QUOTE_BACKOFF = 30
 _quote_backoff = [0.0]
 
 
+def live_quotes(codes):
+    """The legacy Naver polling fetch (10-second cache) with the guard open to QUOTE_HOST only; after an upstream
+    failure the source is left alone for QUOTE_BACKOFF seconds (the cached value, or nothing, answers meanwhile)."""
+    import time as _time
+    from pipeline import quotes as live
+    if _time.monotonic() < _quote_backoff[0]:
+        return (live._cache.get(','.join(sorted(set(codes)))) or (0, []))[1]
+    hosts, addresses = _external_hosts.set(frozenset({QUOTE_HOST})), _external_addresses.set(set())
+    offline = _offline.set(True)
+    try:
+        got = live.fetch_quotes(list(codes))
+    finally:
+        _offline.reset(offline)
+        _external_addresses.reset(addresses)
+        _external_hosts.reset(hosts)
+    if codes and not got:
+        _quote_backoff[0] = _time.monotonic() + QUOTE_BACKOFF
+    return got
+
+
 def install(app, projection, *, database_host):
     import database
     original = database.get_connection
@@ -236,25 +256,10 @@ def install(app, projection, *, database_host):
         # only to that host. At most QUOTE_CODES codes; after an upstream failure the source is left alone for
         # QUOTE_BACKOFF seconds (the cached value, or nothing, answers meanwhile). Anonymous callers share the
         # per-network minute limit (pipeline.postgres_usage_gate).
-        import time as _time
-        from pipeline import quotes as live
         wanted = [code.strip() for code in codes.split(',') if code.strip()]
         if len(wanted) > QUOTE_CODES or any(not re.fullmatch(r'[0-9A-Z]{6}', code) for code in wanted):
             raise HTTPException(422, f'Up to {QUOTE_CODES} six-character stock codes')
-        if _time.monotonic() < _quote_backoff[0]:
-            key = ','.join(sorted(set(wanted)))
-            return [Quote(**q) for q in (live._cache.get(key) or (0, []))[1]]
-        hosts, addresses = _external_hosts.set(frozenset({QUOTE_HOST})), _external_addresses.set(set())
-        offline = _offline.set(True)
-        try:
-            got = live.fetch_quotes(wanted)
-        finally:
-            _offline.reset(offline)
-            _external_addresses.reset(addresses)
-            _external_hosts.reset(hosts)
-        if wanted and not got:
-            _quote_backoff[0] = _time.monotonic() + QUOTE_BACKOFF
-        return [Quote(**q) for q in got]
+        return [Quote(**q) for q in live_quotes(wanted)]
 
     @router.get('/api/spine/us/briefing', response_model=UsBriefing)
     def us_briefing(force: bool = False, trade_date: str | None = None):

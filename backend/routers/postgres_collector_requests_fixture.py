@@ -14,7 +14,7 @@ from psycopg.types.json import Jsonb
 
 from pipeline.postgres_graph_fixture import _guard
 
-TRIGGERS = (('POST', r'/api/financials/[^/]+/collect'), ('POST', r'/api/portfolio/quotes/refresh'),
+TRIGGERS = (('POST', r'/api/financials/[^/]+/collect'),  # portfolio quotes: routers.postgres_owner_portfolio_fixture
             ('POST', r'/api/spine/macro/snapshot'), ('POST', r'/api/spine/market-regime/snapshot'),
             ('POST', r'/api/spine/regimes/collect'), ('POST', r'/api/spine/risk/snapshot'),
             ('POST', r'/api/spine/sources/refresh'), ('POST', r'/api/spine/trade/seed'),
