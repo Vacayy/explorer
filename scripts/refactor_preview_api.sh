@@ -23,6 +23,7 @@ docker run -d --name "$C" --user 10001:10001 --network explorer-refactor-preview
   --cpus 2 -p 127.0.0.1:18012:8000 --label explorer.purpose=refactor-single-path --env-file "$ENV_FILE" \
   -v explorer-public-codex-auth:/provider-auth -v explorer-data-rehearsal_models:/models:ro \
   -v explorer-refactor-single-projection:/projection \
+  -v explorer-data-rehearsal_media:/app/media:ro \
   -v explorer-refactor-claude-auth:/home/explorer/.claude \
   -v "$ROOT/backend:/app/backend:ro" -v "$ROOT/scripts:/app/scripts:ro" \
   -v "$HOME/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py:/control/codex-credential-gate.py:ro" \

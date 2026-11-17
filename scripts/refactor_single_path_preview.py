@@ -233,6 +233,10 @@ install_owner_records(app, factory, document_ui.timeline_reader, legacy_projecti
 install_owner_legacy(app, legacy_projection, factory, run_llm=question_model, search=question_search)
 install_claims(app, factory, question_model)  # claims extraction here, related documents in the compute worker
 install_owner_overrides(app, legacy_projection, factory)  # admin decisions over collected rows
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from config import MEDIA_PATH  # noqa: E402
+if MEDIA_PATH.is_dir():  # the documents' saved images (as the legacy main.py); read-only volume, never written here
+    app.mount('/media', StaticFiles(directory=str(MEDIA_PATH)), name='media')
 from routers.postgres_chain_reports_fixture import install as install_chain_reports  # noqa: E402
 install_chain_reports(app, factory)  # value-chain report button, records in PG
 install_collector_requests(app, factory)  # collection buttons: recorded, never run here
