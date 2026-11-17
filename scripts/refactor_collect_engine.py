@@ -27,6 +27,16 @@ def work_volume():
 
 
 VOLUME = work_volume()
+
+
+def feed_work_volume():
+    name = os.environ.get('COLLECT_FEED_WORK_VOLUME', '')
+    if name and not re.fullmatch(r'explorer-refactor-collect-feed-[a-z0-9-]+', name):
+        raise ValueError('Invalid feed work volume')
+    return name
+
+
+FEED_VOLUME = feed_work_volume()
 ROOT = Path(__file__).resolve().parent.parent
 HOME = Path(os.environ.get('HOST_HOME', Path.home()))
 STATE = HOME / 'server-data/review/refactor-single/collect-trial-schema'
@@ -114,13 +124,17 @@ def check(spec):
     """Mistake guard, not a security boundary (the socket holder can do anything; PM #3 6940036896): a job container
     is only ever the collection image with the listed mounts, unprivileged, all capabilities dropped, no socket."""
     host = spec['HostConfig']
-    allowed = {f'{ROOT}/backend', f'{ROOT}/scripts', 'explorer-refactor-single-projection', VOLUME,
+    allowed = {f'{ROOT}/backend', f'{ROOT}/scripts', 'explorer-refactor-single-projection', VOLUME, FEED_VOLUME,
+               'explorer-refactor-media',
                'explorer-public-codex-auth', 'explorer-data-rehearsal_models',
                f'{HOME}/server-data/review/refactor-single/codex-gate',
                f'{HOME}/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py', str(LOCAL_SOURCES), HISTORY_VOLUME, PEER_VOLUME}
     sources = {bind.split(':', 1)[0] for bind in host['Binds']}
     if spec['Image'] != IMAGE or sources - allowed or any('docker.sock' in bind for bind in host['Binds']):
         raise ValueError(f'Refused job container: image {spec["Image"]}, mounts {sorted(sources - allowed)}')
+    media = [bind for bind in host['Binds'] if bind.split(':', 1)[0] == 'explorer-refactor-media']
+    if media and (spec.get('Labels', {}).get(f'{LABEL}.job') != 'chain' or media != ['explorer-refactor-media:/app/media:ro']):
+        raise ValueError('Media is only available read-only to feed intake')
     if host.get('Privileged') or host.get('CapDrop') != ['ALL'] or host.get('NetworkMode') != NETWORK \
             or host.get('PidMode') or spec.get('Labels', {}).get(LABEL) != '1':
         raise ValueError('Refused job container: privilege, network, pid or label outside the job shape')
@@ -157,13 +171,16 @@ def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=No
     if job in {'briefing', 'observeweekly', 'observealerts', 'pfintraday'} and any(not found.get(key) for key in SEND_KEYS):
         raise ValueError('Telegram send credentials are missing')
     env += [f'{key}={value}' for key, value in found.items()]
+    volume = FEED_VOLUME if job == 'chain' and FEED_VOLUME else VOLUME
     binds = [f'{ROOT}/backend:/app/backend:ro', f'{ROOT}/scripts:/app/scripts:ro',
-             'explorer-refactor-single-projection:/projection:ro', f'{VOLUME}:/trial',
+             'explorer-refactor-single-projection:/projection:ro', f'{volume}:/trial',
              'explorer-public-codex-auth:/provider-auth', 'explorer-data-rehearsal_models:/models:ro',
              f'{HOME}/server-data/review/refactor-single/codex-gate:/control/codex-gate:ro',
              f'{HOME}/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py:/control/codex-credential-gate.py:ro']
     if job == 'history':  # the market history job alone writes its own volume (refactor_collect_job.MARKET_HISTORY)
         binds.append(f'{HISTORY_VOLUME}:/history')
+    if job == 'chain':  # the Telegram connector only references pre-existing media; it never writes this volume
+        binds.append('explorer-refactor-media:/app/media:ro')
     if job == 'peer':  # the peer monitor's state (refactor_collect_job.PEER)
         binds.append(f'{PEER_VOLUME}:/peer')
     if (LOCAL_SOURCES / 'local_sources').is_dir():

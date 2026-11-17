@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'scripts'))  # refactor_collect_engine, refactor_collect_job
 LOCK = Path(os.environ.get('COLLECT_SCHEDULER_LOCK', Path.home() / 'server-data/review/refactor-single/collect-scheduler.lock'))
 HOLD = Path(os.environ.get('COLLECT_SCHEDULER_HOLD', Path.home() / 'server-data/review/refactor-single/collect-scheduler.hold'))
+FEED_HOLD = Path(os.environ.get('COLLECT_FEED_HOLD', Path.home() / 'server-data/review/refactor-single/collect-feed.hold'))
 JOB_SECONDS = int(os.environ.get('COLLECT_JOB_SECONDS', '3600'))  # one job's time limit (the MacBook chain step limit)
 TICK_SECONDS = 20
 # One heavy job at a time on the 7.7GiB VM: the scheduler runs one job at a time, and a heavy job also takes the PG
@@ -134,9 +135,10 @@ def run_job(label, log=print):
     """One job (the chain: its steps in order) in one-shot containers; each outcome is recorded in collect_runs."""
     steps = (('chain',) if os.environ.get('COLLECT_CHAIN_INTAKE_ONLY') == '1' else CHAIN_SEQUENCE) if label == 'chain' else (label,)
     for step in steps:
-        HOLD.parent.mkdir(parents=True, exist_ok=True)
+        marker_path = FEED_HOLD if step == 'chain' and os.environ.get('COLLECT_FEED_WORK_VOLUME') else HOLD
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with HOLD.open('x') as marker:
+            with marker_path.open('x') as marker:
                 marker.write(f'{step} {time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())} UTC\n')
         except FileExistsError:
             log('collection held: inspect the previous work copy and run before clearing the hold')
@@ -144,7 +146,7 @@ def run_job(label, log=print):
         if not _run_one(step, log):
             log(f'collection held after {step}: inspect the work copy and run before clearing the hold')
             return False
-        HOLD.unlink()
+        marker_path.unlink()
     return True
 
 

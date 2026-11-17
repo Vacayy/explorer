@@ -16,6 +16,16 @@ import refactor_collect_job as job
 
 
 class CollectionTargetTest(unittest.TestCase):
+    def test_media_is_readonly_and_feed_only(self):
+        def spec(label, mount):
+            return {'Image': engine.IMAGE, 'Labels': {engine.LABEL: '1', engine.LABEL + '.job': label},
+                    'HostConfig': {'Binds': [mount], 'CapDrop': ['ALL'], 'NetworkMode': engine.NETWORK}}
+        engine.check(spec('chain', 'explorer-refactor-media:/app/media:ro'))
+        with self.assertRaises(ValueError):
+            engine.check(spec('chain', 'explorer-refactor-media:/app/media'))
+        with self.assertRaises(ValueError):
+            engine.check(spec('prices', 'explorer-refactor-media:/app/media:ro'))
+
     def test_all_catchup_waits_until_priority_slot(self):
         with patch.dict(os.environ, {'COLLECT_CATCHUP_AFTER': '2026-11-17T22:10:00+00:00'}):
             self.assertEqual(scheduler.catchup_enabled({'history'}, datetime(2026, 11, 17, 22, 9, tzinfo=timezone.utc)), set())
@@ -27,6 +37,23 @@ class CollectionTargetTest(unittest.TestCase):
         with patch.dict(os.environ, {'COLLECT_WORK_VOLUME': 'explorer-refactor-media'}):
             with self.assertRaises(ValueError):
                 engine.work_volume()
+
+    def test_feed_work_volume_is_explicit_and_restricted(self):
+        with patch.dict(os.environ, {'COLLECT_FEED_WORK_VOLUME': 'explorer-refactor-collect-feed-test'}):
+            self.assertEqual(engine.feed_work_volume(), 'explorer-refactor-collect-feed-test')
+        with patch.dict(os.environ, {'COLLECT_FEED_WORK_VOLUME': 'explorer-refactor-media'}):
+            with self.assertRaises(ValueError):
+                engine.feed_work_volume()
+
+    def test_feed_failure_does_not_hold_other_jobs(self):
+        with TemporaryDirectory() as directory, \
+             patch.object(scheduler, 'HOLD', Path(directory) / 'global'), \
+             patch.object(scheduler, 'FEED_HOLD', Path(directory) / 'feed'), \
+             patch.dict(os.environ, {'COLLECT_CHAIN_INTAKE_ONLY': '1', 'COLLECT_FEED_WORK_VOLUME': 'explorer-refactor-collect-feed-test'}), \
+             patch.object(scheduler, '_run_one', return_value=False):
+            self.assertFalse(scheduler.run_job('chain', lambda *_: None))
+            self.assertTrue(scheduler.FEED_HOLD.exists())
+            self.assertFalse(scheduler.HOLD.exists())
 
     def test_us_briefing_requires_synthesis(self):
         conn = sqlite3.connect(':memory:')
