@@ -51,7 +51,12 @@ JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40,t.me=40,www.youtube.com=40,.tel
                  'peer': 'stock.naver.com=120',
                  # US briefing: macro series from FRED (three tries when all fail), Yahoo quotes·charts·headlines for the
                  # indices, macro proxies and the movers; newswire feeds keep the default 20
-                 'usbriefing': 'fred.stlouisfed.org=40,.finance.yahoo.com=150'}
+                 'usbriefing': 'fred.stlouisfed.org=40,.finance.yahoo.com=150',
+                 # call momentum (pending the PM): SEC filings per followed ticker, Alpha Vantage within its 22 budget,
+                 # Fool transcripts, the monthly Nasdaq-100 sync, the season chain's estimates
+                 'callmomentum': 'data.sec.gov=300,www.sec.gov=300,www.alphavantage.co=30,www.fool.com=60,'
+                                 'api.nasdaq.com=5,financialmodelingprep.com=60,.finance.yahoo.com=150',
+                 'callfresh': 'www.fool.com=60,data.sec.gov=100,www.sec.gov=100'}
 # A job's own stop rules: history stops at 50 upstream errors, credit at 10 (403/429 stop every job at the first).
 JOB_ENV = {'history': {'TRIAL_MAX_ERRORS': '50'}, 'credit': {'TRIAL_MAX_ERRORS': '10'}, 'peer': {'TRIAL_MAX_ERRORS': '10'}}
 # The intake's sources after the cutover (registry order: scrap reads Telegram documents); before it, the default

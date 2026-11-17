@@ -26,14 +26,22 @@ NEVER = {'backfill'}  # uncapped model calls; never scheduled automatically
 # Table-collecting jobs: the unchanged script, then the supplement tables it actually wrote are replaced in PG
 # (recorded by a sqlite authorizer; writing any table that is not a supplement table holds the run back).
 TABLE_JOBS = {'prices', 'twrevenue', 'indexintraday', 'credit', 'retail', 'market', 'krmovers', 'extseries',
-              'sectorbench', 'kalshi', 'trade', 'usfund', 'krcompany', 'markettoday', 'usbriefing', 'expfeed'}
+              'sectorbench', 'kalshi', 'trade', 'usfund', 'krcompany', 'markettoday', 'usbriefing', 'expfeed',
+              'callmomentum', 'callfresh'}
 # Home jobs on the table path whose model calls are capped per run (each llm._execute is one call, its fallback
 # included): a Market Today slot is one call; the US briefing is the macro light (macro.interpret), the macro issues
 # (briefing.macro) and the synthesis (briefing.synthesize), one each (cached ones make none). Their network reads are optional (index values, macro series): the legacy job still
 # writes its result when every one fails, so 'no source answered' does not hold them back.
 TABLE_MODEL_CAPS = {'markettoday': 1, 'usbriefing': 3,
                     # Brokers' forecasts from feed documents: one call per document, at most 25 documents per run.
-                    'expfeed': 25}
+                    'expfeed': 25,
+                    # US earnings-call momentum (pending the PM's figures): digests of new calls (up to 22), extraction
+                    # (60, fresh 20), summaries (30) and the season chain's core tickers.
+                    'callmomentum': 120, 'callfresh': 60}
+# The call collection's own proxy step (transcript.seed_proxies/extract_proxies) writes the candidate's native question
+# tables; the daily questions job does the same extraction on PG (extract_numeric_native, the same 40), so it is skipped
+# here rather than holding the whole run back.
+NATIVE_STEPS_ELSEWHERE = {'callmomentum', 'callfresh'}
 NETWORK_OPTIONAL = {'markettoday', 'usbriefing'}
 # Legacy computations over saved data: the computation-button path (pipeline.postgres_scheduled_compute) — their
 # overrides, graph diff and run records go to PG; model calls go through the usual gate and llm_calls.
@@ -502,6 +510,10 @@ def run(label):
                 before = _capture_documents()
                 refused = _cap_table_model_calls(TABLE_MODEL_CAPS[label]) if label in TABLE_MODEL_CAPS else None
                 event = _defer_big_picture_event() if label == 'markettoday' else None
+                if label in NATIVE_STEPS_ELSEWHERE:
+                    from pipeline import transcript
+                    transcript.seed_proxies = lambda: 0
+                    transcript.extract_proxies = lambda limit=40: {'extracted': 0, 'deferred_to': 'questions'}
                 pricing = _defer_pricing() if label == 'usbriefing' else None
                 trial._watch_writes()
                 try:
