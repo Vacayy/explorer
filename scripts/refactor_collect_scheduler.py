@@ -119,6 +119,8 @@ def due_times(schedule, start, end):
         return
     entries = schedule if isinstance(schedule, list) else [schedule]
     at = start.replace(second=0, microsecond=0)
+    if at < start:
+        at += timedelta(minutes=1)
     while at < end:
         if any(_matches(entry, at) for entry in entries):
             yield at

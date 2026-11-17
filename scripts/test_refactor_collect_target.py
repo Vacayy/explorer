@@ -826,6 +826,16 @@ class CollectionTargetTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             scheduler.check_enabled({'pfclose'})
 
+    def test_calendar_due_time_is_not_repeated_within_same_minute(self):
+        jobs = [('briefing', [], {'Hour': 7, 'Minute': 0})]
+        before = datetime.fromisoformat('2026-11-18T06:59:59+09:00')
+        at = datetime.fromisoformat('2026-11-18T07:00:00+09:00')
+        after = datetime.fromisoformat('2026-11-18T07:00:05+09:00')
+        later = datetime.fromisoformat('2026-11-18T07:00:15+09:00')
+        self.assertEqual(scheduler.due_now(jobs, {'briefing'}, before, after, {}), ['briefing'])
+        self.assertEqual(scheduler.due_now(jobs, {'briefing'}, at, after, {}), ['briefing'])
+        self.assertEqual(scheduler.due_now(jobs, {'briefing'}, after, later, {}), [])
+
     def test_observation_alert_waits_for_configured_slot(self):
         with patch.dict(os.environ, {'COLLECT_OBSERVE_ALERTS_AFTER': '2026-11-18T01:00:00+09:00'}):
             jobs = [('observealerts', [], 3600)]
