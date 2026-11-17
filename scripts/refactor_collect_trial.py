@@ -148,7 +148,9 @@ def _watch_writes():
 
     def watched(*args, **kwargs):
         conn = connect(*args, **kwargs)
-        conn.set_authorizer(authorizer)
+        # Only the collector file is the job's result; other SQLite files (a library's own cache) are not.
+        if str(WORK) in str(args[0] if args else kwargs.get('database', '')):
+            conn.set_authorizer(authorizer)
         return conn
     sqlite3.connect = watched
     # The legacy writer's own schema upkeep (database.init_db: idempotent backfill UPDATEs, usually no rows) is not

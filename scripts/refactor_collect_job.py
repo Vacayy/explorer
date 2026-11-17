@@ -52,6 +52,8 @@ CHAIN_TABLE_STEPS = {'chain_macro_news', 'chain_actions', 'chain_images'}
 DOCUMENT_TABLES = {'raw_documents', 'enrichments', 'entity_links', 'entities', 'entity_keywords', 'entity_relations',
                    'narrative_edge_evidence'}
 DERIVED = ('doc_fts',)
+# The legacy file's own model call record: the PG llm_calls ledger (postgres_llm_calls) records every call already.
+LOCAL_LEDGERS = {'llm_calls'}
 # The sector map, sector and US industry screens and portfolio price history, refreshed from the collected prices
 # (pipeline.postgres_sector_refresh; after the daily price collection and once after the cutover).
 SECTOR_REFRESH = 'sectorrefresh'
@@ -248,6 +250,37 @@ def _defer_big_picture_event():
     return requested
 
 
+PRICING_MAX_CALLS = 3  # one call per pending briefing day; at most three days per run (the rest: the next run)
+
+
+def _defer_pricing():
+    """compute_briefing.py ends with the pricing ledger extraction (pricing_ledger.extract_pending, one model call per
+    briefing day not yet extracted); its tables are computed outputs, not supplement tables, so it is noted here and
+    runs afterwards on the computation path, as the extraction button does (its failure never changes the briefing)."""
+    from pipeline import pricing_ledger
+    requested, original = [], pricing_ledger.extract_pending
+
+    def note(limit=None):
+        requested.append(limit)
+        pricing_ledger.extract_pending = original
+        return []
+    pricing_ledger.extract_pending = note
+    return requested
+
+
+def _run_pricing():
+    import psycopg
+    from pipeline import postgres_scheduled_compute
+    dsn, schema = os.environ['REFACTOR_POSTGRES_DSN'], trial._pg().execute('SELECT current_schema()').fetchone()[0]
+    try:
+        return postgres_scheduled_compute.run('scripts/refactor_pricing_extract.py', [str(PRICING_MAX_CALLS)],
+                                              lambda: psycopg.connect(dsn, options=f'-c search_path={schema}'),
+                                              record='pricing_ledger', source='scheduled usbriefing pricing',
+                                              max_calls=PRICING_MAX_CALLS)
+    except Exception as exc:  # noqa: BLE001 - recorded with the briefing's run, never changes it
+        return f'{type(exc).__name__}: {str(exc)[:200]}'
+
+
 def _run_big_picture_event():
     import psycopg
     from pipeline import postgres_scheduled_compute
@@ -417,6 +450,7 @@ def run(label):
                 before = _capture_documents()
                 refused = _cap_table_model_calls(TABLE_MODEL_CAPS[label]) if label in TABLE_MODEL_CAPS else None
                 event = _defer_big_picture_event() if label == 'markettoday' else None
+                pricing = _defer_pricing() if label == 'usbriefing' else None
                 trial._watch_writes()
                 try:
                     trial._run_script(*argv)
@@ -431,7 +465,7 @@ def run(label):
                     raise trial.HeldBack('no source answered')  # a script may record 'ok' with every fetch failed
                 if record:
                     trial._job_record(record, started)
-                written = {t for t in trial.written if not t.startswith(DERIVED)}
+                written = {t for t in trial.written if not t.startswith(DERIVED)} - LOCAL_LEDGERS
                 entry['written'] = sorted(written)
                 if not written:
                     raise trial.HeldBack('wrote nothing')
@@ -442,6 +476,8 @@ def run(label):
                 outcome = 'applied: ' + ', '.join(f'{t} {n}' for t, n in (entry['applied'] or {}).items())
                 if event:  # the 16:00 wrap's big picture check, on the computation path after the slot is in PG
                     entry['big_picture_event'] = _run_big_picture_event()
+                if pricing:  # the briefing's pricing ledger extraction, on the computation path after it is in PG
+                    entry['pricing'] = _run_pricing()
         except trial.Aborted as exc:
             outcome = f'aborted: {exc}'
         except trial.HeldBack as exc:
