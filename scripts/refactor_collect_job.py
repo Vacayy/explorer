@@ -14,6 +14,7 @@ Jobs not connected yet are recorded as 'unsupported' and not run.
 """
 import json
 import os
+import sqlite3
 import sys
 import time
 from pathlib import Path
@@ -436,6 +437,11 @@ def run_feeds(pg, refused=None):
     return result
 
 
+def _blog_document_known(key):
+    with sqlite3.connect(f'file:{trial.WORK}?mode=ro', uri=True) as work:
+        return work.execute("SELECT 1 FROM raw_documents WHERE source_type='blog' AND source_id=? LIMIT 1", (key,)).fetchone() is not None
+
+
 def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-backlog.sqlite'):
     """One blog reference, one queued document; a failure keeps this isolated feed on hold."""
     from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference
@@ -450,8 +456,13 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
                     raise trial.HeldBack('no blog sources are configured')
                 posts = connector.discover_posts(ref)
                 for post in posts:
-                    queue.enqueue_ref('blog', ref.key, post)
+                    if not _blog_document_known(post.key):
+                        queue.enqueue_ref('blog', ref.key, post)
                 queue.advance_ref('blog', ref)
+                if queue.next_pending_ref() is None:
+                    return {'stats': {'blog': {'refs': 1}}, 'counts': {}, 'published': 0,
+                            'sources': ['blog'], 'steps_not_connected': ['other feed sources',
+                            'existing document revisions', 'chain postprocessing']}
             class OnePost:
                 def fetch(self, ref):
                     return [connector.fetch_post(ref)]

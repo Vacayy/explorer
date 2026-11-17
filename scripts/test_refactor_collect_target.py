@@ -30,7 +30,7 @@ class CollectionTargetTest(unittest.TestCase):
             def fetch_post(self, ref):
                 return RawDoc('blog', ref.key)
 
-        with TemporaryDirectory() as directory:
+        with TemporaryDirectory() as directory, patch.object(job, '_blog_document_known', return_value=False):
             path = Path(directory) / 'backlog.sqlite'
             with patch.object(trial, 'run_documents', side_effect=RuntimeError('simulated publication failure')):
                 with self.assertRaises(RuntimeError):
