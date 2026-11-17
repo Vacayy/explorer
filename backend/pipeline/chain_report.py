@@ -202,26 +202,40 @@ def _note(key: str, d: dict) -> str:
     """칸 메모 — 같은 자료 묶음이면 캐시"""
     from pipeline.llm import run
     h = _hash(d)
-    conn = get_connection()
-    try:
-        hit = conn.execute("SELECT body FROM chain_node_notes WHERE node_key=? AND inputs_hash=?", (key, h)).fetchone()
-    finally:
-        conn.close()
-    if hit:
-        return hit["body"]
+    hit = _cached_note(key, h)
+    if hit is not None:
+        return hit
     docs = "\n".join(f"[D{x['id']}] {x['published_at'][:10] if x['published_at'] else ''} {x['source_type']} — {x['title']}\n{(x['body'] or '').strip()}" for x in d["피드"])
     calls = "\n".join(f"[C{c['ticker']} {c['date']}] {c['period']}\n{c['digest']}" for c in d["컨콜"])
     prompt = (f"칸: {d['사실']['name']} ({key})\n\n## 사실(관측 데이터)\n{json.dumps(d['사실'], ensure_ascii=False, default=str)}\n\n"
               f"## 기대(컨센서스·리서치 전망)\n{json.dumps(d['기대'], ensure_ascii=False, default=str)}\n\n## 컨퍼런스콜 요약\n{calls or '(없음)'}\n\n"
               f"## 피드 문서(최근 {DOC_DAYS}일)\n{docs or '(없음)'}\n\n위 자료로 칸 메모를 써라.")
     body = run(prompt, task='chain.note', system=NOTE_SYSTEM).text.strip()
+    _store_note(key, h, body)
+    return body
+
+
+def _cached_note(key: str, h: str) -> str | None:
+    conn = get_connection()
+    try:
+        hit = conn.execute("SELECT body FROM chain_node_notes WHERE node_key=? AND inputs_hash=?", (key, h)).fetchone()
+    finally:
+        conn.close()
+    return hit["body"] if hit else None
+
+
+def _store_note(key: str, h: str, body: str) -> None:
     conn = get_connection()
     try:
         conn.execute("INSERT OR REPLACE INTO chain_node_notes (node_key, inputs_hash, body, model) VALUES (?,?,?,?)", (key, h, body, NOTE_MODEL))
         conn.commit()
     finally:
         conn.close()
-    return body
+
+
+def _record(status: str, summary: str) -> None:
+    from pipeline.ops import record_run
+    record_run("chain_report", status, summary)
 
 
 def _update(rid: int, **cols) -> None:
@@ -252,7 +266,6 @@ def start(root: str, outline: str = "bottom_up") -> tuple[int, bool]:
 def build(rid: int, root: str, outline: str = "bottom_up") -> None:
     """트리 → 칸 자료 묶음 → 칸 메모(n/m) → 종합(웹 검색) → 저장. 실패는 status와 job_runs에 남긴다(조용한 실패 금지)"""
     from pipeline.llm import run
-    from pipeline.ops import record_run
     from pipeline.value_chain import read_map
     from pipeline.value_chain_flow import compute
     from pipeline.vc_expectations import with_observed
@@ -298,10 +311,10 @@ def build(rid: int, root: str, outline: str = "bottom_up") -> None:
         status = "partial" if missing else "done"
         _update(rid, status=status, progress=None, body=body, refs_json=json.dumps(refs, ensure_ascii=False),
                 missing_json=json.dumps(missing, ensure_ascii=False), inputs_hash=_hash([notes, tree]), finished_at=_now())
-        record_run("chain_report", "partial" if missing else "ok", f"root {root} · 칸 {len(notes)}/{len(tree)}")
+        _record("partial" if missing else "ok", f"root {root} · 칸 {len(notes)}/{len(tree)}")
     except Exception as e:  # noqa: BLE001
         _update(rid, status="error", progress=None, error=f"{type(e).__name__}: {str(e)[:400]}", finished_at=_now())
-        record_run("chain_report", "error", f"root {root} · {type(e).__name__}: {str(e)[:150]}")
+        _record("error", f"root {root} · {type(e).__name__}: {str(e)[:150]}")
 
 
 def _now() -> str:
