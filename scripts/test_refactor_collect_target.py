@@ -24,8 +24,11 @@ class CollectionTargetTest(unittest.TestCase):
             def discover(self):
                 return [SourceRef('feed')]
 
-            def fetch(self, _ref):
-                return [RawDoc('blog', 'first'), RawDoc('blog', 'second')]
+            def discover_posts(self, _ref):
+                return [SourceRef('first'), SourceRef('second')]
+
+            def fetch_post(self, ref):
+                return RawDoc('blog', ref.key)
 
         with TemporaryDirectory() as directory:
             path = Path(directory) / 'backlog.sqlite'
@@ -33,13 +36,15 @@ class CollectionTargetTest(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     job.run_minimal_blog(None, Connector(), queue_path=path)
             queue = FeedBacklog(path)
-            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending').fetchone()[0], 2)
+            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending').fetchone()[0], 1)
+            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending_refs').fetchone()[0], 1)
             queue.close()
             result = {'counts': {'new': 1}, 'stats': {}, 'published': 1}
             with patch.object(trial, 'run_documents', return_value=result):
                 job.run_minimal_blog(None, Connector(), queue_path=path)
             queue = FeedBacklog(path)
-            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending').fetchone()[0], 1)
+            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending').fetchone()[0], 0)
+            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending_refs').fetchone()[0], 1)
             queue.close()
     def test_media_is_readonly_and_feed_only(self):
         def spec(label, mount):

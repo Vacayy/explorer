@@ -438,13 +438,24 @@ def run_feeds(pg, refused=None):
 
 def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-backlog.sqlite'):
     """One blog reference, one queued document; a failure keeps this isolated feed on hold."""
-    from pipeline.feed_backlog import FeedBacklog, stage_one_reference
+    from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference
     queue = FeedBacklog(queue_path)
     try:
         if queue.intent():
             raise trial.HeldBack('an earlier feed publication intent requires review')
         if queue.next() is None:
-            stage_one_reference(queue, 'blog', connector)
+            if queue.next_pending_ref() is None:
+                ref = queue.next_ref('blog', connector.discover())
+                if ref is None:
+                    raise trial.HeldBack('no blog sources are configured')
+                posts = connector.discover_posts(ref)
+                for post in posts:
+                    queue.enqueue_ref('blog', ref.key, post)
+                queue.advance_ref('blog', ref)
+            class OnePost:
+                def fetch(self, ref):
+                    return [connector.fetch_post(ref)]
+            fetch_pending_reference(queue, {'blog': OnePost()})
         item = queue.next()
         if item is None:
             raise trial.HeldBack('blog reference returned no documents')

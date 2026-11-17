@@ -26,6 +26,10 @@ class BlogConnector:
         return [SourceRef(key=r["url"]) for r in rows]
 
     def fetch(self, ref: SourceRef) -> list[RawDoc]:
+        return [self.fetch_post(post) for post in self.discover_posts(ref)]
+
+    def discover_posts(self, ref: SourceRef) -> list[SourceRef]:
+        """Capture the RSS listing before fetching individual post bodies."""
         feed_url = ref.key
         try:
             _, detected = detect_platform_and_feed_url(ref.key)
@@ -35,25 +39,18 @@ class BlogConnector:
             pass  # 이미 feed url이거나 감지 실패 → ref.key 그대로 사용
 
         posts, _blog_name = scrape_rss(feed_url)
-        docs = []
-        for p in posts:
-            body = p.get("content") or p.get("summary", "")
-            url = p.get("url")
-            # 네이버 블로그 RSS는 길이와 무관하게 늘 요약(excerpt)만 준다(본문은 iframe) → 항상 원문 스크랩.
-            # 그 외 소스는 RSS가 통짜 본문인 경우가 많아 짧을 때만 스크랩. (긴 excerpt 오판 방지)
-            is_naver = bool(url) and "blog.naver.com" in url
-            if url and (is_naver or len(body) < 600):
-                from services.blog_service import fetch_full_content
-                full = fetch_full_content(url)
-                if full and len(full) > len(body):
-                    body = full
-            docs.append(RawDoc(
-                source_type="blog",
-                source_id=p.get("url") or p.get("title", ""),
-                title=p.get("title", ""),
-                url=p.get("url", ""),
-                published_at=p.get("published_at", ""),
-                raw_content=body,
-                kind="html",
-            ))
-        return docs
+        return [SourceRef(key=p.get('url') or p.get('title', ''), meta={'post': p}) for p in posts]
+
+    def fetch_post(self, ref: SourceRef) -> RawDoc:
+        p = ref.meta['post']
+        body = p.get('content') or p.get('summary', '')
+        url = p.get('url')
+        is_naver = bool(url) and 'blog.naver.com' in url
+        if url and (is_naver or len(body) < 600):
+            from services.blog_service import fetch_full_content
+            full = fetch_full_content(url)
+            if full and len(full) > len(body):
+                body = full
+        return RawDoc(source_type='blog', source_id=p.get('url') or p.get('title', ''),
+                      title=p.get('title', ''), url=p.get('url', ''), published_at=p.get('published_at', ''),
+                      raw_content=body, kind='html')
