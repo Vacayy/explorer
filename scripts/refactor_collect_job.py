@@ -36,8 +36,16 @@ CHAIN_STEPS = {'chain_macro_news': (['scripts/fetch_macro_news.py'], None),  # h
                'chain_narratives': (['scripts/compute_narratives.py', '--urgent'], 'compute_narratives'),
                'chain_events': (['scripts/extract_events.py', '--limit', '40'], 'extract_events'),
                'chain_actions': (['scripts/scan_actions.py'], None),  # fetches DART: a collection step (table path)
+               # Image readings the intake missed (budget, failures) put into existing documents' bodies: at most 10 calls
+               # per run (PM 6940286658); documents change, so it publishes revisions (table path).
+               'chain_images': (['scripts/backfill_images.py', '--calls', '10', '--minutes', '8'], 'image_backfill'),
                'chain_digests': (['scripts/compute_digests.py'], None)}
-CHAIN_TABLE_STEPS = {'chain_macro_news', 'chain_actions'}
+CHAIN_TABLE_STEPS = {'chain_macro_news', 'chain_actions', 'chain_images'}
+# Tables a collection job writes that are published as documents and graph rows (new ones, and revisions of existing
+# ones against the published projection), not replaced as supplement tables; the full-text index is derived.
+DOCUMENT_TABLES = {'raw_documents', 'enrichments', 'entity_links', 'entities', 'entity_keywords', 'entity_relations',
+                   'narrative_edge_evidence'}
+DERIVED = ('doc_fts',)
 COMPUTE_JOBS = {'narratives', 'contradictions', 'promote', 'proposals', 'bigpicture', 'sectoroverview',
                 *(set(CHAIN_STEPS) - CHAIN_TABLE_STEPS)}
 # chain: its document intake only (ingest with the registered sources, tagging included), capped per run and
@@ -57,13 +65,44 @@ def job_argv(label):
     return [str(Path(argv[1]).relative_to(Path(argv[1]).parents[1])), *argv[2:]], rules.get(label, {}).get('record')
 
 
+def _capture_documents():
+    """The collector file's published documents and graph rows before the job (compared after it)."""
+    import sqlite3
+    from pipeline import postgres_collected_changes_fixture as changes
+    work = sqlite3.connect(trial.WORK)
+    work.row_factory = sqlite3.Row
+    try:
+        floors = trial._published_floors(work)
+        return floors, changes.capture(work, floors['document_floor']), changes.capture_graph(work)
+    finally:
+        work.close()
+
+
+def _publish_documents(pg, label, started, before):
+    """New documents and revisions of existing ones (base: the projection the candidate publishes now), one transaction."""
+    import sqlite3
+    from pipeline import postgres_collected_changes_fixture as changes
+    floors, documents, graph = before
+    work = sqlite3.connect(trial.WORK)
+    work.row_factory = sqlite3.Row
+    origin = sqlite3.connect('file:/projection/current.db?mode=ro', uri=True)
+    origin.row_factory = sqlite3.Row
+    try:
+        result = changes.publish_run(pg, work, origin, documents, run_id=f'scheduled {label} {started}', graph=graph,
+                                     **floors)
+        trial._published_floors(work, advance=True)
+        work.commit()
+        return {'added': len(result['added']), 'revised': len(result['revised']), 'kept': len(result['kept'])}
+    finally:
+        work.close()
+        origin.close()
+
+
 def supplement_tables(pg, written):
     known = {name for (name,) in pg.execute('SELECT table_name FROM legacy_supplement_tables WHERE table_name=ANY(%s)',
                                             (sorted(written),))}
     if written - known:
         raise trial.HeldBack(f'wrote tables the candidate does not take from collection: {sorted(written - known)}')
-    if not written:
-        raise trial.HeldBack('wrote nothing')
     return sorted(written)
 
 
@@ -128,6 +167,7 @@ def run(label):
             else:
                 argv, record = job_argv(label)
                 os.chdir('/app')
+                before = _capture_documents()
                 trial._watch_writes()
                 trial._run_script(*argv)
                 if trial.stopped:
@@ -136,8 +176,14 @@ def run(label):
                     raise trial.HeldBack('no source answered')
                 if record:
                     trial._job_record(record, started)
-                entry['written'] = sorted(trial.written)
-                entry['applied'] = trial._apply_supplement(pg, supplement_tables(pg, trial.written))
+                written = {t for t in trial.written if not t.startswith(DERIVED)}
+                entry['written'] = sorted(written)
+                if not written:
+                    raise trial.HeldBack('wrote nothing')
+                if written & DOCUMENT_TABLES:
+                    entry['documents'] = _publish_documents(pg, label, started, before)
+                rest = written - DOCUMENT_TABLES
+                entry['applied'] = trial._apply_supplement(pg, supplement_tables(pg, rest)) if rest else {}
                 outcome = 'applied: ' + ', '.join(f'{t} {n}' for t, n in (entry['applied'] or {}).items())
         except trial.Aborted as exc:
             outcome = f'aborted: {exc}'

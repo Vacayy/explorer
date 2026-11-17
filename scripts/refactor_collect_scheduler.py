@@ -35,9 +35,9 @@ TICK_SECONDS = 20
 JOB_MEMORY = {'proposals': '3584m'}  # measured peak 2.9GiB (weekly); every other job 2g
 # The MacBook's 30-minute chain (scripts/run_chain.sh) in its order: one container per step, each recorded; a step
 # that fails does not stop the next (as there). Not here: probe_llm (the gate does it), briefing catch-up (sends),
-# image backfill (its own budget, not connected), vault export and the search index (the projection builder).
+# vault export and the search index (the projection builder). Image backfill runs with at most 10 calls.
 CHAIN_SEQUENCE = ('chain_macro_news', 'chain', 'chain_causal', 'chain_signals', 'chain_narratives', 'chain_events',
-                  'chain_actions', 'chain_digests')
+                  'chain_images', 'chain_actions', 'chain_digests')
 # Per-run host caps of the intake (PM 6938365215, 6940286658): ~30 Naver blog feeds, 32 Telegram channel pages,
 # 25 YouTube channel feeds plus captions, Telegram images read within the 30-minute image budget (numbered CDN hosts).
 JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40,t.me=40,www.youtube.com=40,.telesco.pe=40'}
