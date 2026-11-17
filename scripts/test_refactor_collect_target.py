@@ -1,5 +1,6 @@
 """Collection target guard: live requires explicit opt-in and exact API schema."""
 import os
+import sqlite3
 import sys
 import types
 import unittest
@@ -11,9 +12,20 @@ from unittest.mock import patch
 import refactor_collect_trial as trial
 import refactor_collect_scheduler as scheduler
 import refactor_collect_engine as engine
+import refactor_collect_job as job
 
 
 class CollectionTargetTest(unittest.TestCase):
+    def test_us_briefing_requires_synthesis(self):
+        conn = sqlite3.connect(':memory:')
+        conn.execute('CREATE TABLE job_runs(id INTEGER, job TEXT, summary TEXT, ran_at TEXT)')
+        conn.execute('INSERT INTO job_runs VALUES (1,?,?,?)', ('compute_briefing', 'status ok · synthesis False', '2026-11-18 00:00:00'))
+        with self.assertRaises(trial.HeldBack):
+            job.require_us_briefing_synthesis(conn, '2026-11-18 00:00:00')
+        conn.execute('UPDATE job_runs SET summary=?', ('status ok · synthesis True',))
+        job.require_us_briefing_synthesis(conn, '2026-11-18 00:00:00')
+        conn.close()
+
     def test_send_secrets_require_explicit_key_selection(self):
         with TemporaryDirectory() as directory:
             secret_file = Path(directory) / 'secrets'
@@ -42,6 +54,11 @@ class CollectionTargetTest(unittest.TestCase):
         with patch.dict(os.environ, {'COLLECT_PRICES_CATCHUP_AFTER': '2026-11-18T07:35:00+00:00'}):
             self.assertEqual(scheduler.catchup_enabled({'prices', 'watch'}, datetime(2026, 11, 18, 7, 34, tzinfo=timezone.utc)), {'watch'})
             self.assertEqual(scheduler.catchup_enabled({'prices', 'watch'}, datetime(2026, 11, 18, 7, 35, tzinfo=timezone.utc)), {'prices', 'watch'})
+
+    def test_us_briefing_catchup_waits_for_market_close_slot(self):
+        with patch.dict(os.environ, {'COLLECT_USBRIEFING_CATCHUP_AFTER': '2026-11-17T21:30:00+00:00'}):
+            self.assertEqual(scheduler.catchup_enabled({'usbriefing'}, datetime(2026, 11, 17, 21, 29, tzinfo=timezone.utc)), set())
+            self.assertEqual(scheduler.catchup_enabled({'usbriefing'}, datetime(2026, 11, 17, 21, 30, tzinfo=timezone.utc)), {'usbriefing'})
 
     def test_source_stop_is_not_swallowed_by_library_retry(self):
         def retrying_client():

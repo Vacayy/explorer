@@ -155,6 +155,15 @@ def supplement_tables(pg, written):
     return sorted(written)
 
 
+def require_us_briefing_synthesis(work, since):
+    """An apparently successful warm-up with no synthesis must not be reported as a fresh briefing."""
+    row = work.execute("SELECT summary FROM job_runs WHERE job='compute_briefing' AND ran_at>=? ORDER BY id DESC LIMIT 1",
+                       (since,)).fetchone()
+    summary = row[0] if row else ''
+    if not summary or 'synthesis True' not in summary.split(' · '):
+        raise trial.HeldBack('US briefing synthesis is missing')
+
+
 def run_sector_refresh():
     import psycopg
     from pipeline import postgres_sector_refresh as sector
@@ -311,7 +320,7 @@ def _run_big_picture_event():
         return postgres_scheduled_compute.run('scripts/weekly_big_picture.py', ['--event'],
                                               lambda: psycopg.connect(dsn, options=f'-c search_path={schema}'),
                                               record='weekly_big_picture:event', source='scheduled markettoday event',
-                                              max_calls=MAX_MODEL_CALLS)
+                                              max_calls=2)  # 16:00 event: at most two calls including fallback
     except Exception as exc:  # noqa: BLE001 - recorded with the slot's run, never changes it
         return f'{type(exc).__name__}: {str(exc)[:200]}'
 
@@ -742,6 +751,9 @@ def _run(label, pg, waited):
                     raise trial.HeldBack('no source answered')  # a script may record 'ok' with every fetch failed
                 if record:
                     trial._job_record(record, started)
+                if label == 'usbriefing':
+                    with sqlite3.connect(trial.WORK) as work:
+                        require_us_briefing_synthesis(work, started)
                 written = {t for t in trial.written if not t.startswith(DERIVED)} - LOCAL_LEDGERS
                 entry['written'] = sorted(written)
                 if not written:
