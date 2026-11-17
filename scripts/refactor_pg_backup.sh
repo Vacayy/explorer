@@ -31,8 +31,15 @@ case "$1" in
     host_free_kb=$(df -Pk "$DIR" | awk 'NR==2 {print $4}')
     [[ "$host_free_kb" =~ ^[0-9]+$ ]] || { echo 'could not determine host free space'; exit 1; }
     [ "$host_free_kb" -gt "$((database_bytes / 1024 + 3145728))" ] || { echo 'not enough host space for a backup'; exit 1; }
+    # Compress in a bounded disposable container using the already-local PG image.
+    image=$(docker inspect "$DB" --format '{{.Image}}')
+    [[ "$image" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'invalid local PG image'; exit 1; }
+    REFACTOR_POSTGRES_DSN=$(docker exec explorer-refactor-single-path printenv REFACTOR_POSTGRES_DSN)
+    export REFACTOR_POSTGRES_DSN
     out="$DIR/$(date -u +%Y%m%dT%H%M%SZ)-candidate.dump"
-    docker exec "$DB" pg_dump -U fixture -d fixture -Fc -Z 6 $(printf -- '-n %s ' $SCHEMAS) > "$out.tmp"
+    docker run --rm --pull=never --network explorer-refactor-preview-private --cpus 1 --memory 1g --pids-limit 100 \
+      --read-only --cap-drop ALL --security-opt no-new-privileges -e REFACTOR_POSTGRES_DSN --entrypoint sh "$image" \
+      -c 'exec pg_dump -d "$REFACTOR_POSTGRES_DSN" -Fc -Z 6 "$@"' sh $(printf -- '-n %s ' $SCHEMAS) > "$out.tmp"
     shasum -a 256 "$out.tmp" | sed "s|$out.tmp|$(basename "$out")|" > "$out.sha256"
     mv "$out.tmp" "$out" && chmod 600 "$out" "$out.sha256"
     echo "$out"

@@ -24,8 +24,10 @@ class BackupSafetyTest(unittest.TestCase):
 set -eu
 case "$*" in
   *"printenv REFACTOR_FIXTURE_SCHEMA"*) printf 'refactor_fixture_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\\n' ;;
+  *"printenv REFACTOR_POSTGRES_DSN"*) printf 'synthetic-dsn\\n' ;;
+  *"inspect"*".Image"*) printf 'sha256:%064d\\n' 0 ;;
   *"information_schema.views"*) : ;;
-  *"pg_dump"*) printf 'synthetic backup\\n' ;;
+  *"pg_dump"*) [[ "$1" = run ]] || exit 5; printf 'synthetic backup\\n' ;;
   *"pg_database_size"*) printf '1048576\\n' ;;
   *"df -k"*) printf 'fs blocks used available capacity mount\\nfs 99999999 1 %s 1%% /data\\n' "${TEST_VM_FREE_KB:-99999999}" ;;
   *"sum(pg_total_relation_size"*) printf '1048576\\n' ;;
