@@ -80,7 +80,7 @@ WATCH = 'watch'
 # No network; its model calls are capped per run (QUESTIONS_MAX_CALLS). The Telegram alerts that follow the legacy
 # job are sends (on at the cutover).
 QUESTIONS = 'questions'
-QUESTIONS_MAX_CALLS = int(os.environ.get('COLLECT_QUESTIONS_MAX_CALLS', '30'))
+QUESTIONS_MAX_CALLS = int(os.environ.get('COLLECT_QUESTIONS_MAX_CALLS', '80'))  # PM #3 6948235108: the legacy's result first
 PEER_ROOT = Path(os.environ.get('PEER_ROOT', '/peer'))
 COMPUTE_JOBS = {'narratives', 'contradictions', 'promote', 'proposals', 'bigpicture', 'sectoroverview',
                 *(set(CHAIN_STEPS) - CHAIN_TABLE_STEPS)}
