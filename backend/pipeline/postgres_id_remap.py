@@ -8,6 +8,8 @@ value there in such a column is unambiguous. Old ids in external URLs are never 
 document after the cutover). The map (candidate_id_remap) makes a second run change nothing and `rollback` the exact
 inverse.
 """
+from psycopg.types.json import Jsonb
+
 from pipeline.postgres_graph_fixture import _guard
 
 KINDS = {'document': ('raw_documents', 100_000_000), 'entity': ('entities', 100_000_000),
@@ -155,3 +157,75 @@ def rollback(conn):
         counts = _apply(conn, pairs) if pairs else {}
         conn.execute('UPDATE candidate_id_remap SET rolled_back_at = now() WHERE rolled_back_at IS NULL')
     return {'pairs': len(pairs), 'updated': counts}
+
+
+# Same-source merge before the cutover publication (architect #3 6943703383 item 3, 6943904311 item 2): a candidate row
+# whose natural key the MacBook file also has is the same thing collected twice. The MacBook row is canonical: the
+# candidate row's own published rows are withdrawn (the publication brings the MacBook's), and every other reference
+# moves to the MacBook id. Keys: documents (source_type, source_id), entities (type, name), aliases (entity, keyword),
+# relations (src, dst, rel_type, valid_from) — the legacy UNIQUE keys, whose violation would stop the projection build.
+NATURAL = {'document': ('raw_documents', ('source_type', 'source_id')), 'entity': ('entities', ('type', 'name')),
+           'keyword': ('entity_keywords', ('entity_id', 'keyword')),
+           'relation': ('entity_relations', ('src_id', 'dst_id', 'rel_type', 'valid_from'))}
+# The candidate row's own published rows: (table, column or None for overlay ordinal/JSON, overlay table_name, JSON key).
+WITHDRAW = {'document': (('collected_publications', 'document_id'), ('collected_document_projection', 'id'),
+                         ('collected_document_list_projection', 'document_id'), ('collected_document_entity_order', 'document_id'),
+                         ('collected_included_documents', 'document_id'), ('collected_timeline_source_metadata', 'document_id'),
+                         ('collected_timeline_source_projection', 'document_id'), ('document_embedding_overrides', 'document_id'),
+                         ('video_digest_overlay_rows', ('raw_documents', 'id')), ('video_digest_overlay_rows', ('enrichments', 'doc_id')),
+                         ('video_digest_overlay_rows', ('entity_links', 'doc_id'))),
+            'entity': (('video_digest_overlay_rows', ('entities', 'id')),),
+            'keyword': (('video_digest_overlay_rows', ('entity_keywords', 'id')),),
+            'relation': (('question_graph_overlay_relations', 'id'), ('question_graph_overlay_rows', ('entity_relations', 'id')))}
+
+
+def merge_plan(conn, collector):
+    """(kind, candidate id, MacBook id) for candidate rows (in the band) whose natural key the collector file has.
+    Entities first, so relation and alias keys compare with the MacBook's entity ids."""
+    pairs, entity = [], {}
+    for kind in ('entity', 'document', 'keyword', 'relation'):
+        table, key = NATURAL[kind]
+        band = KINDS[kind][1]
+        for (row,) in conn.execute("SELECT row_data FROM legacy_snapshot_rows WHERE table_name=%s "
+                                   "AND (row_data->>'id')::bigint >= %s", (table, band)):
+            values = [row.get(column) for column in key]
+            if kind == 'keyword':
+                values[0] = entity.get(int(values[0]), values[0])
+            if kind == 'relation':
+                values[0], values[1] = entity.get(int(values[0]), values[0]), entity.get(int(values[1]), values[1])
+            found = collector.execute(f'SELECT id FROM {table} WHERE ' + ' AND '.join(f'{c} IS ?' for c in key),
+                                      values).fetchone()
+            if found:
+                pairs.append((kind, int(row['id']), found[0]))
+                if kind == 'entity':
+                    entity[int(row['id'])] = found[0]
+    return pairs
+
+
+def merge(conn, collector):
+    """Withdraw the candidate's duplicates of MacBook rows and move their references (one transaction)."""
+    _guard(conn)
+    with conn.transaction():
+        conn.execute('CREATE TABLE IF NOT EXISTS candidate_id_merges (kind TEXT NOT NULL, candidate_id BIGINT NOT NULL, '
+                     'macbook_id BIGINT NOT NULL, withdrawn JSONB NOT NULL, merged_at TIMESTAMPTZ NOT NULL DEFAULT now(), '
+                     'PRIMARY KEY (kind, candidate_id))')
+        pairs = merge_plan(conn, collector)
+        withdrawn = {}
+        for kind, candidate, macbook in pairs:
+            rows = {}
+            for table, where in WITHDRAW[kind]:
+                if isinstance(where, tuple):
+                    row_table, key = where
+                    gone = conn.execute(f'DELETE FROM "{table}" WHERE table_name=%s AND row_data->>%s = %s RETURNING to_jsonb("{table}".*)',
+                                        (row_table, key, str(candidate))).fetchall()
+                    rows[f'{table}[{row_table}]'] = [r[0] for r in gone]
+                else:
+                    gone = conn.execute(f'DELETE FROM "{table}" WHERE "{where}" = %s RETURNING to_jsonb("{table}".*)',
+                                        (candidate,)).fetchall()
+                    rows[table] = [r[0] for r in gone]
+            withdrawn[(kind, candidate)] = {name: len(v) for name, v in rows.items() if v}
+            conn.execute('INSERT INTO candidate_id_merges (kind, candidate_id, macbook_id, withdrawn) VALUES (%s,%s,%s,%s) '
+                         'ON CONFLICT DO NOTHING', (kind, candidate, macbook, Jsonb(rows)))
+        counts = _apply(conn, pairs) if pairs else {}
+    return {'pairs': len(pairs), 'by_kind': {k: sum(1 for p in pairs if p[0] == k) for k in NATURAL},
+            'withdrawn': {f'{k}:{c}': v for (k, c), v in withdrawn.items()}, 'moved': counts}

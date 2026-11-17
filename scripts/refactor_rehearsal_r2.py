@@ -36,6 +36,20 @@ def main():
     connect = lambda: psycopg.connect(dsn, options=f'-c search_path={schema}')  # noqa: E731
     steps, out = {}, {}
 
+    # R1.5 (architect #3 6943703383): the candidate's pre-band ids must already be renumbered; then the candidate's
+    # duplicates of the MacBook's rows (same natural key) are withdrawn and their references moved, inside the freeze.
+    from pipeline import postgres_id_remap as remap
+    started = time.monotonic()
+    with connect() as pg:
+        base_schema = __import__('pipeline.postgres_sector_refresh', fromlist=['x']).base_schema(pg)
+        left = remap.plan(pg, base_schema)
+        if left:
+            raise SystemExit(f'{len(left)} candidate rows still in the MacBook id range: renumber first')
+        source = readonly(SOURCE)
+        out['merge'] = remap.merge(pg, source)
+        source.close()
+    steps['merge_same_source'] = round(time.monotonic() - started, 1)
+
     started = time.monotonic()
     base = readonly(BASE, immutable=True)
     floors = {name: base.execute(f'SELECT COALESCE(max(id),0) FROM {table}').fetchone()[0] for name, table in FLOOR_TABLES}
