@@ -2054,3 +2054,13 @@ export interface IncomeFlowResponse {
 }
 export interface IncomeFlowQuarterItem { q: string; stage: 'preliminary' | 'quarterly_report'; as_of: string | null }
 export interface IncomeFlowQuarters { quarters: IncomeFlowQuarterItem[] }
+
+/** GET /api/auth/session — 공개 모드 로그인 상태(브라우저 저장소에 보관하지 않는다). */
+export interface MemberSession {
+  login_available: boolean
+  chat_available: boolean
+  authenticated: boolean
+  user: { id: string; role: 'member' | 'operator' } | null
+  csrf_token: string | null
+}
+export interface LogoutReply { ok: boolean }

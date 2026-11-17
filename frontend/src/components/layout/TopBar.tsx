@@ -21,6 +21,8 @@ import { SECTIONS, locate } from "./navConfig"
 import { ApprovalsInbox, InboxSheet, useApprovalsCount } from "./Inboxes"
 import { AiOutputsButton, AiOutputsRow, AiOutputsSheet, useAiOutputs } from "./AiOutputs"
 import { ShellButton } from "./ShellButton"
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
+import { AccountControl, useMemberAccess } from "@/components/auth/MemberAccess"
 
 interface HealthItem { key: string; label: string; status: string; detail: string; critical?: boolean; latest?: string | null; owner?: string | null }
 const STATUS_LABEL: Record<string, string> = { stale: "지연", error: "오류" }
@@ -30,6 +32,9 @@ const STATUS_LABEL: Record<string, string> = { stale: "지연", error: "오류" 
  * L1 활성은 navConfig.locate 단일 판정. 도시에·대화 등 L1 밖 화면에서는 어느 탭도 활성이 아니다.
  */
 export function TopBar({ aiOpen, onToggleAi }: { aiOpen: boolean; onToggleAi: () => void }) {
+  // 공개 모드의 비로그인 방문자: AI 버튼은 개인 대화 패널 대신 체험 채팅 화면으로 간다
+  const access = useMemberAccess()
+  const trial = PUBLIC_ACCESS && access.status !== "member" && access.status !== "operator"
   const { pathname, search } = useLocation()
   const here = locate(pathname, search)
   const phone = useMediaQuery(MOBILE_QUERY)
@@ -72,10 +77,18 @@ export function TopBar({ aiOpen, onToggleAi }: { aiOpen: boolean; onToggleAi: ()
         <ApprovalsInbox className="max-md:hidden" />
         <AiOutputsButton className="max-md:hidden" />
         <SettingsMenu />
+        {trial ? (
+          <Button asChild variant="secondary" size="sm"
+            className="h-8 gap-1.5 rounded-full border-0 px-3 text-ink max-md:size-10 max-md:bg-transparent max-md:px-0 max-md:text-ink-2">
+            <Link to="/chat" aria-label="AI 체험 대화"><Sparkles className="size-3.5 max-md:size-[18px]" strokeWidth={1.7} aria-hidden /><span className="max-md:sr-only">AI</span></Link>
+          </Button>
+        ) : (
         <Button variant="secondary" size="sm" aria-pressed={aiOpen} aria-label="AI 대화 (⌘J)" title="AI 대화 (⌘J)" onClick={onToggleAi}
           className="h-8 gap-1.5 rounded-full border-0 px-3 text-ink max-md:size-10 max-md:bg-transparent max-md:px-0 max-md:text-ink-2 max-md:aria-pressed:bg-chip max-md:aria-pressed:text-ink">
           <Sparkles className="size-3.5 max-md:size-[18px]" strokeWidth={1.7} aria-hidden /><span className="max-md:sr-only">AI</span>
         </Button>
+        )}
+        {PUBLIC_ACCESS && <AccountControl />}
       </div>
     </header>
   )

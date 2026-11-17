@@ -47,6 +47,9 @@ import SavedPage from "@/components/follow/SavedPage"
 
 // Explore (탐색)
 import ChatPage from "@/components/chat/ChatPage"
+import { PublicTrialChatPage } from "@/components/chat/PublicTrialChatPage"
+import { MemberAccessProvider, useMemberAccess } from "@/components/auth/MemberAccess"
+import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import ProjectsPage from "@/components/study/ProjectsPage"
 import ProjectPage from "@/components/study/ProjectPage"
 import StocksPage from "@/components/follow/StocksPage"
@@ -135,7 +138,10 @@ function Layout() {
   const stockCode = rawCode === "compare" ? null : rawCode
   const { data: company } = useCompany(stockCode)
   const subNav = subNavFor(pathname, search, stockCode, company?.corp_name)
-  const showAi = aiOpen && !pathname.startsWith("/chat")
+  // 공개 모드의 비로그인 방문자에게는 개인 대화 패널을 열지 않는다(AI 버튼은 체험 채팅 화면으로 간다)
+  const access = useMemberAccess()
+  const trialOnly = PUBLIC_ACCESS && access.status !== "member" && access.status !== "operator"
+  const showAi = aiOpen && !trialOnly && !pathname.startsWith("/chat")
   // 오버레이 대화는 다른 화면으로 가면 닫는다(근거 링크를 누르면 그 화면이 보이게)
   useEffect(() => { if (!window.matchMedia(PANEL_INLINE_QUERY).matches) setAiOpen(false) }, [pathname])
 
@@ -256,10 +262,16 @@ function AskRedirect() {
   return <Navigate to={`/chat${search}`} replace />
 }
 
+/** 공개 모드에서 로그인하지 않은 방문자는 개인 대화 대신 체험 채팅(/api/public/chat)을 쓴다 */
+function ChatRoute() {
+  const access = useMemberAccess()
+  return PUBLIC_ACCESS && access.status !== "member" && access.status !== "operator" ? <PublicTrialChatPage /> : <ChatPage />
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ErrorBoundary onReset={() => { void queryClient.refetchQueries({ type: "active", predicate: query => query.state.status === "error" }) }}><BrowserRouter>
+      <ErrorBoundary onReset={() => { void queryClient.refetchQueries({ type: "active", predicate: query => query.state.status === "error" }) }}><BrowserRouter><MemberAccessProvider>
         <Routes>
           <Route element={<Layout />}>
             {/* Default */}
@@ -319,7 +331,7 @@ export default function App() {
             <Route path="questions" element={<QuestionsPage />} />
             <Route path="question/:id" element={<QuestionDetail />} />
             <Route path="thesis" element={<ThesisAuditPage />} />
-            <Route path="chat" element={<ChatPage />} />
+            <Route path="chat" element={<ChatRoute />} />
             <Route path="ask" element={<AskRedirect />} />
             <Route path="actions" element={<ActionsRoute />} />
 
@@ -376,7 +388,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/home" replace />} />
           </Route>
         </Routes>
-      </BrowserRouter></ErrorBoundary>
+      </MemberAccessProvider></BrowserRouter></ErrorBoundary>
     </QueryClientProvider>
   )
 }
