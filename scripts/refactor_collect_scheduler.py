@@ -46,6 +46,8 @@ CHAIN_SEQUENCE = ('chain_macro_news', 'chain', 'chain_causal', 'chain_signals', 
 # Per-run host caps of the intake (PM 6938365215, 6940286658): ~30 Naver blog feeds, 32 Telegram channel pages,
 # 25 YouTube channel feeds plus captions, Telegram images read within the 30-minute image budget (numbered CDN hosts).
 JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40,t.me=40,www.youtube.com=40,.telesco.pe=40',
+                 # A prior daily run used 21 Naver and 263 Yahoo requests; enforce a bounded production run.
+                 'prices': 'polling.finance.naver.com=30,.finance.yahoo.com=300',
                  # one chart request per listed code (3,017 now), retries counted in the same cap (PM 6942746227)
                  'history': 'fchart.stock.naver.com=3200',
                  # credit (macbook-source #3 6942831447): 34 companies — issuer scan and history on the scanner host,
@@ -187,6 +189,9 @@ def catchup_due(enabled, log=print):
     """Enabled calendar jobs whose latest due run has no applied record yet (judged in a one-shot container)."""
     import json
     import refactor_collect_engine as engine
+    enabled = catchup_enabled(enabled, datetime.now(SEOUL))
+    if not enabled:
+        return []
     try:
         code, output = engine.run(['python', '/app/scripts/refactor_collect_job.py', '--catchup', ','.join(sorted(enabled))],
                                   internet=False, limit=300)
@@ -195,6 +200,17 @@ def catchup_due(enabled, log=print):
     except (RuntimeError, OSError, ValueError) as exc:
         log(f'catch-up check failed: {exc}')
         return []
+
+
+def catchup_enabled(enabled, now):
+    """Optionally defer price catch-up until a specified new scheduled slot after a source-cap stop."""
+    after = os.environ.get('COLLECT_PRICES_CATCHUP_AFTER')
+    if not after:
+        return enabled
+    boundary = datetime.fromisoformat(after)
+    if boundary.tzinfo is None:
+        raise ValueError('COLLECT_PRICES_CATCHUP_AFTER requires a timezone')
+    return enabled - {'prices'} if now < boundary else enabled
 
 
 def due_now(jobs, enabled, last, now, next_interval):

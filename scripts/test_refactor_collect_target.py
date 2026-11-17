@@ -3,6 +3,7 @@ import os
 import sys
 import types
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -12,6 +13,11 @@ import refactor_collect_scheduler as scheduler
 
 
 class CollectionTargetTest(unittest.TestCase):
+    def test_price_catchup_waits_for_the_next_slot(self):
+        with patch.dict(os.environ, {'COLLECT_PRICES_CATCHUP_AFTER': '2026-11-18T07:35:00+00:00'}):
+            self.assertEqual(scheduler.catchup_enabled({'prices', 'watch'}, datetime(2026, 11, 18, 7, 34, tzinfo=timezone.utc)), {'watch'})
+            self.assertEqual(scheduler.catchup_enabled({'prices', 'watch'}, datetime(2026, 11, 18, 7, 35, tzinfo=timezone.utc)), {'prices', 'watch'})
+
     def test_source_stop_is_not_swallowed_by_library_retry(self):
         def retrying_client():
             try:
