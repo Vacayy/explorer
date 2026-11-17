@@ -1,7 +1,8 @@
 """Public mode of the single-path candidate app: login, usage gate and access boundary, on PG.
 
 Called once after every route is registered. In the private (loopback) mode nothing changes. In the public
-mode (EXPLORER_ACCESS_MODE=public) it assembles, with development's environment names:
+mode (EXPLORER_ACCESS_MODE=public) it first refuses to start while a schema migration is pending
+(pipeline.postgres_schema_migrations), then assembles, with development's environment names:
 - the auth routes, their LoginFlow on the PG identity store (pipeline.postgres_identity_store) and a
   separately provisioned login-transaction SQLite (in-progress logins only, as in development);
 - the model-call usage gate on the PG chat quota (development's trial policy and identity secret);
@@ -34,6 +35,9 @@ def install_public(app, factory, *, trial_search=None, trial_read=None):
     from security.trial_identity import TrialIdentity
     from security.trial_quota import TrialPolicy
 
+    from pipeline.postgres_schema_migrations import require_applied
+    with factory() as conn:
+        require_applied(conn)  # never expose before every per-member ledger exists
     config = AuthConfig.from_environment()
     identities = PostgreSQLIdentityStore(factory)
     transactions = LoginTransactions(config.login_db)
