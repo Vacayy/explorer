@@ -2,11 +2,45 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pipeline.base import RawDoc
-from pipeline.feed_backlog import FeedBacklog
+from pipeline.base import RawDoc, SourceRef
+from pipeline.feed_backlog import FeedBacklog, stage_one_reference
 
 
 class FeedBacklogTest(unittest.TestCase):
+    def test_partial_fetch_is_durable_and_does_not_advance(self):
+        class Connector:
+            def discover(self):
+                return [SourceRef('a'), SourceRef('b')]
+
+            def fetch(self, ref):
+                yield RawDoc('blog', ref.key)
+                raise RuntimeError('simulated interruption')
+
+        with tempfile.TemporaryDirectory() as directory:
+            queue = FeedBacklog(Path(directory) / 'pending.sqlite')
+            first = queue.next_ref('blog', Connector().discover()).key
+            with self.assertRaises(RuntimeError):
+                stage_one_reference(queue, 'blog', Connector())
+            self.assertEqual(queue.next_ref('blog', Connector().discover()).key, first)
+            self.assertEqual(queue.next()[2].source_id, first)
+            queue.close()
+    def test_source_cursor_rotates_and_survives_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'pending.sqlite'
+            refs = [SourceRef('a'), SourceRef('b'), SourceRef('c')]
+            queue = FeedBacklog(path)
+            selected = []
+            for _ in refs:
+                ref = queue.next_ref('blog', refs)
+                selected.append(ref.key)
+                queue.advance_ref('blog', ref)
+            queue.close()
+            queue = FeedBacklog(path)
+            self.assertEqual(len(set(selected)), 3)
+            self.assertEqual(queue.next_ref('blog', refs).key, selected[0])
+            self.assertEqual(queue.next_ref('note', refs).key, selected[0])
+            self.assertIsNone(queue.next_ref('blog', []))
+            queue.close()
     def test_rejects_missing_identity_and_nonprivate_file(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'pending.sqlite'

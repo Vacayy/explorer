@@ -10,6 +10,19 @@ from pathlib import Path
 from pipeline.base import RawDoc
 
 
+def stage_one_reference(queue, name, connector):
+    """Fetch one rotating reference; a failed fetch or enqueue must not advance its cursor."""
+    ref = queue.next_ref(name, connector.discover())
+    if ref is None:
+        return 0
+    count = 0
+    for doc in connector.fetch(ref):
+        queue.enqueue(name, ref.key, doc)
+        count += 1
+    queue.advance_ref(name, ref)
+    return count
+
+
 class FeedBacklog:
     def __init__(self, path):
         self.path = Path(path)
@@ -29,11 +42,28 @@ class FeedBacklog:
             );
             CREATE TABLE IF NOT EXISTS feed_cursor (singleton INTEGER PRIMARY KEY CHECK(singleton=1), lane TEXT);
             INSERT OR IGNORE INTO feed_cursor(singleton, lane) VALUES (1, NULL);
+            CREATE TABLE IF NOT EXISTS source_cursor (connector TEXT PRIMARY KEY, ref_hash TEXT NOT NULL);
         ''')
         self.conn.commit()
 
     def close(self):
         self.conn.close()
+
+    def next_ref(self, connector, refs):
+        """Select one reference per source, rotating across runs without storing its private key."""
+        keyed = sorted({hashlib.sha256(ref.key.encode()).hexdigest(): ref for ref in refs}.items())
+        if not keyed:
+            return None
+        row = self.conn.execute('SELECT ref_hash FROM source_cursor WHERE connector=?', (connector,)).fetchone()
+        last = row[0] if row else ''
+        return next((ref for key, ref in keyed if key > last), keyed[0][1])
+
+    def advance_ref(self, connector, ref):
+        """Advance only after every returned document was durably staged."""
+        key = hashlib.sha256(ref.key.encode()).hexdigest()
+        with self.conn:
+            self.conn.execute('INSERT INTO source_cursor VALUES (?,?) ON CONFLICT(connector) '
+                              'DO UPDATE SET ref_hash=excluded.ref_hash', (connector, key))
 
     def enqueue(self, connector, ref, doc):
         """Keep the latest fetched payload without moving an already waiting document to the back."""
