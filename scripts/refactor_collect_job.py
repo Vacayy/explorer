@@ -36,7 +36,7 @@ TABLE_JOBS = {'prices', 'twrevenue', 'indexintraday', 'credit', 'retail', 'marke
 # included): a Market Today slot is one call; the US briefing is the macro light (macro.interpret), the macro issues
 # (briefing.macro) and the synthesis (briefing.synthesize), one each (cached ones make none). Their network reads are optional (index values, macro series): the legacy job still
 # writes its result when every one fails, so 'no source answered' does not hold them back.
-TABLE_MODEL_CAPS = {'markettoday': 2, 'usbriefing': 6,
+TABLE_MODEL_CAPS = {'markettoday': 2, 'usbriefing': 6, 'trade': 6,
                     # Brokers' forecasts from feed documents: one call per document, at most 25 documents per run.
                     'expfeed': 25,
                     # US earnings-call momentum (pending the PM's figures): digests of new calls (up to 22), extraction
