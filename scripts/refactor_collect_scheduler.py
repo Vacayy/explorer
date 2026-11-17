@@ -42,9 +42,12 @@ CHAIN_SEQUENCE = ('chain_macro_news', 'chain', 'chain_causal', 'chain_signals', 
 # 25 YouTube channel feeds plus captions, Telegram images read within the 30-minute image budget (numbered CDN hosts).
 JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40,t.me=40,www.youtube.com=40,.telesco.pe=40',
                  # one chart request per listed code (3,017 now), retries counted in the same cap (PM 6942746227)
-                 'history': 'fchart.stock.naver.com=3200'}
-# A job's own stop rules: the history job stops at 50 upstream errors (403/429 stop every job at the first).
-JOB_ENV = {'history': {'TRIAL_MAX_ERRORS': '50'}}
+                 'history': 'fchart.stock.naver.com=3200',
+                 # credit (macbook-source #3 6942831447): 34 companies — issuer scan and history on the scanner host,
+                 # symbol search as the fallback, 10 Treasury series from FRED; any other host keeps the default 20
+                 'credit': 'scanner.tradingview.com=150,symbol-search.tradingview.com=60,fred.stlouisfed.org=12'}
+# A job's own stop rules: history stops at 50 upstream errors, credit at 10 (403/429 stop every job at the first).
+JOB_ENV = {'history': {'TRIAL_MAX_ERRORS': '50'}, 'credit': {'TRIAL_MAX_ERRORS': '10'}}
 # The intake's sources after the cutover (registry order: scrap reads Telegram documents); before it, the default
 # (no Telegram or YouTube) keeps the MacBook the only collector from this IP.
 CUTOVER_FEED_SOURCES = 'blog,telegram,note,youtube,memo,scrap'
