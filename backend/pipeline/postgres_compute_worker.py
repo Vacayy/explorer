@@ -23,6 +23,8 @@ def main(directory='/projection'):
     with factory() as conn:
         if not conn.execute("SELECT EXISTS(SELECT 1 FROM retrieval_jobs WHERE status='queued')").fetchone()[0]:
             return
+    from pipeline import llm, postgres_llm_calls
+    postgres_llm_calls.install(llm, factory)  # this worker's model calls (chat tools, claims) too
     directory = Path(directory)
     manifest = json.loads((directory / 'current.json').read_text())
     from pipeline.postgres_claims_fixture import related_documents

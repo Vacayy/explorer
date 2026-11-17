@@ -99,8 +99,15 @@ def run_experiment(prompt: str, *, system=None, model="sonnet", effort=None,
     return _execute(prompt, policy=policy, system=system, on_text=on_text, json_schema=json_schema)
 
 
+# Sees every call, whatever recorder a caller passes (the candidate's cost ledger, pipeline.postgres_llm_calls);
+# it must never raise. None: the legacy app.
+call_observer = None
+
+
 def _execute(prompt: str, *, policy, system=None, on_text=None, json_schema=None, images=(), record_call=None, allow_fallback=True) -> LLMResult:
     def record(*args):
+        if call_observer is not None:
+            call_observer(*args)
         if record_call is None:
             return _record(*args)
         try:
