@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 
 IDLE_SECONDS = float(os.environ.get('REFACTOR_WORKER_IDLE_SECONDS', '90'))
+BUSY_RETRY_SECONDS = 5  # the heavy lock is held by another job
 
 import psycopg
 
@@ -58,10 +59,41 @@ def watch(interval=1.0):
             print(f'watch check failed: {type(exc).__name__}', flush=True)
             conn = None
             queued = False
-        if queued:
-            subprocess.run([sys.executable, '-m', 'pipeline.postgres_compute_worker'], check=False)
+        if queued and not _take_heavy(conn):
+            time.sleep(BUSY_RETRY_SECONDS)
+        elif queued:
+            try:
+                subprocess.run([sys.executable, '-m', 'pipeline.postgres_compute_worker'], check=False)
+            finally:
+                _release_heavy(conn)
         else:
             time.sleep(interval)
+
+
+def _take_heavy(conn):
+    """A pass loads the search models, so it takes the shared heavy lock (pipeline.postgres_heavy_lock) on the watch
+    connection for the pass. While another heavy job holds it, AI-answer tool jobs are failed at once (someone is
+    waiting: the API falls back to the index search instead of waiting out its timeout); claims and keyword
+    backfill jobs stay queued for a later pass (architect #3 6948497320 item 4)."""
+    import psycopg
+    from pipeline.postgres_heavy_lock import try_lock
+    try:
+        if try_lock(conn):
+            return True
+        conn.execute("UPDATE retrieval_jobs SET status='failed',error='deferred: heavy lock busy',updated_at=now() "
+                     "WHERE status='queued' AND kind='chat_tool'")
+    except psycopg.Error as exc:
+        print(f'heavy lock check failed: {type(exc).__name__}', flush=True)
+    return False
+
+
+def _release_heavy(conn):
+    import psycopg
+    from pipeline.postgres_heavy_lock import unlock
+    try:
+        unlock(conn)
+    except psycopg.Error:  # the connection is gone, and the lock with it
+        pass
 
 
 if __name__ == '__main__':

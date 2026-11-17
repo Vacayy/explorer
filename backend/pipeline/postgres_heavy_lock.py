@@ -14,6 +14,10 @@ def try_lock(conn):
     return conn.execute(f'SELECT pg_try_advisory_lock({KEY})').fetchone()[0]
 
 
+def unlock(conn):
+    conn.execute(f'SELECT pg_advisory_unlock({KEY})')
+
+
 def wait_lock(conn, *, seconds, every=30):
     """Try until `seconds` have passed; returns the seconds waited, or None when the lock stayed busy."""
     started = time.monotonic()
