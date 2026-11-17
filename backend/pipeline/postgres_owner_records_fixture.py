@@ -61,7 +61,7 @@ def entity(conn, *, ident=None, kind=None, name=None):
 
 
 def follows(conn):
-    account = owner_account(conn)
+    account = requester_account(conn)
     ids = [row[0] for row in conn.execute('SELECT entity_id FROM owner_follows WHERE account_id=%s ORDER BY created_at,id', (account,))]
     found = {int(row['id']): row for (row,) in conn.execute(
         "SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entities' AND row_data->>'id'=ANY(%s)",
@@ -71,15 +71,15 @@ def follows(conn):
 
 def follow(conn, entity_id):
     conn.execute('INSERT INTO owner_follows(account_id,entity_id) VALUES (%s,%s) ON CONFLICT DO NOTHING',
-                 (owner_account(conn), entity_id))
+                 (requester_account(conn, create=True), entity_id))
 
 
 def unfollow(conn, entity_id):
-    conn.execute('DELETE FROM owner_follows WHERE account_id=%s AND entity_id=%s', (owner_account(conn), entity_id))
+    conn.execute('DELETE FROM owner_follows WHERE account_id=%s AND entity_id=%s', (requester_account(conn), entity_id))
 
 
 def set_pin(conn, event_ticker, series_ticker, on):
-    account = owner_account(conn)
+    account = requester_account(conn, create=on)
     if on:
         conn.execute('INSERT INTO owner_kalshi_pins(account_id,event_ticker,series_ticker) VALUES (%s,%s,%s) ON CONFLICT DO NOTHING',
                      (account, event_ticker, series_ticker))
@@ -106,7 +106,7 @@ def initialize_channel_reads(conn):
 
 def mark_read(conn, channel, stamp):
     """Legacy rule: a mark never moves back; an earlier read_until keeps the later one."""
-    account = owner_account(conn)
+    account = requester_account(conn, create=True)
     conn.execute("INSERT INTO owner_channel_reads VALUES (%s,%s,%s,to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')) "
                  'ON CONFLICT(account_id,channel) DO UPDATE SET read_until=CASE WHEN excluded.read_until::timestamptz > '
                  'owner_channel_reads.read_until::timestamptz THEN excluded.read_until ELSE owner_channel_reads.read_until END,'

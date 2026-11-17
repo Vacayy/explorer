@@ -100,8 +100,17 @@ class PostgreSQLTimelineSources:
             reads = (f"SELECT row_data->>'channel' AS channel, (row_data->>'read_until')::timestamptz AS read_until "
                      f"FROM {legacy_table} WHERE table_name='channel_reads' AND %s {generation_filter}")
             if not archived and conn.execute("SELECT to_regclass('owner_channel_reads')").fetchone()[0] is not None:
-                # The owner's read marks moved to a writable ledger (single-path preview).
-                reads = 'SELECT channel, read_until::timestamptz AS read_until FROM owner_channel_reads WHERE %s'
+                # The read marks moved to a writable per-account ledger (single-path preview): the requester's own.
+                from pipeline.postgres_principals import PrincipalRequired, owner_account
+                try:
+                    account = owner_account(conn)[0]
+                except PrincipalRequired:
+                    account = None  # an anonymous public reader has no read marks
+                reads = ('SELECT channel, read_until::timestamptz AS read_until FROM owner_channel_reads WHERE %s AND account_id='
+                         + ('NULL' if account is None else str(int(account))))
+            elif archived:
+                from pipeline.postgres_legacy_projection import requester_is_operator
+                include_owner_read_state = include_owner_read_state and requester_is_operator()  # archived marks are the operator's
             rows = conn.execute(f"""
                 WITH updates AS (
                   SELECT id,occurred_at,sort_millis,channel,platform,''::text AS name,preview FROM {source_table} {generation_where}

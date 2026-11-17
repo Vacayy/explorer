@@ -45,16 +45,26 @@ def create_router(factory, timeline, projection=None):
             raise HTTPException(503, 'Owner records unavailable') from None
         return conn
 
+    @contextmanager
+    def member():
+        """Follows, prediction pins, read marks and bookmarks are the requester's own (records.requester_account)."""
+        from pipeline.postgres_principals import PrincipalRequired
+        try:
+            with connection() as conn:
+                yield conn
+        except PrincipalRequired:
+            raise HTTPException(401, 'Authentication required') from None
+
     @router.get('/api/spine/follows', response_model=list[FollowedEntity])
     def list_follows():
-        with connection() as conn:
+        with member() as conn:
             return records.follows(conn)
 
     @router.post('/api/spine/follows', response_model=FollowedEntity, status_code=201)
     def add_follow(body: FollowRequest):
         if not body.entity_id and not (body.type and body.name):
             raise HTTPException(400, 'entity_id 또는 (type, name) 필요')
-        with connection() as conn:
+        with member() as conn:
             row = (records.entity(conn, ident=body.entity_id) if body.entity_id
                    else records.entity(conn, kind=body.type, name=body.name))
             if not row:
@@ -64,12 +74,12 @@ def create_router(factory, timeline, projection=None):
 
     @router.delete('/api/spine/follows/{entity_id}', status_code=204)
     def remove_follow(entity_id: int):
-        with connection() as conn:
+        with member() as conn:
             records.unfollow(conn, entity_id)
 
     @router.post('/api/spine/home/predictions/{event_ticker}/pin', response_model=KalshiPinResult)
     def prediction_pin(body: KalshiPinBody, event_ticker: str = Path(..., pattern=r'^[A-Za-z0-9._-]{1,80}$')):
-        with connection() as conn:
+        with member() as conn:
             return {'event_ticker': event_ticker, 'pinned': records.set_pin(conn, event_ticker, body.series_ticker, body.pinned)}
 
     @router.post('/api/spine/feed/channels/read')
@@ -80,7 +90,7 @@ def create_router(factory, timeline, projection=None):
             stamp = utc(body.read_until)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
-        with connection() as conn:
+        with member() as conn:
             return {'channel': body.channel, 'read_until': records.mark_read(conn, body.channel, stamp)}
 
     @router.post('/api/spine/feed/channels/read-all', response_model=MarkAllReadResponse)
@@ -92,20 +102,10 @@ def create_router(factory, timeline, projection=None):
         # Same targets as the legacy rule: human sources in scope with unread items up to read_until.
         targets = [c for c in timeline.channels(until=stamp, include_owner_read_state=True).items
                    if c.platform != 'system' and (body.platform == 'all' or c.platform == body.platform) and c.unread > 0]
-        with connection() as conn:
+        with member() as conn:
             for c in targets:
                 records.mark_read(conn, c.id, stamp)
         return {'platform': body.platform, 'read_until': stamp, 'channels': len(targets), 'marked': sum(c.unread for c in targets)}
-
-    @contextmanager
-    def member():
-        """A saved-items ledger is the requester's own (records.requester_account)."""
-        from pipeline.postgres_principals import PrincipalRequired
-        try:
-            with connection() as conn:
-                yield conn
-        except PrincipalRequired:
-            raise HTTPException(401, 'Authentication required') from None
 
     @router.post('/api/spine/saved', response_model=SavedItem, status_code=201)
     def add_saved(body: SaveRequest):

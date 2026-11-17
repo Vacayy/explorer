@@ -376,7 +376,10 @@ PERSONAL_ROWS = (("DELETE FROM temp.knowledge WHERE model='user'"),  # knowledge
 
 
 # A member's own rows of the per-account ledgers, shown in place of the operator's (see _scope_to_requester).
-MEMBER_LEDGERS = {'saved_items': ('owner_saved_items', ('id', 'kind', 'ref', 'url', 'title', 'subtitle', 'note', 'created_at'))}
+MEMBER_LEDGERS = {'saved_items': ('owner_saved_items', ('id', 'kind', 'ref', 'url', 'title', 'subtitle', 'note', 'created_at')),
+                  'follows': ('owner_follows', ('id', 'entity_id', 'created_at')),
+                  'kalshi_pins': ('owner_kalshi_pins', ('event_ticker', 'series_ticker', 'pinned_at')),
+                  'channel_reads': ('owner_channel_reads', ('channel', 'read_until', 'updated_at'))}
 
 
 def requester_scope():
@@ -421,7 +424,7 @@ def _scope_to_requester(conn, pg):
         for table, (ledger, columns) in MEMBER_LEDGERS.items():
             if pg.execute('SELECT to_regclass(%s)', (ledger,)).fetchone()[0] is not None:
                 conn.executemany(f'INSERT INTO temp."{table}" ({",".join(columns)}) VALUES ({",".join("?" for _ in columns)})',
-                                 pg.execute(f'SELECT {",".join(columns)} FROM {ledger} WHERE account_id=%s ORDER BY id',
+                                 pg.execute(f'SELECT {",".join(columns)} FROM {ledger} WHERE account_id=%s ORDER BY {columns[0]}',
                                             (account[0],)).fetchall())
     for statement in PERSONAL_ROWS:
         table = statement.split('temp.')[1].split()[0]
