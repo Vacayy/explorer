@@ -26,6 +26,7 @@ case "$*" in
   *"printenv REFACTOR_FIXTURE_SCHEMA"*) printf 'refactor_fixture_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\\n' ;;
   *"information_schema.views"*) : ;;
   *"pg_dump"*) printf 'synthetic backup\\n' ;;
+  *"pg_database_size"*) printf '1048576\\n' ;;
   *"df -k"*) printf 'fs blocks used available capacity mount\\nfs 99999999 1 %s 1%% /data\\n' "${TEST_VM_FREE_KB:-99999999}" ;;
   *"sum(pg_total_relation_size"*) printf '1048576\\n' ;;
   *"FROM pg_database"*) : ;;
@@ -37,6 +38,11 @@ case "$*" in
 esac
 ''')
         docker.chmod(0o700)
+        df = root / 'df'
+        df.write_text('''#!/bin/bash
+printf 'fs blocks used available capacity mount\\nfs 99999999 1 %s 1%% /data\\n' "${TEST_HOST_FREE_KB:-99999999}"
+''')
+        df.chmod(0o700)
         self.env = os.environ.copy()
         self.env.update({'PATH': str(root) + os.pathsep + self.env['PATH'],
                          'REFACTOR_BACKUP_DIR': str(self.backups), 'REFACTOR_SCHEMA_CONFIG': str(schema),
@@ -70,6 +76,12 @@ esac
         result = subprocess.run(['bash', str(SCRIPT), 'check', str(dump)], env=env, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.log.exists())
+
+    def test_backup_refuses_when_host_has_insufficient_space(self):
+        env = dict(self.env, TEST_HOST_FREE_KB='1024')
+        result = subprocess.run(['bash', str(SCRIPT), 'backup'], env=env, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(list(self.backups.iterdir()), [])
 
 
 if __name__ == '__main__':

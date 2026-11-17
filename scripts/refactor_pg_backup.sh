@@ -24,6 +24,13 @@ vm_free() { docker exec "$DB" df -k /var/lib/postgresql/data | awk 'NR==2{print 
 case "$1" in
   backup)
     mkdir -p "$DIR" && chmod 700 "$DIR"
+    # The host receives the dump; budget the entire database plus 3 GiB spare.
+    # This intentionally overestimates the selected, compressed schemas.
+    database_bytes=$(docker exec "$DB" psql -U fixture -d fixture -Atc 'SELECT pg_database_size(current_database())')
+    [[ "$database_bytes" =~ ^[0-9]+$ ]] || { echo 'could not determine backup space requirement'; exit 1; }
+    host_free_kb=$(df -Pk "$DIR" | awk 'NR==2 {print $4}')
+    [[ "$host_free_kb" =~ ^[0-9]+$ ]] || { echo 'could not determine host free space'; exit 1; }
+    [ "$host_free_kb" -gt "$((database_bytes / 1024 + 3145728))" ] || { echo 'not enough host space for a backup'; exit 1; }
     out="$DIR/$(date -u +%Y%m%dT%H%M%SZ)-candidate.dump"
     docker exec "$DB" pg_dump -U fixture -d fixture -Fc -Z 6 $(printf -- '-n %s ' $SCHEMAS) > "$out.tmp"
     shasum -a 256 "$out.tmp" | sed "s|$out.tmp|$(basename "$out")|" > "$out.sha256"
