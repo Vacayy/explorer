@@ -23,6 +23,23 @@ import refactor_collect_trial as trial  # noqa: E402 - the same harness and safe
 SENDS = {'briefing', 'pfintraday', 'pfclose', 'observealerts', 'observeweekly'}  # Telegram; on only after the cutover
 NEVER = {'backfill'}  # uncapped model calls; never scheduled automatically
 TABLE_JOBS = {'prices', 'twrevenue', 'indexintraday'}  # trial.job_table: script → supplement replacement
+# chain: its document intake only (ingest with the registered sources, tagging included), capped per run and
+# published; the chain's later steps (causal extraction, signals, narratives, digests…) are not connected yet.
+FEED_SOURCES = os.environ.get('COLLECT_FEED_SOURCES', 'blog,note,memo,scrap')  # YouTube·Telegram excluded before cutover
+MAX_NEW_DOCS = int(os.environ.get('COLLECT_MAX_NEW_DOCS', '20'))
+
+
+def run_feeds(pg):
+    from pipeline.registry import CONNECTORS
+    names = [name for name in FEED_SOURCES.split(',') if name]
+    unknown = set(names) - set(CONNECTORS)
+    if unknown:
+        raise ValueError(f'Unknown sources: {sorted(unknown)}')
+    result = trial.run_documents(pg, [CONNECTORS[name]() for name in names], MAX_NEW_DOCS)
+    result['sources'] = names
+    result['steps_not_connected'] = ['extract_doc_causal', 'compute_signals', 'compute_narratives --urgent',
+                                     'extract_events', 'backfill_images', 'scan_actions', 'compute_digests']
+    return result
 
 
 def run(label):
@@ -32,20 +49,32 @@ def run(label):
     entry = {}
     if label in SENDS or label in NEVER:
         outcome = f'refused: {"sends messages" if label in SENDS else "uncapped model calls"}'
-    elif label not in TABLE_JOBS:
+    elif label not in TABLE_JOBS and label != 'chain':
         outcome = 'unsupported: not connected to the candidate yet'
     else:
         postgres_llm_calls.install(llm, trial._pg)
         trial._instrument()
         trial._point_legacy_at_work()
         try:
-            argv, record, tables = trial.job_table(label)
-            os.chdir('/app')
-            trial._run_script(*argv)
-            if record:
-                trial._job_record(record, started)
-            entry['applied'] = trial._apply_supplement(pg, tables)
-            outcome = 'applied: ' + ', '.join(f'{t} {n}' for t, n in (entry['applied'] or {}).items())
+            if label == 'chain':
+                entry.update(run_feeds(pg))
+                if trial.requests_by_host and not trial.statuses:  # a connector may log its network errors and go on
+                    raise trial.HeldBack('no source answered')
+                failed = [name for name, stats in entry['stats'].items() if isinstance(stats, str)]
+                done = f"new documents {entry['counts'].get('new', 0)}, published {entry['published']}"
+                if failed and len(failed) == len(entry['stats']):
+                    raise trial.HeldBack(f'every source failed: {", ".join(failed)}')
+                outcome = (f'partial: {done}; failed {", ".join(failed)}' if failed else f'applied: {done}')
+            else:
+                argv, record, tables = trial.job_table(label)
+                os.chdir('/app')
+                trial._run_script(*argv)
+                if trial.stopped:
+                    raise trial.Aborted(trial.stopped[0])
+                if record:
+                    trial._job_record(record, started)
+                entry['applied'] = trial._apply_supplement(pg, tables)
+                outcome = 'applied: ' + ', '.join(f'{t} {n}' for t, n in (entry['applied'] or {}).items())
         except trial.Aborted as exc:
             outcome = f'aborted: {exc}'
         except trial.HeldBack as exc:

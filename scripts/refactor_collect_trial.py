@@ -2,7 +2,9 @@
 
 Writes only a writable copy of the projection file (/trial/work.db) and a disposable clone schema. The job runs the
 unchanged legacy code in this process with the legacy database path pointed at the copy; every source request is
-counted per host and a 429/403, or a source host reaching TRIAL_MAX_REQUESTS (default 20), aborts the job. Collect → check → apply is one function: a failed run, an aborted
+counted per host (name lookups, so every client counts, and responses of requests, curl_cffi and urllib) and a
+429/403, or a source host reaching TRIAL_MAX_REQUESTS (default 20), aborts the job: further requests are refused
+and the stop holds even if a source swallows the exception. Collect → check → apply is one function: a failed run, an aborted
 source, a job record that is not 'ok', or a supplement table shrinking below half of what PG holds keeps PG
 unchanged ('held back'). Nothing is sent (no Telegram/YouTube credentials are given) and collected text is never
 printed. Results go to /trial/trial-log.jsonl.
@@ -29,6 +31,7 @@ SHRINK_LIMIT = 0.5
 BLOCKED = {403, 429}
 MAX_REQUESTS = int(os.environ.get('TRIAL_MAX_REQUESTS', '20'))  # per source host, enforced before anything is applied (PM 6937645863)
 requests_by_host, statuses, per_host = Counter(), Counter(), Counter()
+stopped = []  # the first stop reason; kept, because a source may swallow the exception raised at the stop
 
 
 class Aborted(RuntimeError):
@@ -52,8 +55,17 @@ def _instrument():
     """Count source requests per host and stop at a block. The candidate database host is not a source."""
     resolve = socket.getaddrinfo
 
+    def stop(reason):
+        if not stopped:
+            stopped.append(reason)
+        raise Aborted(stopped[0])
+
     def getaddrinfo(host, *args, **kwargs):
         if host not in ('pg', 'localhost', '127.0.0.1') and isinstance(host, str):
+            if stopped:
+                stop(stopped[0])  # nothing more goes out after a stop
+            if requests_by_host[host] >= MAX_REQUESTS:  # every client (urllib included) resolves before it connects
+                stop(f'{host} reached the request cap {MAX_REQUESTS}')
             requests_by_host[host] += 1
         return resolve(host, *args, **kwargs)
     socket.getaddrinfo = getaddrinfo
@@ -62,10 +74,24 @@ def _instrument():
         host = re.sub(r'^https?://([^/:]+).*$', r'\1', str(url))
         statuses[f'{host} {status}'] += 1
         if status in BLOCKED:
-            raise Aborted(f'{host} answered {status}')
+            stop(f'{host} answered {status}')
         per_host[host] += 1
         if per_host[host] >= MAX_REQUESTS:
-            raise Aborted(f'{host} reached the request cap {MAX_REQUESTS}')  # no further request, nothing applied
+            stop(f'{host} reached the request cap {MAX_REQUESTS}')  # no further request, nothing applied
+    import urllib.error
+    import urllib.request
+    open_url = urllib.request.OpenerDirector.open
+
+    def checked_urllib(self, request, *args, **kwargs):  # feedparser and the memo/blog connectors
+        url = request if isinstance(request, str) else request.full_url
+        try:
+            response = open_url(self, request, *args, **kwargs)
+        except urllib.error.HTTPError as exc:
+            watch(exc.code, url)
+            raise
+        watch(response.status, url)
+        return response
+    urllib.request.OpenerDirector.open = checked_urllib
     try:
         import requests.adapters
         send = requests.adapters.HTTPAdapter.send
@@ -134,15 +160,18 @@ def job_table(name):
 def run_blog(pg):
     """One RSS feed, at most NEW_DOCUMENT_CAP new documents (each tagged once); existing documents are not touched."""
     from pipeline.connectors.blog import BlogConnector
+    return run_documents(pg, [BlogConnector([os.environ['TRIAL_FEED']])], NEW_DOCUMENT_CAP)
+
+
+def run_documents(pg, connectors, cap):
+    """The connectors' new documents, at most `cap` per run (each stored and tagged as by ingest; the rest wait for
+    the next run because they are not stored); existing documents are not touched. New documents are published."""
     from pipeline.runner import run_source
     from pipeline.store import store_document
     from pipeline.postgres_collected_documents_fixture import publish
     work = sqlite3.connect(WORK)
     work.row_factory = sqlite3.Row
-    feed = os.environ['TRIAL_FEED']
-    floors = {name: work.execute(f'SELECT COALESCE(max(id),0) FROM {table}').fetchone()[0] for name, table in (
-        ('document_floor', 'raw_documents'), ('entity_floor', 'entities'), ('keyword_floor', 'entity_keywords'),
-        ('relation_floor', 'entity_relations'))}
+    floors = _published_floors(work)
     known = {(r[0], r[1]) for r in work.execute('SELECT source_type, source_id FROM raw_documents')}
     counts = Counter()
 
@@ -150,20 +179,52 @@ def run_blog(pg):
         if (doc.source_type, doc.source_id) in known:
             counts['existing_skipped'] += 1
             return {'status': 'unchanged'}
-        if counts['new'] >= NEW_DOCUMENT_CAP:
+        if counts['new'] >= cap:
             counts['over_cap_skipped'] += 1
             return {'status': 'unchanged'}
         result = store_document(doc)
         counts[result['status']] += 1
         return result
-    stats = run_source(BlogConnector([feed]), store=capped)
+    stats = {}
+    for connector in connectors:
+        name = type(connector).__name__
+        try:
+            stats[name] = run_source(connector, store=capped)
+        except Aborted:
+            raise
+        except Exception as exc:  # noqa: BLE001 - one source failing does not stop the others (ingest.py)
+            stats[name] = f'failed: {type(exc).__name__}: {str(exc)[:120]}'
     work.close()
-    if not counts['new']:
-        return {'stats': stats, 'counts': dict(counts), 'published': 0}
+    if stopped:
+        raise Aborted(stopped[0])  # a source swallowed the stop: still nothing published
     work = sqlite3.connect(WORK)
+    if work.execute('SELECT COALESCE(max(id),0) FROM raw_documents').fetchone()[0] <= floors['document_floor']:
+        return {'stats': stats, 'counts': dict(counts), 'published': 0}
     work.row_factory = sqlite3.Row
     published = publish(pg, work, **floors)
+    _published_floors(work, advance=True)
+    work.commit()
     return {'stats': stats, 'counts': dict(counts), 'published': published}
+
+
+FLOOR_TABLES = (('document_floor', 'raw_documents'), ('entity_floor', 'entities'), ('keyword_floor', 'entity_keywords'),
+                ('relation_floor', 'entity_relations'))
+
+
+def _published_floors(work, advance=False):
+    """Highest ids already published from this collector file. A run stopped before publishing leaves them, so its
+    stored documents go out with the next published run (a fresh trial copy starts from its current maxima)."""
+    work.execute('CREATE TABLE IF NOT EXISTS candidate_publish_floor (name TEXT PRIMARY KEY, value INTEGER NOT NULL)')
+    current = {name: work.execute(f'SELECT COALESCE(max(id),0) FROM {table}').fetchone()[0] for name, table in FLOOR_TABLES}
+    if advance:
+        work.executemany('INSERT OR REPLACE INTO candidate_publish_floor VALUES (?,?)', current.items())
+        return current
+    kept = dict(work.execute('SELECT name, value FROM candidate_publish_floor').fetchall())
+    if not kept:
+        work.executemany('INSERT INTO candidate_publish_floor VALUES (?,?)', current.items())
+        work.commit()
+        return current
+    return {name: kept.get(name, current[name]) for name in current}
 
 
 def main():
@@ -189,6 +250,8 @@ def main():
             argv, record, tables = job_table(job)
             os.chdir('/app')
             _run_script(*argv)
+            if stopped:
+                raise Aborted(stopped[0])
             if record:
                 _job_record(record, started)
             entry['applied'] = _apply_supplement(pg, tables)

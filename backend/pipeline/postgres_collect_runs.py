@@ -1,8 +1,9 @@
 """Collection run record of the Mac mini scheduler (scripts/refactor_collect_scheduler.py) on the candidate PG schema.
 
-One row per scheduled job run, whatever its outcome: applied, held back, aborted at a source's block or request
-cap, failed, refused (a sending or uncapped job) or unsupported (not connected yet). The scheduler's catch-up
-reads it the way the MacBook read job_runs `sched:<label>` (pipeline.catchup): only 'applied' counts as done.
+One row per scheduled job run, whatever its outcome: applied, partial (some sources failed, the rest applied),
+held back, aborted at a source's block or request cap, failed, refused (a sending or uncapped job) or unsupported
+(not connected yet). The scheduler's catch-up reads it the way the MacBook read job_runs `sched:<label>`
+(pipeline.catchup): 'applied' counts as done, 'partial' as the MacBook's partial.
 Collected text is never stored here, only counts.
 """
 import json
@@ -37,6 +38,6 @@ def record(conn, label, started, outcome, *, requests=None, model_calls=None, re
 
 def runs(conn, label, since):
     """(status, started_at) of a label since a UTC time, in the catch-up module's terms ('ok' = applied)."""
-    return [('ok' if outcome == 'applied' else outcome, started) for outcome, started in conn.execute(
+    return [({'applied': 'ok'}.get(outcome, outcome), started) for outcome, started in conn.execute(
         'SELECT outcome,started_at FROM collect_runs WHERE label=%s AND started_at >= %s ORDER BY started_at',
         (label, since))]
