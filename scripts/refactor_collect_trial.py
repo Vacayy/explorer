@@ -2,7 +2,7 @@
 
 Writes only a writable copy of the projection file (/trial/work.db) and a disposable clone schema. The job runs the
 unchanged legacy code in this process with the legacy database path pointed at the copy; every source request is
-counted per host and a 429/403, or reaching TRIAL_MAX_REQUESTS (default 20), aborts the job. Collect → check → apply is one function: a failed run, an aborted
+counted per host and a 429/403, or a source host reaching TRIAL_MAX_REQUESTS (default 20), aborts the job. Collect → check → apply is one function: a failed run, an aborted
 source, a job record that is not 'ok', or a supplement table shrinking below half of what PG holds keeps PG
 unchanged ('held back'). Nothing is sent (no Telegram/YouTube credentials are given) and collected text is never
 printed. Results go to /trial/trial-log.jsonl.
@@ -27,8 +27,8 @@ LOG = WORK.parent / 'trial-log.jsonl'
 NEW_DOCUMENT_CAP = 5
 SHRINK_LIMIT = 0.5
 BLOCKED = {403, 429}
-MAX_REQUESTS = int(os.environ.get('TRIAL_MAX_REQUESTS', '20'))  # enforced before anything is applied (PM 6937645863)
-requests_by_host, statuses = Counter(), Counter()
+MAX_REQUESTS = int(os.environ.get('TRIAL_MAX_REQUESTS', '20'))  # per source host, enforced before anything is applied (PM 6937645863)
+requests_by_host, statuses, per_host = Counter(), Counter(), Counter()
 
 
 class Aborted(RuntimeError):
@@ -63,8 +63,9 @@ def _instrument():
         statuses[f'{host} {status}'] += 1
         if status in BLOCKED:
             raise Aborted(f'{host} answered {status}')
-        if sum(statuses.values()) >= MAX_REQUESTS:
-            raise Aborted(f'request cap {MAX_REQUESTS} reached')  # no further request, nothing applied
+        per_host[host] += 1
+        if per_host[host] >= MAX_REQUESTS:
+            raise Aborted(f'{host} reached the request cap {MAX_REQUESTS}')  # no further request, nothing applied
     try:
         import requests.adapters
         send = requests.adapters.HTTPAdapter.send
