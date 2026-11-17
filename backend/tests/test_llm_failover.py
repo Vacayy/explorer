@@ -132,7 +132,8 @@ class CodexAdapterTests(unittest.TestCase):
         self.assertNotIn('required', schema)
 
     def test_web_search_only_when_asked_and_opened_pages_become_evidence(self):
-        items = [{'type': 'item.completed', 'item': {'type': 'web_search', 'action': {'type': 'search', 'query': 'q'}}},
+        items = [{'type': 'item.completed', 'item': {'type': 'web_search', 'action': {'type': 'search', 'query': 'q'},
+                  'results': [{'type': 'text_result', 'title': 'T', 'url': 'https://a.example/x', 'snippet': 'S'}]}},
                  {'type': 'item.completed', 'item': {'type': 'web_search', 'action': {'type': 'open_page', 'url': 'https://a.example/x'}}},
                  {'type': 'turn.completed', 'usage': {}}]
         seen = {}
@@ -146,6 +147,7 @@ class CodexAdapterTests(unittest.TestCase):
         self.assertIn('shell_tool', seen['args'])
         self.assertEqual([(e['name'], e['input']) for e in result.tool_results],
                          [('WebSearch', {'query': 'q'}), ('WebFetch', {'url': 'https://a.example/x'})])
+        self.assertEqual(json.loads(result.tool_results[0]['content']), [{'title': 'T', 'url': 'https://a.example/x', 'snippet': 'S'}])
         with patch.object(llm.shutil, 'which', return_value='/codex'), patch.object(llm.subprocess, 'run', side_effect=execute):
             with self.assertRaises(RuntimeError):  # web search without the web task is still refused
                 llm._run_codex('INPUT', system='RULES', model='m', effort=None, timeout=9)
