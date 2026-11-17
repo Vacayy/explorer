@@ -736,6 +736,45 @@ class CollectionTargetTest(unittest.TestCase):
         job.require_us_briefing_synthesis(conn, '2026-11-18 00:00:00')
         conn.close()
 
+    def test_partial_briefing_requires_legacy_headline_failure_and_movers(self):
+        conn = sqlite3.connect(':memory:')
+        conn.execute('CREATE TABLE job_runs(id INTEGER, job TEXT, status TEXT, summary TEXT, ran_at TEXT)')
+        conn.execute('INSERT INTO job_runs VALUES (1,?,?,?,?)', ('compute_briefing', 'partial',
+                     'status partial · movers 3 · synthesis False · headline_failed 1', '2026-11-18 00:00:00'))
+        self.assertEqual(job.validate_partial_us_briefing(conn, '2026-11-18 00:00:00'),
+                         {'movers': 3, 'synthesis': False, 'headline_failed': 1})
+        for summary in ('status partial · movers 0 · synthesis True · headline_failed 1',
+                        'status partial · movers 3 · synthesis True · headline_failed 0',
+                        'status partial · movers 3 · synthesis True', 'status error'):
+            conn.execute('UPDATE job_runs SET summary=?', (summary,))
+            with self.assertRaises(trial.HeldBack):
+                job.validate_partial_us_briefing(conn, '2026-11-18 00:00:00')
+        conn.close()
+
+    def test_partial_job_record_is_opt_in_and_errors_stay_held(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'work.db'
+            conn = sqlite3.connect(path)
+            conn.execute('CREATE TABLE job_runs(id INTEGER, job TEXT, status TEXT, ran_at TEXT)')
+            conn.execute('INSERT INTO job_runs VALUES (1,?,?,?)', ('compute_briefing', 'partial', '2026-11-18 00:00:00'))
+            conn.commit()
+            with patch.object(trial, 'WORK', str(path)):
+                with self.assertRaises(trial.HeldBack):
+                    trial._job_record('compute_briefing', '2026-11-18 00:00:00')
+                self.assertEqual(trial._job_record('compute_briefing', '2026-11-18 00:00:00', ('ok', 'partial')), 'partial')
+                conn.execute("UPDATE job_runs SET status='error'")
+                conn.commit()
+                with self.assertRaises(trial.HeldBack):
+                    trial._job_record('compute_briefing', '2026-11-18 00:00:00', ('ok', 'partial'))
+            conn.close()
+
+    def test_scheduler_accepts_only_verified_briefing_partial(self):
+        with patch.object(engine, 'run', return_value=(0, '{"outcome":"partial: US briefing headline failures; job_runs 1"}')):
+            self.assertTrue(scheduler._run_one('usbriefing', lambda *_: None))
+            self.assertFalse(scheduler._run_one('prices', lambda *_: None))
+        with patch.object(engine, 'run', return_value=(0, '{"outcome":"partial: unknown"}')):
+            self.assertFalse(scheduler._run_one('usbriefing', lambda *_: None))
+
     def test_send_secrets_require_explicit_key_selection(self):
         with TemporaryDirectory() as directory:
             secret_file = Path(directory) / 'secrets'

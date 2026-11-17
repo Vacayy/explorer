@@ -224,7 +224,8 @@ def _run_one(label, log=print):
     try:
         import json
         outcome = json.loads(lines[-1])['outcome'] if lines else ''
-        return code == 0 and (outcome.startswith('applied:') or outcome.startswith('skipped:'))
+        return code == 0 and (outcome.startswith('applied:') or outcome.startswith('skipped:') or
+                              (label == 'usbriefing' and outcome.startswith('partial: US briefing headline failures; ')))
     except (ValueError, KeyError, TypeError):
         return False
 

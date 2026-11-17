@@ -167,6 +167,18 @@ def require_us_briefing_synthesis(work, since):
         raise trial.HeldBack('US briefing synthesis is missing')
 
 
+def validate_partial_us_briefing(work, since):
+    """Allow only the legacy partial caused by headline failures with usable movers."""
+    import re
+    row = work.execute("SELECT summary FROM job_runs WHERE job='compute_briefing' AND ran_at>=? ORDER BY id DESC LIMIT 1",
+                       (since,)).fetchone()
+    summary = row[0] if row else ''
+    match = re.fullmatch(r'status partial · movers (\d+) · synthesis (True|False) · headline_failed (\d+)', summary or '')
+    if not match or int(match[1]) < 1 or int(match[3]) < 1:
+        raise trial.HeldBack('US briefing partial lacks verified movers or headline failure')
+    return {'movers': int(match[1]), 'synthesis': match[2] == 'True', 'headline_failed': int(match[3])}
+
+
 def run_sector_refresh():
     import psycopg
     from pipeline import postgres_sector_refresh as sector
@@ -1052,11 +1064,15 @@ def _run(label, pg, waited):
                     refused.restore()  # follow-up pricing/event has its own independent budget
                 if trial.requests_by_host and not trial.statuses and label not in NETWORK_OPTIONAL:
                     raise trial.HeldBack('no source answered')  # a script may record 'ok' with every fetch failed
+                record_status = None
                 if record:
-                    trial._job_record(record, started)
+                    record_status = trial._job_record(record, started, allowed=('ok', 'partial') if label == 'usbriefing' else ('ok',))
                 if label == 'usbriefing':
                     with sqlite3.connect(trial.WORK) as work:
-                        require_us_briefing_synthesis(work, started)
+                        if record_status == 'partial':
+                            entry['briefing_partial'] = validate_partial_us_briefing(work, started)
+                        else:
+                            require_us_briefing_synthesis(work, started)
                 written = {t for t in trial.written if not t.startswith(DERIVED)} - LOCAL_LEDGERS
                 entry['written'] = sorted(written)
                 if not written:
@@ -1065,7 +1081,8 @@ def _run(label, pg, waited):
                     entry['documents'] = _publish_documents(pg, label, started, before)
                 rest = written - DOCUMENT_TABLES
                 entry['applied'] = trial._apply_supplement(pg, supplement_tables(pg, rest)) if rest else {}
-                outcome = 'applied: ' + ', '.join(f'{t} {n}' for t, n in (entry['applied'] or {}).items())
+                outcome = ('partial: US briefing headline failures; ' if record_status == 'partial' else 'applied: ') + \
+                    ', '.join(f'{t} {n}' for t, n in (entry['applied'] or {}).items())
                 if event:  # the 16:00 wrap's big picture check, on the computation path after the slot is in PG
                     entry['big_picture_event'] = _run_big_picture_event()
                 if pricing:  # the briefing's pricing ledger extraction, on the computation path after it is in PG

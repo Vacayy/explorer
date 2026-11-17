@@ -192,11 +192,12 @@ def _run_script(path, *argv):
             raise HeldBack(f'exit {exc.code}') from None
 
 
-def _job_record(name, since):
+def _job_record(name, since, allowed=('ok',)):
     row = sqlite3.connect(WORK).execute('SELECT status FROM job_runs WHERE job=? AND ran_at>=? ORDER BY id DESC LIMIT 1',
                                         (name, since)).fetchone()
-    if row is None or row[0] != 'ok':
+    if row is None or row[0] not in allowed:
         raise HeldBack(f'job record {name}: {row[0] if row else "missing"}')
+    return row[0]
 
 
 def _apply_supplement(pg, tables):
