@@ -322,6 +322,15 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(json.loads(command[command.index("--mcp-config") + 1]), {"mcpServers": {}})
         self.assertTrue(json.loads(command[command.index("--settings") + 1])["disableAllHooks"])
 
+    def test_model_environment_keeps_configured_auth_directory_only(self):
+        from pipeline.market_analysis.model import claude_environment
+        from unittest.mock import patch
+        with patch.dict('os.environ', {'CLAUDE_CONFIG_DIR': '/auth/fixture', 'UNRELATED_SECRET': 'canary'}, clear=True):
+            env = claude_environment()
+        self.assertEqual(env['CLAUDE_CONFIG_DIR'], '/auth/fixture')
+        self.assertNotIn('UNRELATED_SECRET', env)
+        self.assertEqual(env['CLAUDE_CODE_SAFE_MODE'], '1')
+
     def test_call_budget_stops_without_fabricating_completion(self):
         self.service.max_calls = 1
         run = self.create()

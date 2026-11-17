@@ -29,6 +29,15 @@ class ModelCancelled(ModelError):
     pass
 
 
+def claude_environment():
+    """Pass only the CLI's required environment, including its configured auth directory."""
+    keep = {"PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR",
+            "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR"}
+    env = {key: value for key, value in os.environ.items() if key in keep}
+    env.update({"CLAUDE_CODE_SAFE_MODE": "1", "DISABLE_AUTOUPDATER": "1"})
+    return env
+
+
 @dataclass
 class ModelReply:
     action: ModelAction
@@ -94,10 +103,7 @@ class ClaudeModel:
             raise ModelCancelled("분석이 취소되었습니다.", 0)
         # Keep authentication in this trusted host process. No app secrets or
         # configuration overrides are inherited by the isolated Python runtime.
-        keep = {"PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR",
-                "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}
-        env = {k: v for k, v in os.environ.items() if k in keep}
-        env.update({"CLAUDE_CODE_SAFE_MODE": "1", "DISABLE_AUTOUPDATER": "1"})
+        env = claude_environment()
         data = json.dumps(context, ensure_ascii=False, allow_nan=False).encode()
         # Input is a regular trusted file to avoid blocking on a large pipe write.
         input_path = self.cwd / "request.json"
@@ -170,9 +176,7 @@ def structured_call(system: str, context: dict, schema: dict, *, budget: float, 
         adapter._preflight()
         command = adapter.command(system, budget)
         command[command.index("--json-schema") + 1] = json.dumps(schema)
-        keep = {"PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"}
-        env = {k: v for k, v in os.environ.items() if k in keep}
-        env.update({"CLAUDE_CODE_SAFE_MODE": "1", "DISABLE_AUTOUPDATER": "1"})
+        env = claude_environment()
         path = cwd / "request.json"
         path.write_bytes(json.dumps(context, ensure_ascii=False, allow_nan=False).encode())
         remaining = timeout - (time.monotonic() - started)
