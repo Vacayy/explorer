@@ -14,6 +14,8 @@ ENV_FILE=$(mktemp)
 trap 'rm -f "$ENV_FILE"' EXIT
 chmod 600 "$ENV_FILE"
 docker inspect "$C" | python3 -c "import sys,json;print('\n'.join(json.load(sys.stdin)[0]['Config']['Env']))" | grep -v '^EXPLORER_' > "$ENV_FILE"  # the candidate runs private here; drop a public test's settings
+# Market analysis runs through the candidate's own broker (scripts/refactor_analysis_broker.sh): its RPC volume read-only
+# and the private preview image's adapter package (copied, no download).
 # A public-mode run adds its settings (REFACTOR_API_EXTRA_ENV: an env file) and a read-only mount (REFACTOR_API_EXTRA_MOUNT).
 if [ -n "${REFACTOR_API_EXTRA_ENV:-}" ]; then cat "$REFACTOR_API_EXTRA_ENV" >> "$ENV_FILE"; fi
 IMAGE=${REFACTOR_API_IMAGE:-$(docker inspect "$C" --format '{{.Config.Image}}')}  # override to switch images
@@ -25,6 +27,10 @@ docker run -d --name "$C" --user 10001:10001 --network explorer-refactor-preview
   -v explorer-refactor-single-projection:/projection \
   -v explorer-data-rehearsal_media:/app/media:ro \
   -v explorer-refactor-analysis-store:/app/logs \
+  -v explorer-analysis-rpc-candidate:/run/explorer-analysis:ro \
+  -v "$DATA/review/refactor-single/explorer-analysis-package:/opt/analysis-adapter:ro" \
+  -e ANALYSIS_RUNTIME=linux-broker -e ANALYSIS_BROKER_SOCKET=/run/explorer-analysis/socket \
+  -e ANALYSIS_BROKER_TOKEN_FILE=/run/explorer-analysis/token -e PYTHONPATH=/app/backend:/app/scripts:/opt/analysis-adapter \
   -v explorer-refactor-claude-auth:/home/explorer/.claude \
   -v "$ROOT/backend:/app/backend:ro" -v "$ROOT/scripts:/app/scripts:ro" \
   -v "$HOME/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py:/control/codex-credential-gate.py:ro" \
