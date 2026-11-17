@@ -88,7 +88,8 @@ HOST_JOBS = {'pgbackup': ('sh', '-c', 'scripts/refactor_pg_backup.sh backup'),
                                             '*-candidate.dump | head -1)"')}
 HOST_OK = {'pgbackup': '-candidate.dump', 'pgrestorecheck': 'restore check ok'}
 SAFE_BACKUP_REFUSAL = object()
-SAFE_BACKUP_MESSAGES = {'not enough host space for a backup', 'not enough VM space for a backup'}
+SAFE_BACKUP_MESSAGES = {'not enough host space for a backup', 'not enough VM space for a backup',
+                        'backup deferred: heavy lock busy'}
 
 
 def load_jobs():
@@ -294,6 +295,12 @@ def due_now(jobs, enabled, last, now, next_interval):
                     next_interval[label] += timedelta(seconds=schedule)
         elif any(True for _ in due_times(schedule, last, now)):
             due.append(label)
+        elif label == 'pgbackup' and os.environ.get('COLLECT_PGBACKUP_PROBE_AT'):
+            probe = datetime.fromisoformat(os.environ['COLLECT_PGBACKUP_PROBE_AT'])
+            if probe.tzinfo is None:
+                raise ValueError('COLLECT_PGBACKUP_PROBE_AT requires a timezone')
+            if last <= probe < now:
+                due.append(label)
     return due
 
 

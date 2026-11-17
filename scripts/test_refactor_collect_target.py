@@ -946,6 +946,15 @@ class CollectionTargetTest(unittest.TestCase):
         with patch.object(trial, 'HOST_CAPS', {key: int(value) for key, value in caps.items()}):
             self.assertEqual(trial.cap_of('api.elections.kalshi.com'), 60)
 
+    def test_backup_probe_is_date_specific_and_not_repeated(self):
+        jobs = [('pgbackup', [], {'Hour': 4, 'Minute': 30})]
+        before = datetime.fromisoformat('2026-11-18T08:07:59+09:00')
+        after = datetime.fromisoformat('2026-11-18T08:08:01+09:00')
+        later = datetime.fromisoformat('2026-11-18T08:08:15+09:00')
+        with patch.dict(os.environ, {'COLLECT_PGBACKUP_PROBE_AT': '2026-11-18T08:08:00+09:00'}):
+            self.assertEqual(scheduler.due_now(jobs, {'pgbackup'}, before, after, {}), ['pgbackup'])
+            self.assertEqual(scheduler.due_now(jobs, {'pgbackup'}, after, later, {}), [])
+
     def test_credit_history_host_has_an_explicit_bounded_cap(self):
         caps = dict(item.split('=', 1) for item in scheduler.JOB_HOST_CAPS['credit'].split(','))
         self.assertEqual(int(caps['data.tradingview.com']), 150)
@@ -1049,6 +1058,9 @@ class CollectionTargetTest(unittest.TestCase):
             self.assertIs(scheduler._run_one('pgbackup', lambda *_: None), scheduler.SAFE_BACKUP_REFUSAL)
         with patch('subprocess.run', return_value=refused), patch.object(engine, 'run', return_value=(1, '')):
             self.assertFalse(scheduler._run_one('pgbackup', lambda *_: None))
+        deferred = SimpleNamespace(returncode=1, stdout='backup deferred: heavy lock busy\n', stderr='')
+        with patch('subprocess.run', return_value=deferred), patch.object(engine, 'run', return_value=(0, '')):
+            self.assertIs(scheduler._run_one('pgbackup', lambda *_: None), scheduler.SAFE_BACKUP_REFUSAL)
         failed = SimpleNamespace(returncode=1, stdout='different failure\n', stderr='')
         with patch('subprocess.run', return_value=failed), patch.object(engine, 'run', return_value=(0, '')):
             self.assertFalse(scheduler._run_one('pgbackup', lambda *_: None))

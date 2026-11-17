@@ -34,29 +34,18 @@ restore_space_kb() {
 case "$1" in
   backup)
     mkdir -p "$DIR" && chmod 700 "$DIR"
-    # The host receives the dump; budget the entire database plus 3 GiB spare.
-    # This intentionally overestimates the selected, compressed schemas.
-    database_bytes=$(docker exec "$DB" psql -U fixture -d fixture -Atc 'SELECT pg_database_size(current_database())')
-    [[ "$database_bytes" =~ ^[0-9]+$ ]] || { echo 'could not determine backup space requirement'; exit 1; }
+    # Dump only the selected schemas; table+index bytes plus 3 GiB are a conservative host budget.
+    schema_literals=$(printf "'%s'," $SCHEMAS | sed 's/,$//')
+    selected_bytes=$(docker exec "$DB" psql -U fixture -d fixture -Atc "SELECT COALESCE(sum(pg_total_relation_size(c.oid)),0)
+      FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+      WHERE c.relkind IN ('r','m') AND n.nspname IN ($schema_literals)")
+    [[ "$selected_bytes" =~ ^[0-9]+$ ]] || { echo 'could not determine backup space requirement'; exit 1; }
     host_free_kb=$(df -Pk "$DIR" | awk 'NR==2 {print $4}')
     [[ "$host_free_kb" =~ ^[0-9]+$ ]] || { echo 'could not determine host free space'; exit 1; }
-    [ "$host_free_kb" -gt "$((database_bytes / 1024 + 3145728))" ] || { echo 'not enough host space for a backup'; exit 1; }
-    # A real dump temporarily consumed several GiB in the VM: refuse under
-    # the same conservative budget used for a full restore.
-    required_kb=$(restore_space_kb)
-    [ "$(vm_free)" -gt "$required_kb" ] || { echo 'not enough VM space for a backup'; exit 1; }
-    # Compress in a bounded disposable container using the already-local PG image.
-    image=$(docker inspect "$DB" --format '{{.Image}}')
-    [[ "$image" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'invalid local PG image'; exit 1; }
-    REFACTOR_POSTGRES_DSN=$(docker exec explorer-refactor-single-path printenv REFACTOR_POSTGRES_DSN)
-    export REFACTOR_POSTGRES_DSN
-    out="$DIR/$(date -u +%Y%m%dT%H%M%SZ)-candidate.dump"
-    docker run --rm --pull=never --log-driver none --network explorer-refactor-preview-private --cpus 1 --memory 1g --pids-limit 100 \
-      --read-only --cap-drop ALL --security-opt no-new-privileges -e REFACTOR_POSTGRES_DSN --entrypoint sh "$image" \
-      -c 'exec pg_dump -d "$REFACTOR_POSTGRES_DSN" -Fc -Z 6 "$@"' sh $(printf -- '-n %s ' $SCHEMAS) > "$out.tmp"
-    shasum -a 256 "$out.tmp" | sed "s|$out.tmp|$(basename "$out")|" > "$out.sha256"
-    mv "$out.tmp" "$out" && chmod 600 "$out" "$out.sha256"
-    echo "$out"
+    [ "$host_free_kb" -gt "$((selected_bytes / 1024 + 3145728))" ] || { echo 'not enough host space for a backup'; exit 1; }
+    [ "$(vm_free)" -gt "$((MIN_VM_FREE_KB + 262144))" ] || { echo 'not enough VM space for a backup'; exit 1; }
+    # The supervisor holds the heavy-job lock and monitors host/VM space throughout streaming.
+    exec python3 "$(dirname "$0")/refactor_pg_backup_stream.py"
     ;;
   check)
     dump=$2
