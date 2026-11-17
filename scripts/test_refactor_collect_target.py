@@ -179,6 +179,12 @@ class CollectionTargetTest(unittest.TestCase):
             flag.write_text('unexpected\n'); flag.chmod(0o600)
             with self.assertRaises(ValueError):
                 job.run_minimal_blog(None, object(), queue_path=Path(directory) / 'queue', telegram_trial=flag)
+    def test_telegram_enable_flag_rejects_insecure_file(self):
+        with TemporaryDirectory() as directory:
+            flag = Path(directory) / 'telegram-enabled'
+            flag.write_text('feed-telegram-fallback-enabled-v1\n'); flag.chmod(0o644)
+            with self.assertRaises(ValueError):
+                job.run_minimal_blog(None, object(), queue_path=Path(directory) / 'queue', telegram_enabled=flag)
     def test_keyword_feed_defers_missing_image_analysis_without_dropping_payload(self):
         from pipeline.base import RawDoc
         from pipeline.feed_backlog import FeedBacklog
@@ -316,6 +322,35 @@ class CollectionTargetTest(unittest.TestCase):
             queue = FeedBacklog(path)
             self.assertIsNone(queue.next_pending_ref())
             self.assertEqual(queue.conn.execute("SELECT count(*) FROM pending_refs WHERE connector='telegram' AND revision_pending=1").fetchone()[0], 1)
+            queue.close()
+
+    def test_persistent_telegram_fallback_preserves_flag_and_conflicting_page(self):
+        from pipeline.base import SourceRef
+        from pipeline.feed_backlog import FeedBacklog
+        from pipeline.telegram_marks_sync import GroupMarks, GroupMarkConflict
+        class Blog:
+            def discover(self): return [SourceRef('feed')]
+            def discover_posts(self, ref): return []
+        class Telegram:
+            def discover(self): return [SourceRef('channel')]
+        messages = [{'message_id': str(n), 'content': 'synthetic', 'date': f'2026-01-01T00:0{n}:00Z',
+                     'link': 'https://example.test', 'images': []} for n in (1, 2)]
+        with TemporaryDirectory() as directory, \
+             patch('services.telegram_service.scrape_channel', return_value=messages), \
+             patch.object(GroupMarks, 'get', side_effect=GroupMarkConflict('synthetic conflict')):
+            root = Path(directory); path = root / 'queue'; flag = root / 'enabled'
+            flag.write_text('feed-telegram-fallback-enabled-v1\n'); flag.chmod(0o600)
+            conflict = False
+            for _ in range(2):
+                try:
+                    job.run_minimal_blog(None, Blog(), queue_path=path, telegram=Telegram(), telegram_enabled=flag)
+                except GroupMarkConflict:
+                    conflict = True
+                    break
+            self.assertTrue(conflict)
+            self.assertTrue(flag.exists())
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.next_pending_ref(allowed={'telegram'})[2].meta['messages'], messages)
             queue.close()
 
     def test_optional_youtube_stages_discovered_refs_and_retries_missing_transcripts(self):
