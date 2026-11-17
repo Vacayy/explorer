@@ -180,3 +180,13 @@ if __name__ == '__main__':
                        memory=os.environ.get('JOB_MEMORY', '2g'), internet=os.environ.get('NO_INTERNET') != '1')
     print(output, end='')
     sys.exit(0 if code == 0 else 1)
+
+
+def memory_in_use(name):
+    """Bytes a running container uses now (page cache it can drop excluded); 0 when it is not running."""
+    try:
+        stats = call('GET', f'/containers/{quote(name)}/stats?stream=false&one-shot=true')['memory_stats']
+    except Exception:  # noqa: BLE001 - absent or stopped
+        return 0
+    return max(0, stats.get('usage', 0) - stats.get('stats', {}).get('inactive_file', 0))
+

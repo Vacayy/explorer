@@ -550,6 +550,8 @@ def run(label):
             outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'
     if trial.other_files:
         entry['other_sqlite_written'] = sorted(trial.other_files)
+    if os.environ.get('COLLECT_WAITED_SECONDS'):  # waited for the builder or the compute worker (one heavy job at a time)
+        entry['waited_for_heavy_seconds'] = int(os.environ['COLLECT_WAITED_SECONDS'])
     calls = pg.execute('SELECT count(*) FROM llm_calls WHERE created_at>=%s', (started,)).fetchone()[0]
     run_id = postgres_collect_runs.record(pg, label, started, outcome, requests=dict(trial.requests_by_host),
                                          model_calls=calls, result=entry)
