@@ -60,6 +60,26 @@ def install(llm_module, connect):
         except Exception:  # noqa: BLE001 - recording never breaks the call it records
             log.warning('llm_calls record failed', exc_info=True)
     llm_module.call_observer = record
+    _install_image_budget(connect)
+
+
+def _install_image_budget(connect):
+    """Image reading's 30-minute call budget counts this ledger. The legacy check reads SQLite llm_calls by
+    job='image_reading', while the calls are recorded under their task, 'image.read' (so it never decreased);
+    here the recorded task is counted. If the ledger cannot be read, no image call is allowed."""
+    from pipeline import image_reading
+
+    def remaining(_conn):
+        try:
+            with connect() as conn:
+                used = conn.execute("SELECT count(*) FROM llm_calls WHERE job IN ('image.read', %s) AND created_at >= "
+                                    "to_char(timezone('utc',now()) - interval '30 minutes','YYYY-MM-DD HH24:MI:SS')",
+                                    (image_reading.JOB,)).fetchone()[0]
+        except Exception:  # noqa: BLE001 - fail closed
+            log.warning('image reading budget unavailable', exc_info=True)
+            return 0
+        return image_reading.BUDGET - used
+    image_reading._remaining_budget = remaining
 
 
 def prune(conn):
