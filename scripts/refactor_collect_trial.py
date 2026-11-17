@@ -276,6 +276,10 @@ def main():
         source = Path('/projection') / json.loads(Path('/projection/current.json').read_text())['file']
         shutil.copyfile(source, WORK)
         os.chmod(WORK, 0o600)
+        # A projection's full-text table is not kept in step with its documents; a collector file is (the MacBook's).
+        with sqlite3.connect(WORK) as work:
+            if work.execute("SELECT 1 FROM sqlite_master WHERE name='doc_fts'").fetchone():
+                work.execute("INSERT INTO doc_fts(doc_fts) VALUES('rebuild')")
         print('prepared work copy', WORK.stat().st_size)
         return
     job = sys.argv[2]

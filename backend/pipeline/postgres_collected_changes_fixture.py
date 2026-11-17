@@ -12,8 +12,8 @@ copy was taken is not overwritten: its three versions (run start, collected,
 candidate) are kept in `collected_change_conflicts`, and `reprocess_conflicts`
 merges them field by field later, so the change is never lost; only a field
 both sides changed differently is left as `needs_review`. Changes this path
-cannot publish yet (deleted documents, revisions of candidate-collected
-documents) are kept the same way as `unsupported`, never counted as published.
+cannot publish yet (deleted documents) are kept the same way as `unsupported`, never counted as published. A
+document the candidate itself collected is revised where its rows live (`_write_collected`).
 Comparing and publishing load whole tables, so they run only in a one-shot
 container (`scripts/refactor_run_collector_once.sh`), never in the preview API.
 """
@@ -244,13 +244,59 @@ def _write(conn, ident, ordinal, state, reader_db):
 
 
 def _base_ordinal(conn, ident):
+    """(ordinal, None) of a base document, (None, 'collected') of one the candidate collected, or (None, reason)."""
     visible = conn.execute("SELECT row_ordinal FROM legacy_snapshot_rows WHERE table_name='raw_documents' "
                            "AND row_data->>'id'=%s", (str(ident),)).fetchall()
     if len(visible) != 1:
         return None, 'missing'
     if visible[0][0] < 0 or conn.execute('SELECT 1 FROM collected_publications WHERE document_id=%s', (ident,)).fetchone():
-        return None, 'collected document revisions are not supported yet'
+        return None, 'collected'
     return visible[0][0], None
+
+
+def _write_collected(conn, ident, state):
+    """A revision of a document the candidate collected: its rows are replaced where they live (as a video digest of a
+    collected video does), not hidden under a base override. Its place in the list and timeline does not move."""
+    from pipeline.postgres_raw_document_read import PostgreSQLRawDocumentReader
+    known = {row[0] for row in conn.execute("SELECT row_data->>'id' FROM legacy_snapshot_rows WHERE table_name='entities' "
+                                            "AND row_data->>'id'=ANY(%s)", ([str(row['entity_id']) for row in state['links']],))}
+    if {str(row['entity_id']) for row in state['links']} - known:
+        return 'links to entities not published yet'
+    published = conn.execute('SELECT enrichment_ids,link_ids FROM collected_publications WHERE document_id=%s FOR UPDATE',
+                             (ident,)).fetchone()
+    if published is None:
+        return 'not recorded as collected'
+    conn.execute("UPDATE video_digest_overlay_rows SET row_data=%s WHERE table_name='raw_documents' AND row_ordinal=%s",
+                 (Jsonb(state['raw']), -ident))
+    for table, ids in (('enrichments', published[0]), ('entity_links', published[1])):
+        conn.execute('DELETE FROM video_digest_overlay_rows WHERE table_name=%s AND row_ordinal=ANY(%s)',
+                     (table, [-LINK_OFFSET - i for i in ids]))
+    for table, key in (('enrichments', 'enrichments'), ('entity_links', 'links')):
+        for row in state[key]:
+            conn.execute('INSERT INTO video_digest_overlay_rows VALUES (%s,%s,%s)', (table, -LINK_OFFSET - row['id'], Jsonb(row)))
+    conn.execute('UPDATE collected_publications SET enrichment_ids=%s,link_ids=%s WHERE document_id=%s',
+                 ([row['id'] for row in state['enrichments']], [row['id'] for row in state['links']], ident))
+    conn.execute('DELETE FROM collected_document_entity_order WHERE document_id=%s', (ident,))
+    for position, link in enumerate(state['links']):
+        conn.execute('INSERT INTO collected_document_entity_order VALUES (%s,%s,%s,%s,%s,0)',
+                     (ident, position, link['entity_id'], link['link_type'], link['confidence']))
+    doc = PostgreSQLRawDocumentReader(None).get_in_transaction(conn, ident)
+    if doc is None:
+        return 'unreadable'
+    detail = doc.model_dump(mode='json')
+    conn.execute('UPDATE collected_document_projection SET detail_document=%s WHERE id=%s', (Jsonb(detail), ident))
+    conn.execute('UPDATE collected_document_list_projection SET list_document=%s WHERE document_id=%s', (Jsonb(detail), ident))
+    timeline = conn.execute('SELECT occurred_at FROM collected_timeline_source_projection WHERE document_id=%s', (ident,)).fetchone()
+    if timeline:
+        raw = state['raw']
+        conn.execute('UPDATE collected_timeline_source_projection SET topic_names=%s,preview=%s,document=%s WHERE document_id=%s',
+                     (sorted({link.name for link in doc.entities}), (raw.get('title') or raw.get('markdown') or '')[:180],
+                      Jsonb({**detail, 'published_at': timeline[0]}), ident))
+        enrichment = max(state['enrichments'], key=lambda row: (row.get('enriched_at') or '', row['id']), default=None)
+        conn.execute('UPDATE collected_timeline_source_metadata SET enrichment_id=%s,entity_order=%s WHERE document_id=%s',
+                     (enrichment and enrichment['id'], Jsonb([{'entity_id': row['entity_id'], 'link_type': row['link_type'],
+                                                             'confidence': row['confidence']} for row in state['links']]), ident))
+    return None
 
 
 def publish_revisions(conn, work, origin, doc_ids, *, run_id):
@@ -277,11 +323,12 @@ def publish_revisions(conn, work, origin, doc_ids, *, run_id):
             ordinal, reason = _base_ordinal(conn, ident)
             if collected['raw'] is None:
                 keep(ident, before, collected, current, 'unsupported', 'deleted by the collector')
-            elif reason:
+            elif reason and reason != 'collected':
                 keep(ident, before, collected, current, 'unsupported', reason)
             elif _fingerprint(current) != _fingerprint(before):
                 keep(ident, before, collected, current, 'pending', 'changed in the candidate meanwhile')
-            elif reason := _write(conn, ident, ordinal, collected, work):
+            elif reason := (_write_collected(conn, ident, collected) if reason == 'collected'
+                            else _write(conn, ident, ordinal, collected, work)):
                 keep(ident, before, collected, current, 'pending', reason)
             else:
                 published.append(ident)
