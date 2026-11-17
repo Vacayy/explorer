@@ -8,7 +8,8 @@ when each job would run, in Asia/Seoul time as launchd did on the MacBook.
 queue; repeats of a waiting job coalesce, as launchd does), each as a one-shot container
 (scripts/refactor_collect_trial.sh job <label> → scripts/refactor_collect_job.py, per-host request cap, record
 in PG collect_runs). A file lock keeps a second scheduler from starting. Sending jobs and the overnight backfill
-are refused. Before the cutover the job target is the disposable clone schema only; the MacBook stays the
+are refused. Missed runs are caught up as on the MacBook (pipeline.catchup over collect_runs, checked at start
+and every 30 minutes while idle). Before the cutover the job target is the disposable clone schema only; the MacBook stays the
 collection source until then, so nothing is enabled by default.
 
   python scripts/refactor_collect_scheduler.py --plan 24                       # the next 24 hours
@@ -31,6 +32,7 @@ ROOT = Path(__file__).resolve().parent.parent
 LOCK = Path(os.environ.get('COLLECT_SCHEDULER_LOCK', Path.home() / 'server-data/review/refactor-single/collect-scheduler.lock'))
 JOB_SECONDS = int(os.environ.get('COLLECT_JOB_SECONDS', '3600'))  # one job's time limit (the MacBook chain step limit)
 TICK_SECONDS = 20
+CATCHUP_SECONDS = 1800  # the MacBook's catchup job ran every 30 minutes
 
 
 def load_jobs():
@@ -89,6 +91,19 @@ def run_job(label, log=print):
         log(f'{label} stopped at the {JOB_SECONDS}s limit')
 
 
+def catchup_due(enabled, log=print):
+    """Enabled calendar jobs whose latest due run has no applied record yet (judged in a one-shot container)."""
+    import json
+    try:
+        done = subprocess.run([str(ROOT / 'scripts/refactor_collect_trial.sh'), 'catchup', ','.join(sorted(enabled))],
+                              capture_output=True, text=True, timeout=300)
+        lines = [line for line in done.stdout.splitlines() if line.startswith('[')]
+        return json.loads(lines[-1]) if lines else []
+    except (subprocess.TimeoutExpired, ValueError) as exc:
+        log(f'catch-up check failed: {exc}')
+        return []
+
+
 def due_now(jobs, enabled, last, now, next_interval):
     """Labels due in [last, now): calendar entries as launchd matched them, intervals from their own next time."""
     due = []
@@ -107,12 +122,15 @@ def due_now(jobs, enabled, last, now, next_interval):
 
 def run_loop(enabled, log=print):
     jobs, _catchup = load_jobs()
-    queue, next_interval = [], {}
+    queue, next_interval, checked = [], {}, 0.0
     last = datetime.now(SEOUL).replace(second=0, microsecond=0)
     while True:
         now = datetime.now(SEOUL)
         queue += [label for label in due_now(jobs, enabled, last, now, next_interval) if label not in queue]
         last = now
+        if not queue and time.monotonic() - checked >= CATCHUP_SECONDS:  # only when idle: no duplicate of a queued run
+            checked = time.monotonic()
+            queue += [label for label in catchup_due(enabled, log) if label not in queue]
         if queue:
             run_job(queue.pop(0), log)  # concurrency 1: the next waits for this one
         else:

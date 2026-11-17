@@ -53,6 +53,9 @@ case "$1" in
   job)   # one scheduled job (scripts/refactor_collect_scheduler.py --run), recorded in collect_runs
     container "$IMAGE" python /app/scripts/refactor_collect_job.py "$2"
     ;;
+  catchup)   # which of the enabled jobs (comma-separated) to catch up now, from collect_runs
+    container "$IMAGE" python /app/scripts/refactor_collect_job.py --catchup "$2"
+    ;;
   teardown)
     NEW=$(cat "$STATE")
     [ "$NEW" != "$LIVE" ] && docker exec explorer-refactor-preview-db psql -q -U fixture -d fixture -c "DROP SCHEMA $NEW CASCADE" 2>&1 | tail -1

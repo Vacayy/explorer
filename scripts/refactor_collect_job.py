@@ -9,6 +9,7 @@ Refused here, whatever the scheduler asks: jobs that send (Telegram) and the unc
 Jobs not connected yet are recorded as 'unsupported' and not run.
 
   python scripts/refactor_collect_job.py <label>
+  python scripts/refactor_collect_job.py --catchup <label,...>   # which of these to catch up now (prints JSON)
 """
 import json
 import os
@@ -58,5 +59,38 @@ def run(label):
                       'statuses': dict(trial.statuses), 'model_calls': calls}, ensure_ascii=False))
 
 
+def catchup(labels, now=None):
+    """The MacBook's catch-up rule (pipeline.catchup, D-249) over collect_runs: the latest due time of each enabled
+    calendar job without an applied run since then is due again (attempt spacing, attempt cap and window as before)."""
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+    from pipeline import postgres_collect_runs
+    from pipeline.catchup import decide, last_due
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from refactor_collect_scheduler import load_jobs
+    jobs, rules = load_jobs()
+    now = now or datetime.now(ZoneInfo('Asia/Seoul'))
+    pg = trial._pg()
+    due_labels = []
+    for label, _argv, schedule in jobs:
+        if label not in labels or label not in rules or isinstance(schedule, int):
+            continue
+        due = last_due(schedule, now)
+        if due is None:
+            continue
+        since = due.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+        runs = [(status, datetime.strptime(at, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc))
+                for status, at in postgres_collect_runs.runs(pg, label, since)]
+        go, why = decide(due, runs, now, rules[label].get('window_h'))
+        if go:
+            due_labels.append(label)
+        print(f'# {label}: {why}', file=sys.stderr)
+    print(json.dumps(due_labels))
+    return due_labels
+
+
 if __name__ == '__main__':
-    run(sys.argv[1])
+    if sys.argv[1] == '--catchup':
+        catchup(set(sys.argv[2].split(',')))
+    else:
+        run(sys.argv[1])
