@@ -271,27 +271,12 @@ FLOOR_TABLES = (('document_floor', 'raw_documents'), ('entity_floor', 'entities'
                 ('relation_floor', 'entity_relations'))
 
 
-# The candidate's own ID band (architect #3 6943703383): rows the candidate collects take legacy IDs from here up, the
-# MacBook's stay below, so the cutover's large publication never meets an ID the candidate already used. Evidence IDs
-# already run past 100 million on the MacBook (replaced rows keep advancing them), so their band starts higher.
-ID_BANDS = {'raw_documents': 100_000_000, 'enrichments': 100_000_000, 'entity_links': 100_000_000,
-            'entities': 100_000_000, 'entity_keywords': 100_000_000, 'entity_relations': 100_000_000,
-            'narrative_edge_evidence': 10_000_000_000}
-
-
 def band_ids(work):
-    """Move each banded table's next AUTOINCREMENT id into the candidate band (idempotent); returns the next ids."""
-    for table, start in ID_BANDS.items():
-        if work.execute('SELECT 1 FROM sqlite_master WHERE name=?', (table,)).fetchone() is None:
-            continue
-        current = max(work.execute(f'SELECT COALESCE(max(id),0) FROM "{table}"').fetchone()[0],
-                      (work.execute('SELECT seq FROM sqlite_sequence WHERE name=?', (table,)).fetchone() or (0,))[0])
-        if current < start - 1:
-            work.execute('DELETE FROM sqlite_sequence WHERE name=?', (table,))
-            work.execute('INSERT INTO sqlite_sequence (name, seq) VALUES (?,?)', (table, start - 1))
+    """The candidate's id band on the work copy (pipeline.postgres_id_bands, every AUTOINCREMENT table); idempotent."""
+    from pipeline.postgres_id_bands import band
+    moved = band(work)
     work.commit()
-    return dict(work.execute('SELECT name, seq + 1 FROM sqlite_sequence WHERE name IN (%s)' % ','.join('?' * len(ID_BANDS)),
-                             tuple(ID_BANDS)).fetchall())
+    return moved
 
 
 def _published_floors(work, advance=False):

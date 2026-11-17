@@ -229,3 +229,92 @@ def merge(conn, collector):
         counts = _apply(conn, pairs) if pairs else {}
     return {'pairs': len(pairs), 'by_kind': {k: sum(1 for p in pairs if p[0] == k) for k in NATURAL},
             'withdrawn': {f'{k}:{c}': v for (k, c), v in withdrawn.items()}, 'moved': counts}
+
+
+# Computed rows in the override ledger and group-ledger rows the candidate made in the MacBook's id range before the
+# band reached its write copies (architect #3 6945367459 item 3; the scan: scripts/refactor_id_gate.py). Each moves
+# to band + old id with its references: the key and the row's own id, candidate_outputs, and every column or JSON key
+# named for that table's id (above the base maximum only candidate rows carry such a value).
+ROW_TABLES = {'trade_beneficiaries': None, 'company_profiles': None, 'lens_readings': None, 'models': 'model_id',
+              'narratives': 'narrative_id', 'era_commentary': None, 'reports': 'report_id', 'source_digests': None,
+              'watch_evaluations': None}
+JSON_STORES = (('owner_row_overrides', 'row_data'), ('owner_legacy_rows', 'row_data'), ('video_digest_overlay_rows', 'row_data'),
+               ('question_graph_overlay_rows', 'row_data'), ('question_graph_overlay_relations', 'source_row'),
+               ('question_graph_overlay_evidence', 'source_row'))
+
+
+def plan_rows(conn, tops):
+    """(table, old, new) for override and group-ledger rows above `tops[table]` (the base file's maximum) and below the band."""
+    from pipeline.postgres_id_bands import start
+    pairs = []
+    for table in ROW_TABLES:
+        top, band = tops.get(table, 0), start(table)
+        if table == 'watch_evaluations':
+            rows = conn.execute('SELECT pk FROM owner_legacy_rows WHERE table_name=%s AND pk > %s AND pk < %s ORDER BY 1',
+                                (table, top, band))
+        else:
+            rows = conn.execute("SELECT DISTINCT (row_data->>'id')::bigint FROM owner_row_overrides WHERE table_name=%s "
+                                "AND row_data->>'id' ~ '^[0-9]+$' AND (row_data->>'id')::bigint > %s "
+                                "AND (row_data->>'id')::bigint < %s ORDER BY 1", (table, top, band))
+        pairs += [(table, old, band + old) for (old,) in rows]
+    return pairs
+
+
+def _apply_rows(conn, pairs):
+    counts = {}
+
+    def count(name, n):
+        if n:
+            counts[name] = counts.get(name, 0) + n
+    for table, old, new in pairs:
+        if table == 'watch_evaluations':
+            count('owner_legacy_rows.pk', conn.execute(
+                "UPDATE owner_legacy_rows SET pk=%s, row_data=jsonb_set(row_data, '{id}', to_jsonb(%s::bigint)) "
+                'WHERE table_name=%s AND pk=%s', (new, new, table, old)).rowcount)
+        else:
+            count('owner_row_overrides.key+id', conn.execute(
+                "UPDATE owner_row_overrides SET key = CASE WHEN key=%s THEN %s ELSE key END, "
+                "row_data=jsonb_set(row_data, '{id}', to_jsonb(%s::bigint)) "
+                "WHERE table_name=%s AND row_data->>'id' = %s", (str(old), str(new), new, table, str(old))).rowcount)
+        count('candidate_outputs.row_key', conn.execute(
+            'UPDATE candidate_outputs SET row_key=%s WHERE table_name=%s AND row_key=%s', (str(new), table, str(old))).rowcount)
+        reference = ROW_TABLES[table]
+        if reference is None:
+            continue
+        for store, column in JSON_STORES:
+            count(f'{store}.{column}.{reference}', conn.execute(
+                f"UPDATE {store} SET {column}=jsonb_set({column}, ARRAY[%s], to_jsonb(%s::bigint)) "
+                f"WHERE jsonb_typeof({column})='object' AND {column}->>%s = %s", (reference, new, reference, str(old))).rowcount)
+        for owner, in conn.execute('SELECT table_name FROM information_schema.columns c JOIN information_schema.tables t '
+                                   "USING (table_schema, table_name) WHERE c.table_schema=current_schema() "
+                                   "AND t.table_type='BASE TABLE' AND c.column_name=%s", (reference,)).fetchall():
+            count(f'{owner}.{reference}', conn.execute(
+                f'UPDATE "{owner}" SET "{reference}"=%s WHERE "{reference}"=%s', (new, old)).rowcount)
+        if table == 'reports':
+            count('owner_saved_items.ref[report]', conn.execute(
+                "UPDATE owner_saved_items SET ref=%s WHERE kind='report' AND ref=%s", (str(new), str(old))).rowcount)
+    return counts
+
+
+def apply_rows(conn, tops):
+    """Renumber what `plan_rows` finds, one transaction; a second run finds nothing."""
+    _guard(conn)
+    with conn.transaction():
+        conn.execute("ALTER TABLE candidate_id_remap ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'candidate'")
+        pairs = plan_rows(conn, tops)
+        counts = _apply_rows(conn, pairs) if pairs else {}
+        for table, old, new in pairs:
+            conn.execute('INSERT INTO candidate_id_remap (kind, old_id, new_id) VALUES (%s,%s,%s) ON CONFLICT (kind, old_id) '
+                         'DO UPDATE SET new_id=excluded.new_id, applied_at=now(), rolled_back_at=NULL', (f'row:{table}', old, new))
+    return {'pairs': len(pairs), 'by_table': {t: sum(1 for p in pairs if p[0] == t) for t in ROW_TABLES if any(p[0] == t for p in pairs)},
+            'updated': counts}
+
+
+def rollback_rows(conn):
+    _guard(conn)
+    with conn.transaction():
+        pairs = [(kind.removeprefix('row:'), new, old) for kind, old, new in conn.execute(
+            "SELECT kind, old_id, new_id FROM candidate_id_remap WHERE kind LIKE 'row:%' AND rolled_back_at IS NULL")]
+        counts = _apply_rows(conn, pairs) if pairs else {}
+        conn.execute("UPDATE candidate_id_remap SET rolled_back_at=now() WHERE kind LIKE 'row:%' AND rolled_back_at IS NULL")
+    return {'pairs': len(pairs), 'updated': counts}

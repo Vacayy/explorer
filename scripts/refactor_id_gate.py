@@ -7,6 +7,7 @@ row would meet the MacBook's next ids at the cutover. Prints one line per table 
 As the T0 gate (--gate) it exits 1 unless the count is 0.
 
   python /app/scripts/refactor_id_gate.py [--gate]
+  python /app/scripts/refactor_id_gate.py --renumber [--check-rollback]   # move what it finds into the band first
 """
 import json
 import os
@@ -36,7 +37,12 @@ def integer_keyed(base):
 
 def scan(pg, tables):
     found = {}
+    # Supplement tables are replaced whole from the MacBook file at the cutover: their candidate-only rows are the
+    # supplement preservation step's check, not this gate's (architect #3 6945482451 item 4).
+    supplement = {name for (name,) in pg.execute('SELECT table_name FROM legacy_supplement_tables')}
     for table, (column, top) in sorted(tables.items()):
+        if table in supplement:
+            continue
         band = EVIDENCE_BAND if table == 'narrative_edge_evidence' else BAND
         where = {}
         for label, sql, params in (
@@ -60,11 +66,32 @@ def scan(pg, tables):
     return found
 
 
+def _digest(pg):
+    import hashlib
+    out = []
+    for table in ('owner_row_overrides', 'owner_legacy_rows', 'candidate_outputs', 'question_graph_overlay_rows',
+                  'question_graph_overlay_relations', 'question_graph_overlay_evidence', 'owner_saved_items'):
+        out += sorted(r[0] for r in pg.execute(f'SELECT md5(to_jsonb(x)::text) FROM {table} x'))
+    return hashlib.sha256(''.join(out).encode()).hexdigest()[:16]
+
+
 def main():
     dsn, schema = os.environ['REFACTOR_POSTGRES_DSN'], os.environ['REFACTOR_FIXTURE_SCHEMA']
     base = sqlite3.connect(f'file:{BASE}?mode=ro&immutable=1', uri=True)
     tables = integer_keyed(base)
     with psycopg.connect(dsn, options=f'-c search_path={schema}') as pg:
+        if '--renumber' in sys.argv[1:]:  # architect #3 6945367459 item 3 (backup first on the live schema)
+            from pipeline import postgres_id_remap as remap
+            tops = {table: top for table, (_column, top) in tables.items()}
+            pg.autocommit = True
+            report = {'applied': remap.apply_rows(pg, tops), 'rerun': remap.apply_rows(pg, tops)['pairs']}
+            if '--check-rollback' in sys.argv[1:]:
+                before = _digest(pg)
+                report['rolled_back'] = remap.rollback_rows(pg)['pairs']
+                after_rollback = _digest(pg)
+                report['reapplied'] = remap.apply_rows(pg, tops)['pairs']
+                report['inverse_hash_equal_to_applied'] = before == _digest(pg) and after_rollback != before
+            print(json.dumps({'renumber': report}, ensure_ascii=False))
         found = scan(pg, tables)
     print(json.dumps({'integer_keyed_tables': len(tables), 'tables_with_rows': len(found), 'found': found}, ensure_ascii=False))
     if '--gate' in sys.argv[1:] and found:

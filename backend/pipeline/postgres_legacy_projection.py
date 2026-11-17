@@ -331,6 +331,11 @@ class LegacyProjection:
                     # Never hand out an ID the legacy writer already used.
                     conn.execute('DELETE FROM temp.sqlite_sequence WHERE name=?', (table,))
                     conn.execute('INSERT INTO temp.sqlite_sequence(name,seq) VALUES (?,?)', (table, seq))
+            if writable:
+                # New legacy rows take the candidate's band, never the MacBook's next ids (pipeline.postgres_id_bands).
+                from pipeline.postgres_id_bands import band
+                if conn.execute("SELECT 1 FROM temp.sqlite_master WHERE name='sqlite_sequence'").fetchone():
+                    band(conn, 'temp')
             return legacy[0] if legacy else None
 
     def connect(self):

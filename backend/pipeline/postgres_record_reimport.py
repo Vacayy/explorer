@@ -131,7 +131,11 @@ def _sides(pg, base, source):
         columns = [c for c in columns if c != 'id']
         pick = lambda db: {(k[0],): v for k, v in _legacy(db, table, ('id',), columns).items()}  # noqa: E731
         c = {(pk,): (_digest([_norm(d.get(col)) for col in columns]), d) for pk, d in ledger_rows.items()}
-        sides[f'owner_legacy_rows[{table}]'] = (pick(base), c, pick(source), ('legacy', table))
+        b, src = pick(base), pick(source)
+        # A pk neither side had at the base names different records (each issued it afterwards): not compared.
+        fresh = {k for k in set(c) | set(src) if k not in b}
+        c, src = {k: v for k, v in c.items() if k not in fresh}, {k: v for k, v in src.items() if k not in fresh}
+        sides[f'owner_legacy_rows[{table}]'] = (b, c, src, ('legacy', table))
     return sides
 
 
