@@ -47,7 +47,7 @@ def create_router(factory, timeline, projection=None):
 
     @contextmanager
     def member():
-        """Follows, prediction pins, read marks and bookmarks are the requester's own (records.requester_account)."""
+        """Follows, prediction pins, read marks, bookmarks and tracker conditions are the requester's own (records.requester_account)."""
         from pipeline.postgres_principals import PrincipalRequired
         try:
             with connection() as conn:
@@ -140,12 +140,12 @@ def create_router(factory, timeline, projection=None):
             _check(legacy, code)
         finally:
             legacy.close()
-        with connection() as conn:
+        with member() as conn:
             return records.add_tracker_condition(conn, code, body)
 
     @router.patch('/api/spine/tracker/conditions/{cid}', response_model=TrackerCondition)
     def condition_patch(cid: int, body: TrackerConditionPatch):
-        with connection() as conn:
+        with member() as conn:
             row = records.patch_tracker_condition(conn, cid, {k: v for k, v in body.model_dump().items() if v is not None})
         if not row:
             raise HTTPException(404, '조건 없음')
@@ -153,7 +153,7 @@ def create_router(factory, timeline, projection=None):
 
     @router.delete('/api/spine/tracker/conditions/{cid}')
     def condition_delete(cid: int):
-        with connection() as conn:
+        with member() as conn:
             records.delete_tracker_condition(conn, cid)
         return {'deleted': cid}
 

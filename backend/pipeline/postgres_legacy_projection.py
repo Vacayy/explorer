@@ -379,7 +379,9 @@ PERSONAL_ROWS = (("DELETE FROM temp.knowledge WHERE model='user'"),  # knowledge
 MEMBER_LEDGERS = {'saved_items': ('owner_saved_items', ('id', 'kind', 'ref', 'url', 'title', 'subtitle', 'note', 'created_at')),
                   'follows': ('owner_follows', ('id', 'entity_id', 'created_at')),
                   'kalshi_pins': ('owner_kalshi_pins', ('event_ticker', 'series_ticker', 'pinned_at')),
-                  'channel_reads': ('owner_channel_reads', ('channel', 'read_until', 'updated_at'))}
+                  'channel_reads': ('owner_channel_reads', ('channel', 'read_until', 'updated_at')),
+                  'tracker_conditions': ('owner_tracker_conditions', ('id', 'stock_code', 'role', 'kind', 'level', 'ma', 'label',
+                                                                      'note', 'done', 'created_at', 'updated_at'))}
 
 
 def requester_scope():
@@ -422,7 +424,8 @@ def _scope_to_requester(conn, pg):
     account = pg.execute('SELECT id FROM fixture_portfolio_accounts WHERE principal=%s', (principal,)).fetchone() if principal else None
     if account is not None:
         for table, (ledger, columns) in MEMBER_LEDGERS.items():
-            if pg.execute('SELECT to_regclass(%s)', (ledger,)).fetchone()[0] is not None:
+            if (conn.execute("SELECT 1 FROM temp.sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
+                    and pg.execute('SELECT to_regclass(%s)', (ledger,)).fetchone()[0] is not None):
                 conn.executemany(f'INSERT INTO temp."{table}" ({",".join(columns)}) VALUES ({",".join("?" for _ in columns)})',
                                  pg.execute(f'SELECT {",".join(columns)} FROM {ledger} WHERE account_id=%s ORDER BY {columns[0]}',
                                             (account[0],)).fetchall())

@@ -195,14 +195,14 @@ def initialize_tracker_conditions(conn):
 
 def tracker_condition(conn, cid):
     row = conn.execute(f'SELECT {",".join(TRACKER_COLUMNS)} FROM owner_tracker_conditions WHERE account_id=%s AND id=%s',
-                       (owner_account(conn), cid)).fetchone()
+                       (requester_account(conn), cid)).fetchone()
     return dict(zip(TRACKER_COLUMNS, row)) if row else None
 
 
 def add_tracker_condition(conn, code, body):
     ident = conn.execute('INSERT INTO owner_tracker_conditions (account_id,stock_code,role,kind,level,ma,label,note) '
                          'VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id',
-                         (owner_account(conn), code, body.role, body.kind, body.level, body.ma, body.label, body.note)).fetchone()[0]
+                         (requester_account(conn, create=True), code, body.role, body.kind, body.level, body.ma, body.label, body.note)).fetchone()[0]
     return tracker_condition(conn, ident)
 
 
@@ -210,12 +210,12 @@ def patch_tracker_condition(conn, cid, sets):
     if sets:
         # Column names come from the fixed request model fields.
         conn.execute(f"UPDATE owner_tracker_conditions SET {', '.join(f'{k}=%s' for k in sets)}, updated_at={_NOW} "
-                     'WHERE account_id=%s AND id=%s', (*sets.values(), owner_account(conn), cid))
+                     'WHERE account_id=%s AND id=%s', (*sets.values(), requester_account(conn), cid))
     return tracker_condition(conn, cid)
 
 
 def delete_tracker_condition(conn, cid):
-    conn.execute('DELETE FROM owner_tracker_conditions WHERE account_id=%s AND id=%s', (owner_account(conn), cid))
+    conn.execute('DELETE FROM owner_tracker_conditions WHERE account_id=%s AND id=%s', (requester_account(conn), cid))
 
 
 def initialize_transcript_follow(conn):

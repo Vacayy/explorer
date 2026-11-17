@@ -26,9 +26,9 @@ from security.login_flow import SESSION_COOKIE, session_csrf
 POLICIES = {'auth', 'public', 'compute', 'member', 'operator'}
 
 _MEMBER = re.compile(r'^/api/portfolio(/|$)|^/api/spine/(saved|follows)(/|$)|^/api/spine/feed/channels/read'
-                     r'|^/api/spine/home/predictions/[^/]+/pin$')  # each member's own ledger
+                     r'|^/api/spine/home/predictions/[^/]+/pin$|^/api/spine/tracker/(conditions/|[^/]+/conditions$)')  # each member's own ledger
 # Personal ledgers not yet per principal (members get 403 until converted; tracked as open items).
-_PERSONAL = re.compile(r'^/api/spine/(tracker/|studies|study-projects|groups|'
+_PERSONAL = re.compile(r'^/api/spine/(tracker/[^/]+/prepare$|studies|study-projects|groups|'
                        r'transcript/(follow|core/pin)|trade/follow)')
 _ADMIN = re.compile(r'^/api/spine/(admin|approvals|agent-proposals|keywords|research/candidates|regimes/checks|client-errors|'
                     r'knowledge/items/[^/]+/(approve|reject)|narrative-candidates/)|^/api/spine/sources/(telegram|blog|youtube/[^/]+|collect)'
