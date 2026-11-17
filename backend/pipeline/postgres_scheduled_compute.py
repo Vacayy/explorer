@@ -25,7 +25,22 @@ class HeldBack(RuntimeError):
     """The computation did not prove itself; nothing stored."""
 
 
-def run(script, argv, factory, *, record, source, projection_dir='/projection', database_host='pg'):
+def _cap_model_calls(limit):
+    """At most `limit` model calls in this run (each llm._execute: one call, its fallback included); the next is
+    refused and the run is held back. Returns the counter."""
+    from pipeline import llm
+    execute, made = llm._execute, [0]
+
+    def capped(*args, **kwargs):
+        if made[0] >= limit:
+            raise RuntimeError(f'model call cap {limit} reached')
+        made[0] += 1
+        return execute(*args, **kwargs)
+    llm._execute = capped
+    return made
+
+
+def run(script, argv, factory, *, record, source, projection_dir='/projection', database_host='pg', max_calls=20):
     """Run `script` with `argv`; returns the stored counts. `record`: the job_runs name the script leaves."""
     from fastapi import FastAPI
     from pipeline.postgres_legacy_projection import LegacyProjection, write_connection_var
@@ -37,6 +52,7 @@ def run(script, argv, factory, *, record, source, projection_dir='/projection', 
     database.init_db = lambda *args, **kwargs: None  # the projection's schema is fixed; upkeep is the collector's
     from pipeline import postgres_legacy_embeddings
     postgres_legacy_embeddings.install(factory)  # doc_vec is not in the projection: PG document vectors, as the API
+    calls = _cap_model_calls(max_calls)
     conn, _version = projection.write_connection(graph.GRAPH + ('job_runs',))
     refused = set()  # collected (read-only) tables the script tried to write: named in the failure
 
@@ -62,6 +78,8 @@ def run(script, argv, factory, *, record, source, projection_dir='/projection', 
         finally:
             write_connection_var.reset(token)
             _offline.reset(offline)
+        if calls[0] >= max_calls:
+            raise HeldBack(f'model call cap {max_calls} reached (a later call was refused)')
         runs = conn.execute('SELECT job, status FROM temp.job_runs WHERE id > ?' + (' AND job=?' if record else ''),
                             (floor, record) if record else (floor,)).fetchall()
         if record and not runs:

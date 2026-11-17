@@ -34,6 +34,7 @@ COMPUTE_JOBS = {'narratives', 'contradictions', 'promote', 'proposals', 'bigpict
 # published; the chain's later steps (causal extraction, signals, narratives, digests…) are not connected yet.
 FEED_SOURCES = os.environ.get('COLLECT_FEED_SOURCES', 'blog,note,memo,scrap')  # YouTube·Telegram excluded before cutover
 MAX_NEW_DOCS = int(os.environ.get('COLLECT_MAX_NEW_DOCS', '20'))
+MAX_MODEL_CALLS = int(os.environ.get('COLLECT_MAX_MODEL_CALLS', '20'))  # per computation run; reaching it holds back
 
 
 def job_argv(label):
@@ -61,7 +62,7 @@ def run_compute(label):
     dsn, schema = os.environ['REFACTOR_POSTGRES_DSN'], trial._pg().execute('SELECT current_schema()').fetchone()[0]
     os.chdir('/app')
     return postgres_scheduled_compute.run(argv[0], argv[1:], lambda: psycopg.connect(dsn, options=f'-c search_path={schema}'),
-                                          record=record, source=f'scheduled {label}')
+                                          record=record, source=f'scheduled {label}', max_calls=MAX_MODEL_CALLS)
 
 
 def run_feeds(pg):
