@@ -21,7 +21,7 @@ container() {  # extra docker args..., then the command
   docker inspect "$API" --format '{{range .Config.Env}}{{println .}}{{end}}' \
     | grep -E '^(REFACTOR_POSTGRES_DSN|REFACTOR_TEST_DISPOSABLE|FASTEMBED_CACHE_PATH|CODEX_BIN|CODEX_HOME|CODEX_FALLBACK_MODEL|HOME|ENRICH_ENGINE)=' > "$env_file"
   printf 'REFACTOR_FIXTURE_SCHEMA=%s\nTRIAL_LIVE_SCHEMA=%s\nCLAUDE_BIN=/bin/false\nEXPLORER_ONESHOT=1\n' "$(cat "$STATE")" "$LIVE" >> "$env_file"
-  for key in TRIAL_MAX_REQUESTS TRIAL_HOST_CAPS COLLECT_FEED_SOURCES COLLECT_MAX_NEW_DOCS COLLECT_MAX_MODEL_CALLS COLLECT_PROJECTION_WAIT HISTORY_DESTINATION TRIAL_MAX_ERRORS; do   # caps and limits from the caller
+  for key in TRIAL_MAX_REQUESTS TRIAL_HOST_CAPS COLLECT_FEED_SOURCES COLLECT_MAX_NEW_DOCS COLLECT_MAX_MODEL_CALLS COLLECT_PROJECTION_WAIT HISTORY_DESTINATION PEER_ROOT TRIAL_MAX_ERRORS; do   # caps and limits from the caller
     [ -n "${!key:-}" ] && printf '%s=%s\n' "$key" "${!key}" >> "$env_file"
   done
   local sources=${COLLECT_LOCAL_SOURCES:-$HOME/server-data/review/refactor-single/local-sources}   # the credit adapter, read-only
@@ -58,6 +58,8 @@ case "$1" in
   job)   # one scheduled job (scripts/refactor_collect_scheduler.py --run), recorded in collect_runs
     if [ "$2" = history ]; then   # the market history job alone writes its own volume
       container -v explorer-refactor-history:/history "$IMAGE" python /app/scripts/refactor_collect_job.py "$2"
+    elif [ "$2" = peer ]; then    # the peer monitor's state volume
+      container -v explorer-refactor-peer:/peer "$IMAGE" python /app/scripts/refactor_collect_job.py "$2"
     else
       container "$IMAGE" python /app/scripts/refactor_collect_job.py "$2"
     fi

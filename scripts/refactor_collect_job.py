@@ -56,6 +56,11 @@ SECTOR_REFRESH = 'sectorrefresh'
 MARKET_HISTORY = 'history'
 HISTORY_DESTINATION = Path(os.environ.get('HISTORY_DESTINATION', '/history/market_history.sqlite'))
 HISTORY_SHRINK_LIMIT = 0.5
+# Peer monitor (scripts/refresh_peer_monitor.py): the collector unchanged on its own state volume (the MacBook's
+# logs/peer-monitor at T0 continues the observation chain), read as the legacy API does, then recorded and shown through
+# pipeline.postgres_peer_refresh (compare, one-transaction view switch, rollback). Only this job mounts the volume.
+PEER = 'peer'
+PEER_ROOT = Path(os.environ.get('PEER_ROOT', '/peer'))
 COMPUTE_JOBS = {'narratives', 'contradictions', 'promote', 'proposals', 'bigpicture', 'sectoroverview',
                 *(set(CHAIN_STEPS) - CHAIN_TABLE_STEPS)}
 # chain: its document intake only (ingest with the registered sources, tagging included), capped per run and
@@ -182,6 +187,27 @@ def run_market_history():
     return {'before': before, 'after': refresh._published(), 'status': summary[0], 'summary': summary[1]}
 
 
+def run_peer():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    import psycopg
+    import refresh_peer_monitor as peer
+    from pipeline import postgres_peer_refresh
+    from routers.peers import DATA, read_runtime
+    catalog = json.loads((DATA / 'peer-catalog.json').read_text())
+    seed = json.loads((DATA / 'peer-prices.json').read_text())
+    now = datetime.now(ZoneInfo('Asia/Seoul'))
+    attempt = peer.refresh(PEER_ROOT, catalog, seed, now)  # a failed fetch publishes nothing and raises
+    if trial.stopped:
+        raise trial.HeldBack(f'Stopped: {trial.stopped[0]}')
+    runtime = read_runtime(PEER_ROOT, DATA, now)
+    dsn, schema = os.environ['REFACTOR_POSTGRES_DSN'], trial._pg().execute('SELECT current_schema()').fetchone()[0]
+    with psycopg.connect(dsn, options=f'-c search_path={schema}') as conn:
+        shown = postgres_peer_refresh.apply(conn, runtime)
+    return {'status': attempt['status'], 'as_of': attempt.get('asOf'), 'shown': shown,
+            'companies': len(runtime.catalog.companies)}
+
+
 def run_compute(label):
     import psycopg
     from pipeline import postgres_scheduled_compute
@@ -229,6 +255,17 @@ def run(label):
         except trial.HeldBack as exc:  # under 90% of the published codes, or nothing collected: the file stays
             outcome = f'held back: {exc}'
         except Exception as exc:  # noqa: BLE001
+            outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'
+    elif label == PEER:
+        trial._instrument()
+        trial._point_legacy_at_work()  # the collector's response cache and run record go to the work copy
+        try:
+            entry['peer'] = run_peer()
+            outcome = (f"applied: {entry['peer']['as_of']}, {entry['peer']['companies']} companies" if entry['peer']['shown']
+                       else f"skipped: {entry['peer']['as_of']} already shown")
+        except (trial.HeldBack, ValueError) as exc:  # a stop, or the comparison: the shown runtime stays
+            outcome = f'held back: {exc}'
+        except Exception as exc:  # noqa: BLE001 - a fetch failure: the collector records its attempt, nothing shown
             outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'
     elif label in COMPUTE_JOBS:
         from pipeline.postgres_scheduled_compute import HeldBack, Skipped

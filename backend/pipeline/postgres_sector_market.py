@@ -254,7 +254,15 @@ class PostgreSQLSectorSource:
         """Return the bundle committed with this snapshot, or None if absent."""
         from models.peers import PeerRuntime
         row = self.conn.execute('SELECT payload FROM sector_market_peer_runtime WHERE singleton').fetchone()
-        return PeerRuntime.model_validate(row[0]) if row else None
+        if not row:
+            return None
+        # The legacy API (routers.peers.read_runtime) computes the ages per request, not at publication.
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        now, prices = datetime.now(ZoneInfo('Asia/Seoul')), row[0]['prices']
+        return PeerRuntime.model_validate({
+            **row[0], 'priceAgeDays': max(0, (now.date() - datetime.fromisoformat(prices['asOf']).date()).days),
+            'snapshotAgeHours': max(0, (now - datetime.fromisoformat(prices['collectedAt'])).total_seconds() / 3600)})
 
     def benchmarks(self):
         return {sector: {'ticker': ticker, 'name': name, 'tracks': tracks, 'note': note,

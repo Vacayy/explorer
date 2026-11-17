@@ -45,9 +45,11 @@ JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40,t.me=40,www.youtube.com=40,.tel
                  'history': 'fchart.stock.naver.com=3200',
                  # credit (macbook-source #3 6942831447): 34 companies — issuer scan and history on the scanner host,
                  # symbol search as the fallback, 10 Treasury series from FRED; any other host keeps the default 20
-                 'credit': 'scanner.tradingview.com=150,symbol-search.tradingview.com=60,fred.stlouisfed.org=12'}
+                 'credit': 'scanner.tradingview.com=150,symbol-search.tradingview.com=60,fred.stlouisfed.org=12',
+                 # peer: one daily-price page per catalog company (104 now)
+                 'peer': 'stock.naver.com=120'}
 # A job's own stop rules: history stops at 50 upstream errors, credit at 10 (403/429 stop every job at the first).
-JOB_ENV = {'history': {'TRIAL_MAX_ERRORS': '50'}, 'credit': {'TRIAL_MAX_ERRORS': '10'}}
+JOB_ENV = {'history': {'TRIAL_MAX_ERRORS': '50'}, 'credit': {'TRIAL_MAX_ERRORS': '10'}, 'peer': {'TRIAL_MAX_ERRORS': '10'}}
 # The intake's sources after the cutover (registry order: scrap reads Telegram documents); before it, the default
 # (no Telegram or YouTube) keeps the MacBook the only collector from this IP.
 CUTOVER_FEED_SOURCES = 'blog,telegram,note,youtube,memo,scrap'
