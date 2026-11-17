@@ -40,7 +40,9 @@ CHAIN_SEQUENCE = ('chain_macro_news', 'chain', 'chain_causal', 'chain_signals', 
                   'chain_images', 'chain_actions', 'chain_digests')
 # Per-run host caps of the intake (PM 6938365215, 6940286658): ~30 Naver blog feeds, 32 Telegram channel pages,
 # 25 YouTube channel feeds plus captions, Telegram images read within the 30-minute image budget (numbered CDN hosts).
-JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40,t.me=40,www.youtube.com=40,.telesco.pe=40'}
+JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40,t.me=40,www.youtube.com=40,.telesco.pe=40',
+                 # one chart request per listed code (3,017 now) plus retries; pending the PM's cap decision
+                 'history': 'fchart.stock.naver.com=3200'}
 # The intake's sources after the cutover (registry order: scrap reads Telegram documents); before it, the default
 # (no Telegram or YouTube) keeps the MacBook the only collector from this IP.
 CUTOVER_FEED_SOURCES = 'blog,telegram,note,youtube,memo,scrap'

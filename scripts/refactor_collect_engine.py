@@ -135,7 +135,8 @@ def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=No
     env += [f'{key}={value}' for key, value in (extra_env or {}).items()]  # this job's own caps
     env += [f'{key}={value}' for key, value in secrets().items()]
     binds = [f'{ROOT}/backend:/app/backend:ro', f'{ROOT}/scripts:/app/scripts:ro',
-             'explorer-refactor-single-projection:/projection:ro', f'{VOLUME}:/trial',
+             # the market history job publishes beside the projection file (refactor_collect_job.MARKET_HISTORY)
+             f"explorer-refactor-single-projection:/projection:{'rw' if job == 'history' else 'ro'}", f'{VOLUME}:/trial',
              'explorer-public-codex-auth:/provider-auth', 'explorer-data-rehearsal_models:/models:ro',
              f'{HOME}/server-data/review/refactor-single/codex-gate:/control/codex-gate:ro',
              f'{HOME}/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py:/control/codex-credential-gate.py:ro']

@@ -49,6 +49,12 @@ DERIVED = ('doc_fts',)
 # The sector map, sector and US industry screens and portfolio price history, refreshed from the collected prices
 # (pipeline.postgres_sector_refresh; after the daily price collection and once after the cutover).
 SECTOR_REFRESH = 'sectorrefresh'
+# Discovery and analysis price history (scripts/refresh_market_history.py, D-177/D-220): its plan → collect → publish
+# unchanged, from the collected prices; staged in the trial volume (a stopped run resumes), published beside the
+# projection file, where the analysis snapshot looks for it (source_db.with_name). Only this job mounts /projection
+# writable (the builder manages projection-*.db there and nothing else).
+MARKET_HISTORY = 'history'
+HISTORY_DESTINATION = Path(os.environ.get('HISTORY_DESTINATION', '/projection/market_history.sqlite'))
 COMPUTE_JOBS = {'narratives', 'contradictions', 'promote', 'proposals', 'bigpicture', 'sectoroverview',
                 *(set(CHAIN_STEPS) - CHAIN_TABLE_STEPS)}
 # chain: its document intake only (ingest with the registered sources, tagging included), capped per run and
@@ -123,6 +129,20 @@ def run_sector_refresh():
     return {'prices': result['after']['sector_market_prices'], 'load_seconds': result['load_seconds']}
 
 
+def run_market_history():
+    import sqlite3
+    import refresh_market_history as refresh
+    refresh.SOURCE, refresh.DESTINATION = trial.WORK, HISTORY_DESTINATION
+    refresh.ROOT = trial.WORK.parent / 'market-history'
+    before = refresh._published()
+    code = refresh.main()
+    summary = sqlite3.connect(trial.WORK).execute("SELECT status, summary FROM job_runs WHERE job='market_history' "
+                                                  'ORDER BY id DESC LIMIT 1').fetchone()
+    if code != 0:
+        raise trial.HeldBack(summary[1] if summary else f'exit {code}')
+    return {'before': before, 'after': refresh._published(), 'status': summary[0], 'summary': summary[1]}
+
+
 def run_compute(label):
     import psycopg
     from pipeline import postgres_scheduled_compute
@@ -160,6 +180,16 @@ def run(label):
         except ValueError as exc:
             outcome = f'held back: {exc}'
         except Exception as exc:  # noqa: BLE001 - the views keep reading the previous store
+            outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'
+    elif label == MARKET_HISTORY:
+        trial._instrument()
+        trial._point_legacy_at_work()
+        try:
+            entry['history'] = run_market_history()
+            outcome = f"{'skipped' if entry['history']['status'] == 'skipped' else 'applied'}: {entry['history']['summary']}"
+        except trial.HeldBack as exc:  # under 90% of the published codes, or nothing collected: the file stays
+            outcome = f'held back: {exc}'
+        except Exception as exc:  # noqa: BLE001
             outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'
     elif label in COMPUTE_JOBS:
         from pipeline.postgres_scheduled_compute import HeldBack, Skipped

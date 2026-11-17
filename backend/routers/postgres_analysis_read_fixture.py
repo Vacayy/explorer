@@ -34,6 +34,24 @@ RESEARCH = {('POST', '/api/analysis/discovery/cases/{case_id}/research'),
             ('POST', '/api/analysis/discovery/cases/{case_id}/research/{research_id}/cancel')}
 
 
+def resolve_snapshot_source():
+    """The candidate's DB_PATH is the projection's stable name, a link to the current build file, and the run's snapshot
+    exporter refuses links: it gets the build file the link points at when the snapshot starts (a build replaced or
+    removed meanwhile stays readable through the open file). market_history.sqlite is looked up beside that file."""
+    import functools
+    import os
+    from pathlib import Path
+    from pipeline.market_analysis import snapshot
+    for name in ('export_snapshot', 'source_fingerprint'):
+        original = getattr(snapshot, name)
+        if getattr(original, 'resolves_source', False):
+            continue
+        wrapper = functools.wraps(original)(
+            lambda source_db, *args, _original=original, **kwargs: _original(Path(os.path.realpath(source_db)), *args, **kwargs))
+        wrapper.resolves_source = True
+        setattr(snapshot, name, wrapper)
+
+
 def install(app):
     from pipeline.market_analysis.discovery_service import DiscoveryService
     from pipeline.market_analysis.runner import AnalysisService
@@ -43,6 +61,7 @@ def install(app):
     limits = {'max_calls': int(os.environ.get('REFACTOR_MARKET_ANALYSIS_MAX_CALLS', '20')),
               'max_cost': float(os.environ.get('REFACTOR_MARKET_ANALYSIS_MAX_COST', '1.0')),
               'max_seconds': float(os.environ.get('REFACTOR_MARKET_ANALYSIS_MAX_SECONDS', '900'))}
+    resolve_snapshot_source()
     analysis._service = AnalysisService(**limits) if runs else AnalysisService()  # not started unless runs are enabled
     if runs:
         analysis._service.start()
