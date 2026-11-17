@@ -656,7 +656,13 @@ def check_override_shadows(pg):
     registered = {name for (name,) in pg.execute('SELECT table_name FROM owner_override_keys')} \
         if pg.execute("SELECT to_regclass('owner_override_keys')").fetchone()[0] is not None else set()
     laid = (set(OVERRIDES) | registered) - set(COMPUTED)
-    unshadowed = sorted(laid - set(SHADOWED))
+    # A withdrawn close-alert adapter may have registered keys before it wrote any rows.
+    # Leave that PG metadata intact, and waive only those unused, inactive keys.
+    withdrawn_close = {'catalysts', 'portfolio_event_estimates', 'transcript_calendar', 'entity_digests'}
+    candidates = (registered & withdrawn_close) - set(OVERRIDES)
+    active = {name for (name,) in pg.execute(
+        'SELECT DISTINCT table_name FROM owner_row_overrides WHERE table_name=ANY(%s)', (sorted(candidates),))} if candidates else set()
+    unshadowed = sorted(laid - set(SHADOWED) - (candidates - active))
     if unshadowed:
         raise RuntimeError(f'Override tables without a read shadow (every read would fail): {unshadowed}')
     by_row = {statement.split('temp.')[1].split()[0] for statement in PERSONAL_ROWS}  # personal rows of shared tables

@@ -789,7 +789,10 @@ class CollectionTargetTest(unittest.TestCase):
             conn.execute("INSERT INTO portfolio_alerts_sent VALUES ('summary:day')")
             conn.commit(); send('synthetic'); return {'sent': 1}
         def fake_apply(pg, before, after): captured.update({'before': before, 'after': after})
-        with patch.object(trial, '_pg', return_value=PG()), patch.object(projection, 'LegacyProjection', Projection), \
+        close_keys = {'catalysts': 'id', 'portfolio_event_estimates': 'stock_code|kind',
+                      'transcript_calendar': 'ticker', 'entity_digests': 'entity_id|period|period_start'}
+        with patch.dict(overrides.OVERRIDES, close_keys), \
+             patch.object(trial, '_pg', return_value=PG()), patch.object(projection, 'LegacyProjection', Projection), \
              patch.object(projection, 'requester_is_operator', return_value=True), \
              patch.object(portfolio_alerts, 'run', side_effect=fake_close), patch.object(overrides, 'apply', side_effect=fake_apply):
             result = job.run_portfolio_close(send=lambda x: sent.append(x) or True)
@@ -896,6 +899,27 @@ class CollectionTargetTest(unittest.TestCase):
         scheduler.check_enabled({'briefing', 'observeweekly', 'observealerts', 'pfintraday', 'pfclose'})
         with self.assertRaises(SystemExit):
             scheduler.check_enabled({'backfill'})
+
+    def test_inactive_withdrawn_close_keys_do_not_disable_public_startup(self):
+        from pipeline import postgres_legacy_projection as projection, postgres_owner_overrides as overrides
+        class PG:
+            active = []
+            registered = ['catalysts', 'portfolio_event_estimates', 'transcript_calendar', 'entity_digests']
+            def execute(self, query, args=()):
+                if 'to_regclass' in query:
+                    return types.SimpleNamespace(fetchone=lambda: ('owner_override_keys',))
+                if 'SELECT DISTINCT' in query:
+                    return [(x,) for x in self.active]
+                return [(x,) for x in self.registered]
+        pg = PG()
+        with patch.object(overrides, 'OVERRIDES', {}), patch.object(overrides, 'COMPUTED', ()):
+            projection.check_override_shadows(pg)
+            pg.active = ['catalysts']
+            with self.assertRaises(RuntimeError):
+                projection.check_override_shadows(pg)
+            pg.active = []; pg.registered = ['unrelated_table']
+            with self.assertRaises(RuntimeError):
+                projection.check_override_shadows(pg)
 
     def test_calendar_due_time_is_not_repeated_within_same_minute(self):
         jobs = [('briefing', [], {'Hour': 7, 'Minute': 0})]
