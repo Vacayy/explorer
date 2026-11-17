@@ -30,6 +30,7 @@ SEOUL = ZoneInfo('Asia/Seoul')
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'scripts'))  # refactor_collect_engine, refactor_collect_job
 LOCK = Path(os.environ.get('COLLECT_SCHEDULER_LOCK', Path.home() / 'server-data/review/refactor-single/collect-scheduler.lock'))
+HOLD = Path(os.environ.get('COLLECT_SCHEDULER_HOLD', Path.home() / 'server-data/review/refactor-single/collect-scheduler.hold'))
 JOB_SECONDS = int(os.environ.get('COLLECT_JOB_SECONDS', '3600'))  # one job's time limit (the MacBook chain step limit)
 TICK_SECONDS = 20
 # One heavy job at a time on the 7.7GiB VM: the scheduler runs one job at a time, and a heavy job also takes the PG
@@ -129,7 +130,18 @@ def plan(hours, now=None):
 def run_job(label, log=print):
     """One job (the chain: its steps in order) in one-shot containers; each outcome is recorded in collect_runs."""
     for step in (CHAIN_SEQUENCE if label == 'chain' else (label,)):
-        _run_one(step, log)
+        HOLD.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with HOLD.open('x') as marker:
+                marker.write(f'{step} {time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())} UTC\n')
+        except FileExistsError:
+            log('collection held: inspect the previous work copy and run before clearing the hold')
+            return False
+        if not _run_one(step, log):
+            log(f'collection held after {step}: inspect the work copy and run before clearing the hold')
+            return False
+        HOLD.unlink()
+    return True
 
 
 def _run_one(label, log=print):
@@ -147,7 +159,7 @@ def _run_one(label, log=print):
         engine.run(['python', '/app/scripts/refactor_collect_job.py', '--stopped', label, started_utc, last, kind],
                    internet=False, limit=300)
         log(f'{label} {kind} {time.monotonic() - started:.0f}s {last}')
-        return
+        return kind == 'applied'
     code, output = engine.run(['python', '/app/scripts/refactor_collect_job.py', label], job=label,
                               name=f'explorer-collect-{label}-{os.getpid()}', memory=JOB_MEMORY.get(label, '2g'),
                               internet=os.environ.get('NO_INTERNET') != '1', limit=JOB_SECONDS,
@@ -157,12 +169,18 @@ def _run_one(label, log=print):
         engine.run(['python', '/app/scripts/refactor_collect_job.py', '--stopped', label, started_utc,
                     f'stopped at the {JOB_SECONDS}s limit'], internet=False, limit=300)
         log(f'{label} stopped at the {JOB_SECONDS}s limit (recorded as failed, nothing applied)')
-        return
+        return False
     lines = [line for line in output.splitlines() if line.startswith('{')]
     if code != 0 and not lines:
         engine.run(['python', '/app/scripts/refactor_collect_job.py', '--stopped', label, started_utc,
                     f'job container exited {code} before recording its outcome'], internet=False, limit=300)
     log(f'{label} rc={code} {time.monotonic() - started:.0f}s {lines[-1] if lines else "(no record line)"}')
+    try:
+        import json
+        outcome = json.loads(lines[-1])['outcome'] if lines else ''
+        return code == 0 and (outcome.startswith('applied:') or outcome.startswith('skipped:'))
+    except (ValueError, KeyError, TypeError):
+        return False
 
 
 def catchup_due(enabled, log=print):
@@ -219,6 +237,9 @@ def wait_ready(log=print, every=30):
 
 
 def run_loop(enabled, log=print):
+    while HOLD.exists():
+        log('collection held: inspect the previous work copy and run before clearing the hold')
+        time.sleep(60)
     wait_ready(log)
     jobs, _catchup = load_jobs()
     queue, next_interval, checked = [], {}, 0.0
@@ -231,7 +252,9 @@ def run_loop(enabled, log=print):
             checked = time.monotonic()
             queue += [label for label in catchup_due(enabled, log) if label not in queue]
         if queue:
-            run_job(queue.pop(0), log)  # concurrency 1: the next waits for this one
+            if not run_job(queue.pop(0), log):
+                while HOLD.exists():
+                    time.sleep(60)  # no later job can publish a failed run's partial work
         else:
             time.sleep(TICK_SECONDS)
 
@@ -268,7 +291,9 @@ def main():
         if args.once:
             if args.once not in enabled:
                 raise SystemExit(f'{args.once} is not enabled')
-            return run_job(args.once)
+            if not run_job(args.once):
+                raise SystemExit(1)
+            return
         return run_loop(enabled)
     if args.plan is None:
         parser.error('--plan or --run is required')
