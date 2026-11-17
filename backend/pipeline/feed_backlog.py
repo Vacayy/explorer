@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import stat
+import uuid
 from dataclasses import asdict
 from pathlib import Path
 
@@ -43,6 +44,10 @@ class FeedBacklog:
             CREATE TABLE IF NOT EXISTS feed_cursor (singleton INTEGER PRIMARY KEY CHECK(singleton=1), lane TEXT);
             INSERT OR IGNORE INTO feed_cursor(singleton, lane) VALUES (1, NULL);
             CREATE TABLE IF NOT EXISTS source_cursor (connector TEXT PRIMARY KEY, ref_hash TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS publication_intent (
+                singleton INTEGER PRIMARY KEY CHECK(singleton=1), token TEXT NOT NULL UNIQUE,
+                seq INTEGER NOT NULL REFERENCES pending(seq)
+            );
         ''')
         self.conn.commit()
 
@@ -69,6 +74,9 @@ class FeedBacklog:
         """Keep the latest fetched payload without moving an already waiting document to the back."""
         if not connector or not ref or not doc.source_type or not doc.source_id:
             raise ValueError('Feed document and source identities are required')
+        if self.conn.execute('SELECT 1 FROM pending p JOIN publication_intent i ON i.seq=p.seq '
+                             'WHERE p.source_type=? AND p.source_id=?', (doc.source_type, doc.source_id)).fetchone():
+            raise ValueError('Cannot replace a document while its publication is in progress')
         lane = hashlib.sha256((connector + '\0' + ref).encode()).hexdigest()
         payload = json.dumps(asdict(doc), ensure_ascii=False, separators=(',', ':'))
         self.conn.execute('INSERT INTO pending(source_type,source_id,lane,connector,payload) VALUES (?,?,?,?,?) '
@@ -91,8 +99,35 @@ class FeedBacklog:
     def acknowledge(self, seq):
         """Call only after publication succeeds; deleting and advancing the cursor are atomic."""
         with self.conn:
+            if self.conn.execute('SELECT 1 FROM publication_intent WHERE seq=?', (seq,)).fetchone():
+                raise ValueError('An active publication must be finished with its receipt')
             row = self.conn.execute('SELECT lane FROM pending WHERE seq=?', (seq,)).fetchone()
             if row is None:
                 raise ValueError('Unknown pending document')
             self.conn.execute('DELETE FROM pending WHERE seq=?', (seq,))
             self.conn.execute('UPDATE feed_cursor SET lane=? WHERE singleton=1', (row[0],))
+
+    def intent(self):
+        return self.conn.execute('SELECT token,seq FROM publication_intent WHERE singleton=1').fetchone()
+
+    def begin_publication(self, seq):
+        """Persist a unique batch before any work copy mutation or PG publication."""
+        token = str(uuid.uuid4())
+        with self.conn:
+            if self.intent() or not self.conn.execute('SELECT 1 FROM pending WHERE seq=?', (seq,)).fetchone():
+                raise ValueError('Another publication is in progress or the document is missing')
+            self.conn.execute('INSERT INTO publication_intent VALUES (1,?,?)', (token, seq))
+        return token
+
+    def finish_publication(self, token, *, receipt_confirmed):
+        """Drop intent and document atomically, only after PG receipt and local bookkeeping."""
+        with self.conn:
+            row = self.intent()
+            if not receipt_confirmed or not row or row[0] != token:
+                raise ValueError('A matching confirmed publication receipt is required')
+            lane = self.conn.execute('SELECT lane FROM pending WHERE seq=?', (row[1],)).fetchone()
+            if lane is None:
+                raise ValueError('Publication document is missing')
+            self.conn.execute('DELETE FROM publication_intent WHERE singleton=1')
+            self.conn.execute('DELETE FROM pending WHERE seq=?', (row[1],))
+            self.conn.execute('UPDATE feed_cursor SET lane=? WHERE singleton=1', (lane[0],))

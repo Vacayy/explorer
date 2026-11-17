@@ -7,6 +7,30 @@ from pipeline.feed_backlog import FeedBacklog, stage_one_reference
 
 
 class FeedBacklogTest(unittest.TestCase):
+    def test_intent_survives_restart_and_requires_confirmed_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'pending.sqlite'
+            queue = FeedBacklog(path)
+            doc = RawDoc('blog', 'id')
+            queue.enqueue('blog', 'ref', doc)
+            seq = queue.next()[0]
+            token = queue.begin_publication(seq)
+            with self.assertRaises(ValueError):
+                queue.acknowledge(seq)
+            with self.assertRaises(ValueError):
+                queue.enqueue('blog', 'ref', doc)
+            queue.close()
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.intent(), (token, seq))
+            with self.assertRaises(ValueError):
+                queue.finish_publication(token, receipt_confirmed=False)
+            with self.assertRaises(ValueError):
+                queue.finish_publication('wrong', receipt_confirmed=True)
+            self.assertEqual(queue.next()[0], seq)
+            queue.finish_publication(token, receipt_confirmed=True)
+            self.assertIsNone(queue.intent())
+            self.assertIsNone(queue.next())
+            queue.close()
     def test_partial_fetch_is_durable_and_does_not_advance(self):
         class Connector:
             def discover(self):

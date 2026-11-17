@@ -1,11 +1,14 @@
 """Run only against an explicitly disposable PostgreSQL database."""
 import os
+import tempfile
 import unittest
 import uuid
 
 import psycopg
 
 from pipeline import feed_receipts, postgres_collect_runs
+from pipeline.base import RawDoc
+from pipeline.feed_backlog import FeedBacklog
 
 
 @unittest.skipUnless(os.environ.get('FEED_TEST_DSN'), 'requires disposable PostgreSQL')
@@ -44,3 +47,23 @@ class FeedReceiptTest(unittest.TestCase):
             postgres_collect_runs.record(self.conn, feed_receipts.LABEL, '2026-01-01', f'applied: {self.token}')
         with self.assertRaises(RuntimeError):
             feed_receipts.committed(self.conn, self.token)
+
+    def test_restart_after_pg_commit_before_local_completion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'feed.sqlite')
+            queue = FeedBacklog(path)
+            queue.enqueue('blog', 'reference', RawDoc('blog', 'document'))
+            seq = queue.next()[0]
+            token = queue.begin_publication(seq)
+            feed_receipts.publish_once(self.conn, token, '2026-01-01',
+                                       lambda: self.conn.execute('INSERT INTO publication VALUES (1)'))
+            queue.close()  # interruption before local floors / acknowledgement
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.intent(), (token, seq))
+            self.assertFalse(feed_receipts.publish_once(self.conn, token, '2026-01-01',
+                             lambda: self.fail('must not publish twice')))
+            queue.finish_publication(token, receipt_confirmed=feed_receipts.committed(self.conn, token))
+            self.assertIsNone(queue.intent())
+            self.assertIsNone(queue.next())
+            self.assertEqual(self.conn.execute('SELECT count(*) FROM publication').fetchone()[0], 1)
+            queue.close()
