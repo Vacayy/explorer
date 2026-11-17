@@ -375,6 +375,18 @@ PERSONAL_ROWS = (("DELETE FROM temp.knowledge WHERE model='user'"),  # knowledge
                  'UPDATE temp.telegram_channels SET is_active=1', 'UPDATE temp.youtube_channels SET is_active=1')
 
 
+# A member's own rows of the per-account ledgers, shown in place of the operator's (see _scope_to_requester).
+MEMBER_LEDGERS = {'saved_items': ('owner_saved_items', ('id', 'kind', 'ref', 'url', 'title', 'subtitle', 'note', 'created_at'))}
+
+
+def requester_scope():
+    """Whose personal state a read shows: the operator's, or a member's own ('principal', id; id None when anonymous)."""
+    if requester_is_operator():
+        return 'operator'
+    from pipeline.postgres_principals import request_principal
+    return 'principal', request_principal.get()
+
+
 def requester_is_operator():
     """In the private (loopback) mode every reader is the operator. In the public mode only a request whose
     boundary-resolved principal is the operator reads the operator's personal state; anonymous visitors, other
@@ -389,7 +401,7 @@ def requester_is_operator():
 
 def _scope_to_requester(conn, pg):
     """Empty the requester's view of the operator's personal state (TEMP shadows hide the file's tables,
-    so whatever a legacy reader joins, it sees no one's records)."""
+    so whatever a legacy reader joins, it sees no one's records), then show a member's own (MEMBER_LEDGERS)."""
     temp = {row[0] for row in conn.execute("SELECT name FROM temp.sqlite_master WHERE type='table'")}
     if 'trade_follow' in temp:
         # The collected item catalog without the operator's on/off choices (owner_trade_follow).
@@ -403,6 +415,14 @@ def _scope_to_requester(conn, pg):
             conn.execute(f'DELETE FROM temp."{table}"')
         elif conn.execute("SELECT 1 FROM main.sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
             conn.execute(f'CREATE TEMP TABLE "{table}" AS SELECT * FROM main."{table}" WHERE 0')
+    _, principal = requester_scope()
+    account = pg.execute('SELECT id FROM fixture_portfolio_accounts WHERE principal=%s', (principal,)).fetchone() if principal else None
+    if account is not None:
+        for table, (ledger, columns) in MEMBER_LEDGERS.items():
+            if pg.execute('SELECT to_regclass(%s)', (ledger,)).fetchone()[0] is not None:
+                conn.executemany(f'INSERT INTO temp."{table}" ({",".join(columns)}) VALUES ({",".join("?" for _ in columns)})',
+                                 pg.execute(f'SELECT {",".join(columns)} FROM {ledger} WHERE account_id=%s ORDER BY id',
+                                            (account[0],)).fetchall())
     for statement in PERSONAL_ROWS:
         table = statement.split('temp.')[1].split()[0]
         if table not in temp:
@@ -485,29 +505,29 @@ def _derive_owner_portfolio(root, pg):
 
 
 def _derive_owner_records(root, pg, *, skip_overrides=()):
-    """Show the mapped owner's follows and prediction pins through the legacy tables."""
+    """Show the mapped owner's follows and prediction pins through the legacy tables (never a member's rows)."""
     if pg.execute("SELECT to_regclass('owner_follows')").fetchone()[0] is None:
         return
     root.execute('DELETE FROM follows')
     root.executemany('INSERT INTO follows (id,entity_id,created_at) VALUES (?,?,?)',
-                     pg.execute('SELECT id,entity_id,created_at FROM owner_follows ORDER BY id').fetchall())
+                     pg.execute('SELECT id,entity_id,created_at FROM owner_follows WHERE account_id=(SELECT account_id FROM fixture_portfolio_legacy_mapping) ORDER BY id').fetchall())
     root.execute('DELETE FROM kalshi_pins')
     root.executemany('INSERT INTO kalshi_pins (event_ticker,series_ticker,pinned_at) VALUES (?,?,?)',
-                     pg.execute('SELECT event_ticker,series_ticker,pinned_at FROM owner_kalshi_pins').fetchall())
+                     pg.execute('SELECT event_ticker,series_ticker,pinned_at FROM owner_kalshi_pins WHERE account_id=(SELECT account_id FROM fixture_portfolio_legacy_mapping)').fetchall())
     if pg.execute("SELECT to_regclass('owner_channel_reads')").fetchone()[0] is not None:
         root.execute('DELETE FROM channel_reads')
         root.executemany('INSERT INTO channel_reads (channel,read_until,updated_at) VALUES (?,?,?)',
-                         pg.execute('SELECT channel,read_until,updated_at FROM owner_channel_reads').fetchall())
+                         pg.execute('SELECT channel,read_until,updated_at FROM owner_channel_reads WHERE account_id=(SELECT account_id FROM fixture_portfolio_legacy_mapping)').fetchall())
     if pg.execute("SELECT to_regclass('owner_saved_items')").fetchone()[0] is not None:
         root.execute('DELETE FROM saved_items')
         root.executemany('INSERT INTO saved_items (id,kind,ref,url,title,subtitle,note,created_at) VALUES (?,?,?,?,?,?,?,?)',
-                         pg.execute('SELECT id,kind,ref,url,title,subtitle,note,created_at FROM owner_saved_items ORDER BY id').fetchall())
+                         pg.execute('SELECT id,kind,ref,url,title,subtitle,note,created_at FROM owner_saved_items WHERE account_id=(SELECT account_id FROM fixture_portfolio_legacy_mapping) ORDER BY id').fetchall())
     if pg.execute("SELECT to_regclass('owner_tracker_conditions')").fetchone()[0] is not None:
         root.execute('DELETE FROM tracker_conditions')
         root.executemany('INSERT INTO tracker_conditions (id,stock_code,role,kind,level,ma,label,note,done,created_at,updated_at) '
                          'VALUES (?,?,?,?,?,?,?,?,?,?,?)',
                          pg.execute('SELECT id,stock_code,role,kind,level,ma,label,note,done,created_at,updated_at '
-                                    'FROM owner_tracker_conditions ORDER BY id').fetchall())
+                                    'FROM owner_tracker_conditions WHERE account_id=(SELECT account_id FROM fixture_portfolio_legacy_mapping) ORDER BY id').fetchall())
     derive_owner_transcript_follow(root, pg)
     if pg.execute("SELECT to_regclass('owner_knowledge_reviews')").fetchone()[0] is not None:
         # Operator decisions win over whatever the collector judged for the same knowledge.

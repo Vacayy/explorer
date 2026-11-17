@@ -14,6 +14,13 @@ def owner_account(conn):
     return rows[0][0]
 
 
+def requester_account(conn, *, create=False):
+    """The request's own account (pipeline.postgres_principals): the mapped owner's for the operator and in the
+    private mode, a member's own otherwise; None for a member with no records yet unless `create`."""
+    from pipeline.postgres_principals import owner_account as account
+    return account(conn, create=create)[0]
+
+
 def initialize_owner_records(conn):
     _guard(conn)
     with conn.transaction():
@@ -137,7 +144,7 @@ def initialize_saved(conn):
 
 def _saved(conn, where, params):
     row = conn.execute(f'SELECT {",".join(SAVED_COLUMNS)} FROM owner_saved_items WHERE account_id=%s AND {where}',
-                       (owner_account(conn), *params)).fetchone()
+                       (requester_account(conn), *params)).fetchone()
     return dict(zip(SAVED_COLUMNS, row)) if row else None
 
 
@@ -145,19 +152,19 @@ def save(conn, body):
     """Legacy INSERT OR IGNORE on (kind, ref): an existing bookmark is returned unchanged."""
     conn.execute('INSERT INTO owner_saved_items (account_id,kind,ref,url,title,subtitle,note) VALUES (%s,%s,%s,%s,%s,%s,%s) '
                  'ON CONFLICT (account_id,kind,ref) DO NOTHING',
-                 (owner_account(conn), body.kind, body.ref, body.url, body.title, body.subtitle, body.note))
+                 (requester_account(conn, create=True), body.kind, body.ref, body.url, body.title, body.subtitle, body.note))
     return _saved(conn, 'kind=%s AND ref=%s', (body.kind, body.ref))
 
 
 def update_saved_note(conn, item_id, note):
     if not _saved(conn, 'id=%s', (item_id,)):
         return None
-    conn.execute('UPDATE owner_saved_items SET note=%s WHERE account_id=%s AND id=%s', (note, owner_account(conn), item_id))
+    conn.execute('UPDATE owner_saved_items SET note=%s WHERE account_id=%s AND id=%s', (note, requester_account(conn), item_id))
     return _saved(conn, 'id=%s', (item_id,))
 
 
 def remove_saved(conn, item_id):
-    conn.execute('DELETE FROM owner_saved_items WHERE account_id=%s AND id=%s', (owner_account(conn), item_id))
+    conn.execute('DELETE FROM owner_saved_items WHERE account_id=%s AND id=%s', (requester_account(conn), item_id))
 
 
 TRACKER_COLUMNS = ('id', 'stock_code', 'role', 'kind', 'level', 'ma', 'label', 'note', 'done', 'created_at', 'updated_at')

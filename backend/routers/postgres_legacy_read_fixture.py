@@ -141,10 +141,10 @@ def install(app, projection, *, database_host):
     # shared_result reuses a result while the file's data_version is unchanged; projection files never
     # change in place, so key it on the file the stable path points at (a new build is a new key).
     from services import shared_result
-    # A requester other than the operator reads no personal state (pipeline.postgres_legacy_projection), so
-    # results computed for one class are never handed to the other.
-    from pipeline.postgres_legacy_projection import requester_is_operator
-    shared_result._db_state = lambda: (os.path.realpath(projection.stable_path), requester_is_operator())
+    # Each requester reads only its own personal state (pipeline.postgres_legacy_projection), so a result
+    # computed for one requester is never handed to another.
+    from pipeline.postgres_legacy_projection import requester_scope
+    shared_result._db_state = lambda: (os.path.realpath(projection.stable_path), requester_scope())
 
     import importlib
     # The owner-gated experimental portfolio adapter is replaced by the legacy reads.

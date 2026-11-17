@@ -7,6 +7,7 @@ see it through the projection's per-connection TEMP shadows, so writes show at o
 private loopback gateway; external exposure needs the owner gate first.
 """
 import json
+from contextlib import contextmanager
 
 from typing import Literal
 
@@ -96,16 +97,26 @@ def create_router(factory, timeline, projection=None):
                 records.mark_read(conn, c.id, stamp)
         return {'platform': body.platform, 'read_until': stamp, 'channels': len(targets), 'marked': sum(c.unread for c in targets)}
 
+    @contextmanager
+    def member():
+        """A saved-items ledger is the requester's own (records.requester_account)."""
+        from pipeline.postgres_principals import PrincipalRequired
+        try:
+            with connection() as conn:
+                yield conn
+        except PrincipalRequired:
+            raise HTTPException(401, 'Authentication required') from None
+
     @router.post('/api/spine/saved', response_model=SavedItem, status_code=201)
     def add_saved(body: SaveRequest):
         if body.kind not in ('company', 'doc', 'narrative', 'report', 'chat'):
             raise HTTPException(400, '알 수 없는 kind')
-        with connection() as conn:
+        with member() as conn:
             return records.save(conn, body)
 
     @router.patch('/api/spine/saved/{item_id}', response_model=SavedItem)
     def update_note(item_id: int, body: NoteRequest):
-        with connection() as conn:
+        with member() as conn:
             row = records.update_saved_note(conn, item_id, body.note)
         if row is None:
             raise HTTPException(404, '저장 항목을 찾을 수 없습니다')
@@ -113,7 +124,7 @@ def create_router(factory, timeline, projection=None):
 
     @router.delete('/api/spine/saved/{item_id}', status_code=204)
     def remove_saved(item_id: int):
-        with connection() as conn:
+        with member() as conn:
             records.remove_saved(conn, item_id)
 
     @router.post('/api/spine/tracker/{code}/conditions', response_model=TrackerCondition)
