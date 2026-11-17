@@ -41,8 +41,10 @@ CHAIN_SEQUENCE = ('chain_macro_news', 'chain', 'chain_causal', 'chain_signals', 
 # Per-run host caps of the intake (PM 6938365215, 6940286658): ~30 Naver blog feeds, 32 Telegram channel pages,
 # 25 YouTube channel feeds plus captions, Telegram images read within the 30-minute image budget (numbered CDN hosts).
 JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40,t.me=40,www.youtube.com=40,.telesco.pe=40',
-                 # one chart request per listed code (3,017 now) plus retries; pending the PM's cap decision
+                 # one chart request per listed code (3,017 now), retries counted in the same cap (PM 6942746227)
                  'history': 'fchart.stock.naver.com=3200'}
+# A job's own stop rules: the history job stops at 50 upstream errors (403/429 stop every job at the first).
+JOB_ENV = {'history': {'TRIAL_MAX_ERRORS': '50'}}
 # The intake's sources after the cutover (registry order: scrap reads Telegram documents); before it, the default
 # (no Telegram or YouTube) keeps the MacBook the only collector from this IP.
 CUTOVER_FEED_SOURCES = 'blog,telegram,note,youtube,memo,scrap'
@@ -110,7 +112,8 @@ def _run_one(label, log=print):
     code, output = engine.run(['python', '/app/scripts/refactor_collect_job.py', label], job=label,
                               name=f'explorer-collect-{label}-{os.getpid()}', memory=JOB_MEMORY.get(label, '2g'),
                               internet=os.environ.get('NO_INTERNET') != '1', limit=JOB_SECONDS,
-                              extra_env={'TRIAL_HOST_CAPS': JOB_HOST_CAPS[label]} if label in JOB_HOST_CAPS else None)
+                              extra_env={**({'TRIAL_HOST_CAPS': JOB_HOST_CAPS[label]} if label in JOB_HOST_CAPS else {}),
+                                         **JOB_ENV.get(label, {})} or None)
     if code is None:  # stopped at the limit (the container is removed): recorded as failed, nothing applied
         engine.run(['python', '/app/scripts/refactor_collect_job.py', '--stopped', label, started_utc,
                     f'stopped at the {JOB_SECONDS}s limit'], internet=False, limit=300)

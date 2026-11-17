@@ -50,11 +50,11 @@ DERIVED = ('doc_fts',)
 # (pipeline.postgres_sector_refresh; after the daily price collection and once after the cutover).
 SECTOR_REFRESH = 'sectorrefresh'
 # Discovery and analysis price history (scripts/refresh_market_history.py, D-177/D-220): its plan → collect → publish
-# unchanged, from the collected prices; staged in the trial volume (a stopped run resumes), published beside the
-# projection file, where the analysis snapshot looks for it (source_db.with_name). Only this job mounts /projection
-# writable (the builder manages projection-*.db there and nothing else).
+# unchanged, from the collected prices; staged in the trial volume (a stopped run resumes), published in its own
+# volume (architect #3 6942803616): only this job mounts it writable, the API reads it read-only
+# (ANALYSIS_MARKET_HISTORY), and /projection stays read-only for every job.
 MARKET_HISTORY = 'history'
-HISTORY_DESTINATION = Path(os.environ.get('HISTORY_DESTINATION', '/projection/market_history.sqlite'))
+HISTORY_DESTINATION = Path(os.environ.get('HISTORY_DESTINATION', '/history/market_history.sqlite'))
 HISTORY_SHRINK_LIMIT = 0.5
 COMPUTE_JOBS = {'narratives', 'contradictions', 'promote', 'proposals', 'bigpicture', 'sectoroverview',
                 *(set(CHAIN_STEPS) - CHAIN_TABLE_STEPS)}
@@ -140,6 +140,8 @@ def _guarded_history_publish(folder, destination, *, publish):
     shutil.rmtree(staging, ignore_errors=True)
     staging.mkdir()
     try:
+        if trial.stopped:  # a cap, a block or upstream errors: never publish a cut-short collection
+            raise ValueError(f'Stopped: {trial.stopped[0]}')
         staged = staging / destination.name
         publish(folder, staged)
         with sqlite3.connect(f'file:{staged}?mode=ro', uri=True) as db:

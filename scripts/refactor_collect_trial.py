@@ -29,6 +29,8 @@ LOG = WORK.parent / 'trial-log.jsonl'
 NEW_DOCUMENT_CAP = 5
 SHRINK_LIMIT = 0.5
 BLOCKED = {403, 429}
+# Upstream errors (5xx) from one host that stop the job (PM #3 6942746227, the history job); unset: no such stop.
+MAX_ERRORS = int(os.environ.get('TRIAL_MAX_ERRORS', '0')) or None
 MAX_REQUESTS = int(os.environ.get('TRIAL_MAX_REQUESTS', '20'))  # per source host, enforced before anything is applied (PM 6937645863)
 # Per-host exceptions, 'host=cap,host=cap' (a job that needs more from one host, decided by the PM); others MAX_REQUESTS.
 HOST_CAPS = {host: int(cap) for host, _, cap in (item.partition('=') for item in
@@ -40,7 +42,7 @@ def cap_of(host):
     if host in HOST_CAPS:
         return HOST_CAPS[host]
     return next((cap for key, cap in HOST_CAPS.items() if key.startswith('.') and host.endswith(key)), MAX_REQUESTS)
-requests_by_host, statuses, per_host = Counter(), Counter(), Counter()
+requests_by_host, statuses, per_host, errors = Counter(), Counter(), Counter(), Counter()
 stopped = []  # the first stop reason; kept, because a source may swallow the exception raised at the stop
 
 
@@ -85,6 +87,10 @@ def _instrument():
         statuses[f'{host} {status}'] += 1
         if status in BLOCKED:
             stop(f'{host} answered {status}')
+        if MAX_ERRORS and status >= 500:
+            errors[host] += 1
+            if errors[host] >= MAX_ERRORS:
+                stop(f'{host} answered {errors[host]} upstream errors')
         per_host[host] += 1
         if per_host[host] >= cap_of(host):
             stop(f'{host} reached the request cap {cap_of(host)}')  # no further request, nothing applied

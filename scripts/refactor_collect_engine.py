@@ -25,11 +25,12 @@ STATE = HOME / 'server-data/review/refactor-single/collect-trial-schema'
 # The credit adapter (local_sources/, git-excluded code from the MacBook; architect #3 6942709181): like a credential,
 # a host directory mounted read-only into job containers only, never the API or the image. Absent, credit reports
 # 'adapter missing' as on a MacBook without it.
+HISTORY_VOLUME = 'explorer-refactor-history'  # market_history.sqlite; the API and analysis read it read-only
 LOCAL_SOURCES = Path(os.environ.get('COLLECT_LOCAL_SOURCES', HOME / 'server-data/review/refactor-single/local-sources'))
 API_ENV = ('REFACTOR_POSTGRES_DSN', 'REFACTOR_TEST_DISPOSABLE', 'FASTEMBED_CACHE_PATH', 'CODEX_BIN', 'CODEX_HOME',
            'CODEX_FALLBACK_MODEL', 'HOME', 'ENRICH_ENGINE')
 FORWARDED = ('TRIAL_MAX_REQUESTS', 'TRIAL_HOST_CAPS', 'COLLECT_FEED_SOURCES', 'COLLECT_MAX_NEW_DOCS',
-             'COLLECT_MAX_MODEL_CALLS', 'COLLECT_PROJECTION_WAIT')
+             'COLLECT_MAX_MODEL_CALLS', 'COLLECT_PROJECTION_WAIT', 'TRIAL_MAX_ERRORS')
 
 
 class _Unix(http.client.HTTPConnection):
@@ -105,7 +106,7 @@ def check(spec):
     allowed = {f'{ROOT}/backend', f'{ROOT}/scripts', 'explorer-refactor-single-projection', VOLUME,
                'explorer-public-codex-auth', 'explorer-data-rehearsal_models',
                f'{HOME}/server-data/review/refactor-single/codex-gate',
-               f'{HOME}/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py', str(LOCAL_SOURCES)}
+               f'{HOME}/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py', str(LOCAL_SOURCES), HISTORY_VOLUME}
     sources = {bind.split(':', 1)[0] for bind in host['Binds']}
     if spec['Image'] != IMAGE or sources - allowed or any('docker.sock' in bind for bind in host['Binds']):
         raise ValueError(f'Refused job container: image {spec["Image"]}, mounts {sorted(sources - allowed)}')
@@ -139,11 +140,12 @@ def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=No
     env += [f'{key}={value}' for key, value in (extra_env or {}).items()]  # this job's own caps
     env += [f'{key}={value}' for key, value in secrets().items()]
     binds = [f'{ROOT}/backend:/app/backend:ro', f'{ROOT}/scripts:/app/scripts:ro',
-             # the market history job publishes beside the projection file (refactor_collect_job.MARKET_HISTORY)
-             f"explorer-refactor-single-projection:/projection:{'rw' if job == 'history' else 'ro'}", f'{VOLUME}:/trial',
+             'explorer-refactor-single-projection:/projection:ro', f'{VOLUME}:/trial',
              'explorer-public-codex-auth:/provider-auth', 'explorer-data-rehearsal_models:/models:ro',
              f'{HOME}/server-data/review/refactor-single/codex-gate:/control/codex-gate:ro',
              f'{HOME}/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py:/control/codex-credential-gate.py:ro']
+    if job == 'history':  # the market history job alone writes its own volume (refactor_collect_job.MARKET_HISTORY)
+        binds.append(f'{HISTORY_VOLUME}:/history')
     if (LOCAL_SOURCES / 'local_sources').is_dir():
         binds.append(f'{LOCAL_SOURCES}:/opt/local-sources:ro')
     units = {'g': 1 << 30, 'm': 1 << 20}

@@ -25,6 +25,7 @@ docker run -d --name "$C" --user 10001:10001 --network explorer-refactor-preview
   --cpus 2 -p 127.0.0.1:18012:8000 --label explorer.purpose=refactor-single-path --env-file "$ENV_FILE" \
   -v explorer-public-codex-auth:/provider-auth -v explorer-data-rehearsal_models:/models:ro \
   -v explorer-refactor-single-projection:/projection \
+  -v explorer-refactor-history:/history:ro -e ANALYSIS_MARKET_HISTORY=/history/market_history.sqlite \
   -v explorer-data-rehearsal_media:/app/media:ro \
   -v explorer-refactor-analysis-store:/app/logs \
   -v explorer-analysis-rpc-candidate:/run/explorer-analysis:ro \

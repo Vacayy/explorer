@@ -46,6 +46,12 @@ def _iso_date(value: str) -> str:
     return date.fromisoformat(value).isoformat()
 
 
+def _history_path(source_db: Path) -> Path:
+    """The published price history: ANALYSIS_MARKET_HISTORY when the deployment keeps it apart, else beside the source."""
+    configured = os.environ.get("ANALYSIS_MARKET_HISTORY")
+    return Path(configured) if configured else source_db.with_name("market_history.sqlite")
+
+
 def _regular_file(path: Path) -> None:
     info = path.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
@@ -98,7 +104,7 @@ def source_fingerprint(source_db: Path, as_of: str | None = None) -> str:
     _reject_link_ancestors(source_db)
     _regular_file(source_db)
     source_db = source_db.resolve(strict=True)
-    history_path = source_db.with_name("market_history.sqlite")
+    history_path = _history_path(source_db)
     has_history = history_path.exists() or history_path.is_symlink()
     connection = sqlite3.connect(source_db.as_uri() + "?mode=ro", uri=True, timeout=2)
     try:
@@ -167,7 +173,7 @@ def export_snapshot(
         connection.execute("PRAGMA query_only=ON")
         # A trusted ETL can publish coherent provider-adjusted history beside
         # the original DB. Never splice that vendor's rows into old price bases.
-        history_path = source_db.with_name('market_history.sqlite')
+        history_path = _history_path(source_db)
         history_meta, history_codes = None, set()
         has_history = history_path.exists() or history_path.is_symlink()
         if has_history:
