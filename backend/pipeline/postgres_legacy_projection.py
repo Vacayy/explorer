@@ -50,7 +50,9 @@ SHADOWED = ('portfolio_transactions', 'stock_group_members', 'stock_groups', 'wa
             'industry_groups', 'industry_members', 'business_segments', 'ir_notes',
             'feature_flags', 'era_checks', 'research_candidates', 'agent_proposals', 'entity_keywords',
             # Small computation outputs a screen reads right after its button: overrides shown at once, not next build.
-            'pricing_claims', 'pricing_observations', 'pricing_days', *NATIVE)
+            'pricing_claims', 'pricing_observations', 'pricing_days',
+            # The operator's alert state, replaced whole from the MacBook at the cutover (a few hundred rows).
+            'portfolio_principle_state', 'portfolio_alerts_sent', *NATIVE)
 CHECK_SECONDS = 10
 log = logging.getLogger(__name__)
 
@@ -380,7 +382,9 @@ class LegacyProjection:
 # whole tables, rows of mixed tables, and the operator's personal flags on shared rows.
 PERSONAL_TABLES = ('follows', 'kalshi_pins', 'channel_reads', 'saved_items', 'tracker_conditions', 'portfolio_transactions',
                    'portfolio_principles', 'stock_groups', 'stock_group_members', 'watch_rules', 'watch_evaluations',
-                   'questions', 'sub_questions', 'study_projects', *NATIVE_FILE_ONLY)
+                   'questions', 'sub_questions', 'study_projects',
+                   # The operator's alert state (which principle rules are broken, which alerts were sent).
+                   'portfolio_principle_state', 'portfolio_alerts_sent', *NATIVE_FILE_ONLY)
 PERSONAL_ROWS = (("DELETE FROM temp.knowledge WHERE model='user'"),  # knowledge the user injected
                  'DELETE FROM temp.proxy_observations WHERE proxy_id IN (SELECT id FROM temp.proxy_registry WHERE sub_question_id IS NOT NULL)',
                  'DELETE FROM temp.proxy_registry WHERE sub_question_id IS NOT NULL',  # proxies of the user's questions

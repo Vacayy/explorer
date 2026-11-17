@@ -10,6 +10,7 @@ Differences from development's class, which stays as it was:
 - The policy map is built from the candidate's registered routes (route_policies), with no approval filter:
   every collected-data read is public.
 """
+import logging
 import hmac
 import re
 
@@ -167,4 +168,6 @@ class CandidateAccessBoundary:
         except Exception:
             if response_started:
                 raise
+            # The client sees a fixed error; the server log keeps the cause.
+            logging.getLogger(__name__).exception('Request failed: %s %s', scope.get('method'), scope.get('path'))
             await reject(500, 'Request failed')

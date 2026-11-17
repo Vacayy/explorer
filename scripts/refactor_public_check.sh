@@ -5,6 +5,8 @@
 # clone. The live candidate, the public service and the MacBook are not touched. Google settings are fake values.
 #   scripts/refactor_public_check.sh up      # clone, users and sessions, API, gateway on 127.0.0.1:18015
 #   scripts/refactor_public_check.sh down    # remove everything created here
+# CHECK_SCHEMA=<schema> CHECK_PROJECTION=<host dir> use an existing disposable schema (a sync rehearsal's) and its
+# projection instead of a fresh clone of the live one; `down` then leaves that schema in place.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DATA=$HOME/server-data/review/refactor-single
@@ -15,8 +17,12 @@ GW=explorer-pilot-gateway-check
 IMAGE=explorer-refactor-test:psycopg-3.2.13-auth
 case "$1" in
   up)
-    NO_INTERNET=1 "$ROOT/scripts/refactor_collect_trial.sh" setup >/dev/null
-    CLONE=$(cat "$DATA/collect-trial-schema")
+    if [ -n "${CHECK_SCHEMA:-}" ]; then
+      CLONE=$CHECK_SCHEMA
+    else
+      NO_INTERNET=1 "$ROOT/scripts/refactor_collect_trial.sh" setup >/dev/null
+      CLONE=$(cat "$DATA/collect-trial-schema")
+    fi
     mkdir -p "$STATE" && chmod 700 "$STATE"
     head -c 32 /dev/urandom > "$STATE/trial-secret" && chmod 600 "$STATE/trial-secret"
     docker network create "$NET" >/dev/null
@@ -55,7 +61,10 @@ for name, role in (('operator', 'operator'), ('member', 'member')):
     store.set_role(user.id, role)
     if name == 'operator':
         with factory() as conn:
-            postgres_principals.remap_operator(conn, user.id)
+            try:
+                postgres_principals.remap_operator(conn, user.id)
+            except ValueError:  # a reused schema (CHECK_SCHEMA): mapped by an earlier run
+                pass
     token = store.issue_session(user.id, ttl_seconds=6 * 3600)
     path = f'/check/{name}.session'
     with open(path, 'w') as f:
@@ -66,7 +75,7 @@ PY
     docker create --name "$API" --network "$NET" --network-alias explorer-refactor-single-path --user 10001:10001 \
       --memory 2684354560 --read-only --tmpfs /tmp:rw,size=512m,uid=10001,gid=10001,mode=700 --cap-drop ALL \
       --security-opt no-new-privileges --env-file "$env_file" \
-      -v explorer-refactor-single-projection:/projection:ro -v explorer-data-rehearsal_media:/app/media:ro \
+      -v "${CHECK_PROJECTION:-explorer-refactor-single-projection}":/projection:ro -v explorer-data-rehearsal_media:/app/media:ro \
       -v explorer-refactor-analysis-store:/app/logs:ro -v explorer-data-rehearsal_models:/models:ro \
       -v "$ROOT/backend:/app/backend:ro" -v "$ROOT/scripts:/app/scripts:ro" -v "$STATE/trial-secret:/check/trial-secret:ro" \
       -w /app --entrypoint python "$IMAGE" -c "from pathlib import Path; from security.login_transactions import LoginTransactions; \
@@ -85,7 +94,7 @@ runpy.run_path('/app/scripts/refactor_single_path_preview.py', run_name='__main_
   down)
     docker rm -f "$GW" "$API" >/dev/null 2>&1 || true
     docker network rm "$NET" >/dev/null 2>&1 || true
-    "$ROOT/scripts/refactor_collect_trial.sh" teardown
+    [ -n "${CHECK_SCHEMA:-}" ] || "$ROOT/scripts/refactor_collect_trial.sh" teardown
     rm -rf "$STATE"
     ;;
 esac
