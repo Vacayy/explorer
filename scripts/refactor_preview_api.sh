@@ -13,7 +13,9 @@ DATA=${REFACTOR_SERVER_DATA:-$HOME/server-data}
 ENV_FILE=$(mktemp)
 trap 'rm -f "$ENV_FILE"' EXIT
 chmod 600 "$ENV_FILE"
-docker inspect "$C" | python3 -c "import sys,json;print('\n'.join(json.load(sys.stdin)[0]['Config']['Env']))" > "$ENV_FILE"
+docker inspect "$C" | python3 -c "import sys,json;print('\n'.join(json.load(sys.stdin)[0]['Config']['Env']))" | grep -v '^EXPLORER_' > "$ENV_FILE"
+# A public-mode run adds its settings (REFACTOR_API_EXTRA_ENV: an env file) and a read-only mount (REFACTOR_API_EXTRA_MOUNT).
+if [ -n "${REFACTOR_API_EXTRA_ENV:-}" ]; then cat "$REFACTOR_API_EXTRA_ENV" >> "$ENV_FILE"; fi
 IMAGE=${REFACTOR_API_IMAGE:-$(docker inspect "$C" --format '{{.Config.Image}}')}  # override to switch images
 docker rm -f "$C" >/dev/null
 docker run -d --name "$C" --user 10001:10001 --network explorer-refactor-preview-private --memory "$MEMORY" --read-only \
@@ -27,6 +29,7 @@ docker run -d --name "$C" --user 10001:10001 --network explorer-refactor-preview
   -v "$DATA/review/refactor-single/codex-gate:/control/codex-gate:ro" \
   -v "$DATA/incoming/explorer-rehearsal/vault/principles:/app/vault/principles:ro" \
   -v "$DATA/review/refactor-single/vault-candidate/notes-injected:/app/vault/notes/injected" \
+  ${REFACTOR_API_EXTRA_MOUNT:+-v "$REFACTOR_API_EXTRA_MOUNT"} \
   -w /app --entrypoint python "$IMAGE" /app/scripts/refactor_single_path_preview.py
 docker network connect bridge "$C"
 # A compute-worker pass stays up 90s after its last job with the code it started with; end it so the next job
