@@ -8,6 +8,33 @@ import sqlite3
 TABLES = ('raw_documents', 'enrichments', 'entity_links', 'entities', 'entity_keywords', 'entity_relations')
 
 
+def append_group_marks(src, dst):
+    """Append only identical-or-new grouping marks within the caller's transaction."""
+    columns = [r[1] for r in src.execute('PRAGMA table_info(telegram_group_marks)')]
+    other = [r[1] for r in dst.execute('PRAGMA table_info(telegram_group_marks)')]
+    if not columns and not other:
+        return 0
+    if columns != other or not {'channel', 'msg_id'}.issubset(columns):
+        raise ValueError('Grouping mark schemas differ')
+    positions = (columns.index('channel'), columns.index('msg_id'))
+    key = lambda row: tuple(row[i] for i in positions)  # noqa: E731
+    left = iter(src.execute('SELECT * FROM telegram_group_marks ORDER BY channel,msg_id'))
+    right = iter(dst.execute('SELECT * FROM telegram_group_marks ORDER BY channel,msg_id'))
+    a, b, new = next(left, None), next(right, None), []
+    while a is not None or b is not None:
+        if b is None or (a is not None and key(a) < key(b)):
+            new.append(a)
+            a = next(left, None)
+        elif a is None or key(b) < key(a):
+            raise ValueError('Target has a grouping mark missing from feed')
+        else:
+            if a != b:
+                raise ValueError('Existing grouping marks differ')
+            a, b = next(left, None), next(right, None)
+    dst.executemany('INSERT INTO telegram_group_marks VALUES (' + ','.join('?' for _ in columns) + ')', new)
+    return len(new)
+
+
 def sync(source_path, target_path, *, allow_noop=False):
     src = sqlite3.connect(f'file:{source_path}?mode=ro', uri=True)
     dst = sqlite3.connect(target_path)
@@ -45,7 +72,12 @@ def sync(source_path, target_path, *, allow_noop=False):
             additions[table] = (source_columns, new)
         documents = additions['raw_documents'][1]
         if allow_noop and not any(rows for _, rows in additions.values()):
-            dst.rollback()
+            if append_group_marks(src, dst):
+                if dst.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
+                    raise ValueError('Target integrity check failed')
+                dst.commit()
+            else:
+                dst.rollback()
             return {'raw_documents': 0, 'enrichments': 0, 'entity_links': 0}
         if not 1 <= len(documents) <= 5:
             raise ValueError('Expected one to five documents')
@@ -71,6 +103,7 @@ def sync(source_path, target_path, *, allow_noop=False):
         for table in ('raw_documents', 'enrichments', 'entities', 'entity_keywords', 'entity_relations', 'entity_links'):
             cols, rows = additions[table]
             dst.executemany(f'INSERT INTO "{table}" VALUES ({",".join("?" for _ in cols)})', rows)
+        append_group_marks(src, dst)
         dst.execute("UPDATE candidate_publish_floor SET value=? WHERE name='document_floor'", (max(doc_ids),))
         for table, floor in (('entities', 'entity_floor'), ('entity_keywords', 'keyword_floor'),
                              ('entity_relations', 'relation_floor')):

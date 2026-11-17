@@ -468,7 +468,8 @@ def _mark_identical_feed_revisions(queue):
 
 def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-backlog.sqlite', youtube=None, telegram=None,
                      batch_marker=Path('/trial/feed-batch-trial'), image_marker=Path('/trial/feed-image-trial'),
-                     batch_enabled=Path('/trial/feed-batch-enabled')):
+                     batch_enabled=Path('/trial/feed-batch-enabled'),
+                     telegram_trial=Path('/trial/feed-telegram-fallback-trial')):
     """One blog reference, one queued document; a failure keeps this isolated feed on hold."""
     from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference
     keyword_only = os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1'
@@ -485,6 +486,12 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 \
                 or batch_enabled.read_text() != 'feed-batch-enabled-v1\n':
             raise ValueError('Unrecognized feed batch enable flag')
+    telegram_trial_exists = telegram_trial.exists() or telegram_trial.is_symlink()
+    if telegram_trial_exists:
+        info = telegram_trial.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 \
+                or telegram_trial.read_text() != 'feed-telegram-fallback-trial-v1\n':
+            raise ValueError('Unrecognized Telegram fallback trial flag')
     batch_requested = os.environ.get('COLLECT_FEED_BATCH_MODEL') == '1' or marker_exists or enabled_exists
     if batch_requested and (keyword_only or not strict_images):
         raise ValueError('Feed batch model requires strict images and model mode')
@@ -578,11 +585,20 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
             if telegram is not None:
                 from pipeline.connectors.telegram import TelegramConnector
                 from pipeline.telegram_deferred import ExistingMarks, cached_images, no_new_group_decision
-                sources['telegram'] = TelegramConnector(mark_store=ExistingMarks(), judge=no_new_group_decision,
-                                                        image_reader=cached_images)
+                if telegram_trial_exists:
+                    from pipeline.telegram_marks_sync import GroupMarks
+                    sources['telegram'] = TelegramConnector(mark_store=GroupMarks(trial._pg), judge=lambda *_: None,
+                        image_reader=lambda items, **kwargs: cached_images(items, allow_missing=True, **kwargs))
+                else:
+                    sources['telegram'] = TelegramConnector(mark_store=ExistingMarks(), judge=no_new_group_decision,
+                                                            image_reader=cached_images)
             from pipeline.telegram_deferred import NeedsAnalysis
             try:
-                fetch_pending_reference(queue, sources)
+                pending = queue.next_pending_ref(allowed=set(sources))
+                trial_page = bool(telegram_trial_exists and pending and pending[1] == 'telegram')
+                if trial_page:
+                    telegram_trial.unlink()  # consume before any group decision or page processing
+                fetch_pending_reference(queue, sources, retain_names={'telegram'} if trial_page else ())
             except NeedsAnalysis:
                 deferred_analysis = True  # snapshot remains queued; another source lane may run next time
         selected = unpublished_analysis[:max_documents]

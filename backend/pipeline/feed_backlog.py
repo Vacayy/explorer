@@ -24,7 +24,7 @@ def stage_one_reference(queue, name, connector):
     return count
 
 
-def fetch_pending_reference(queue, connectors):
+def fetch_pending_reference(queue, connectors, *, retain_names=()):
     """Stage all returned documents before acknowledging a discovered reference."""
     item = queue.next_pending_ref(allowed=set(connectors))
     if item is None:
@@ -37,7 +37,10 @@ def fetch_pending_reference(queue, connectors):
             queue.enqueue(name, lane, doc)
             count += 1
         if count:
-            queue.acknowledge_ref(seq)
+            if name in retain_names:
+                queue.retain_ref(seq)
+            else:
+                queue.acknowledge_ref(seq)
             complete = True
         return count
     finally:
@@ -144,6 +147,17 @@ class FeedBacklog:
             if row is None:
                 raise ValueError('Unknown pending source reference')
             self.conn.execute('DELETE FROM pending_refs WHERE seq=?', (seq,))
+            self.conn.execute('UPDATE ref_cursor SET lane=? WHERE singleton=1', (row[0],))
+            self.conn.execute('INSERT INTO ref_lane_cursor VALUES (?,?) ON CONFLICT(lane) DO UPDATE SET seq=excluded.seq',
+                              (row[0], seq))
+
+    def retain_ref(self, seq):
+        """Keep the complete source page for later image/group reconciliation."""
+        with self.conn:
+            row = self.conn.execute('SELECT lane FROM pending_refs WHERE seq=? AND connector=?', (seq, 'telegram')).fetchone()
+            if row is None:
+                raise ValueError('Unknown Telegram page reference')
+            self.conn.execute('UPDATE pending_refs SET revision_pending=1 WHERE seq=?', (seq,))
             self.conn.execute('UPDATE ref_cursor SET lane=? WHERE singleton=1', (row[0],))
             self.conn.execute('INSERT INTO ref_lane_cursor VALUES (?,?) ON CONFLICT(lane) DO UPDATE SET seq=excluded.seq',
                               (row[0], seq))

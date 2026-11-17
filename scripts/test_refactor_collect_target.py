@@ -86,6 +86,54 @@ class CollectionTargetTest(unittest.TestCase):
             with ThreadPoolExecutor(max_workers=8) as executor:
                 list(executor.map(invoke, range(30)))
         self.assertEqual(len(attempts), 3)
+    def test_group_mark_sync_appends_without_overwriting_or_dropping(self):
+        a, b = sqlite3.connect(':memory:'), sqlite3.connect(':memory:')
+        self.addCleanup(a.close)
+        self.addCleanup(b.close)
+        for db in (a, b):
+            db.execute('CREATE TABLE telegram_group_marks(channel TEXT,msg_id INTEGER,joins_prev INTEGER,model TEXT,judged_at TEXT,PRIMARY KEY(channel,msg_id))')
+            db.execute("INSERT INTO telegram_group_marks VALUES ('c',1,0,'gap','t')")
+            db.commit()
+        a.execute("INSERT INTO telegram_group_marks VALUES ('c',2,1,'gap','t')")
+        self.assertEqual(feed_sync.append_group_marks(a, b), 1)
+        b.commit()
+        self.assertEqual(b.execute('SELECT count(*) FROM telegram_group_marks').fetchone()[0], 2)
+        a.execute("UPDATE telegram_group_marks SET joins_prev=1 WHERE msg_id=1")
+        with self.assertRaises(ValueError):
+            feed_sync.append_group_marks(a, b)
+        self.assertEqual(b.execute('SELECT joins_prev FROM telegram_group_marks WHERE msg_id=1').fetchone()[0], 0)
+        a.execute('DELETE FROM telegram_group_marks WHERE msg_id=2')
+        a.execute('UPDATE telegram_group_marks SET joins_prev=0 WHERE msg_id=1')
+        with self.assertRaises(ValueError):
+            feed_sync.append_group_marks(a, b)
+    def test_mark_only_feed_sync_commits_and_conflict_rolls_back(self):
+        with TemporaryDirectory() as directory:
+            paths = [Path(directory) / name for name in ('source', 'target')]
+            for path in paths:
+                with sqlite3.connect(path) as db:
+                    db.executescript('''
+                        CREATE TABLE raw_documents(id INTEGER PRIMARY KEY);
+                        CREATE TABLE enrichments(id INTEGER PRIMARY KEY);
+                        CREATE TABLE entity_links(id INTEGER PRIMARY KEY);
+                        CREATE TABLE entities(id INTEGER PRIMARY KEY);
+                        CREATE TABLE entity_keywords(id INTEGER PRIMARY KEY);
+                        CREATE TABLE entity_relations(id INTEGER PRIMARY KEY);
+                        CREATE TABLE candidate_publish_floor(name TEXT PRIMARY KEY,value INTEGER);
+                        INSERT INTO candidate_publish_floor VALUES ('document_floor',0),('entity_floor',0),('keyword_floor',0),('relation_floor',0);
+                        CREATE TABLE telegram_group_marks(channel TEXT,msg_id INTEGER,joins_prev INTEGER,model TEXT,judged_at TEXT,PRIMARY KEY(channel,msg_id));
+                    ''')
+            with sqlite3.connect(paths[0]) as db:
+                db.execute("INSERT INTO telegram_group_marks VALUES ('c',1,1,'gap','t')")
+            feed_sync.sync(*paths, allow_noop=True)
+            with sqlite3.connect(paths[1]) as db:
+                self.assertEqual(db.execute('SELECT count(*) FROM telegram_group_marks').fetchone()[0], 1)
+            with sqlite3.connect(paths[0]) as db:
+                db.execute("UPDATE telegram_group_marks SET joins_prev=0")
+                db.execute("INSERT INTO telegram_group_marks VALUES ('c',2,1,'gap','t')")
+            with self.assertRaises(ValueError): feed_sync.sync(*paths, allow_noop=True)
+            with sqlite3.connect(paths[1]) as db:
+                self.assertEqual(db.execute('SELECT count(*) FROM telegram_group_marks').fetchone()[0], 1)
+                self.assertEqual(db.execute('SELECT joins_prev FROM telegram_group_marks').fetchone()[0], 1)
     def test_persistent_batch_flag_keeps_five_documents_on_model_failure(self):
         from pipeline import feed_enrichment, image_reading
         from pipeline.base import RawDoc
@@ -125,6 +173,12 @@ class CollectionTargetTest(unittest.TestCase):
             flag.chmod(0o644)
             with self.assertRaises(ValueError):
                 job.run_minimal_blog(None, object(), queue_path=Path(directory) / 'queue', batch_enabled=flag)
+    def test_telegram_trial_rejects_unrecognized_flag(self):
+        with TemporaryDirectory() as directory:
+            flag = Path(directory) / 'telegram-trial'
+            flag.write_text('unexpected\n'); flag.chmod(0o600)
+            with self.assertRaises(ValueError):
+                job.run_minimal_blog(None, object(), queue_path=Path(directory) / 'queue', telegram_trial=flag)
     def test_keyword_feed_defers_missing_image_analysis_without_dropping_payload(self):
         from pipeline.base import RawDoc
         from pipeline.feed_backlog import FeedBacklog
@@ -187,10 +241,10 @@ class CollectionTargetTest(unittest.TestCase):
             queue = FeedBacklog(path)
             self.assertEqual(len(list(queue.analysis_pending())), 1)
             queue.close()
-    def test_telegram_page_is_preserved_when_grouping_needs_analysis(self):
+    def test_telegram_page_is_preserved_when_grouping_marks_conflict(self):
         from pipeline.base import SourceRef
         from pipeline.feed_backlog import FeedBacklog
-        from pipeline.telegram_deferred import ExistingMarks
+        from pipeline.telegram_marks_sync import GroupMarks, GroupMarkConflict
 
         class Blog:
             def discover(self): return [SourceRef('feed')]
@@ -203,13 +257,65 @@ class CollectionTargetTest(unittest.TestCase):
                      'link': 'https://example.test', 'images': []} for n in (1, 2)]
         with TemporaryDirectory() as directory, \
              patch('services.telegram_service.scrape_channel', return_value=messages), \
-             patch.object(ExistingMarks, 'get', return_value=None):
+             patch.object(GroupMarks, 'get', side_effect=GroupMarkConflict('synthetic conflict')):
             path = Path(directory) / 'queue.sqlite'
-            outcomes = [job.run_minimal_blog(None, Blog(), queue_path=path, telegram=Telegram()) for _ in range(2)]
-            self.assertTrue(any(result['deferred_analysis'] for result in outcomes))
+            flag = Path(directory) / 'telegram-trial'
+            flag.write_text('feed-telegram-fallback-trial-v1\n'); flag.chmod(0o600)
+            conflict = False
+            for _ in range(2):
+                try:
+                    job.run_minimal_blog(None, Blog(), queue_path=path, telegram=Telegram(), telegram_trial=flag)
+                except GroupMarkConflict:
+                    conflict = True
+                    break
+            self.assertTrue(conflict)
             queue = FeedBacklog(path)
             self.assertEqual(queue.next_pending_ref(allowed={'telegram'})[2].meta['messages'], messages)
             self.assertIsNone(queue.next())
+            queue.close()
+
+    def test_telegram_gap_fallback_publishes_text_and_retains_source_page(self):
+        from pipeline.base import SourceRef
+        from pipeline.feed_backlog import FeedBacklog
+        from pipeline import image_reading, telegram_deferred, telegram_marks_sync
+        from tests.test_telegram_marks_sync import FakePG
+        class Blog:
+            def discover(self): return [SourceRef('feed')]
+            def discover_posts(self, ref): return []
+        class Telegram:
+            def discover(self): return [SourceRef('channel')]
+        messages = [{'message_id': str(n), 'content': 'synthetic', 'date': f'2026-01-01T00:0{n}:00Z',
+                     'link': 'https://example.test', 'images': ['https://example.test/image']} for n in (1, 2)]
+        with TemporaryDirectory() as directory:
+            root = Path(directory); path = root / 'queue.sqlite'; work = root / 'work.sqlite'
+            flag = root / 'telegram-trial'
+            flag.write_text('feed-telegram-fallback-trial-v1\n'); flag.chmod(0o600)
+            with sqlite3.connect(work) as db:
+                db.execute("CREATE TABLE telegram_group_marks(channel TEXT,msg_id INTEGER,joins_prev INTEGER,model TEXT,judged_at TEXT DEFAULT (datetime('now')),PRIMARY KEY(channel,msg_id))")
+                db.execute('CREATE TABLE image_readings(image_key TEXT,status TEXT,attempts INTEGER)')
+            pg = FakePG(); marks = telegram_marks_sync.GroupMarks(lambda: pg, lambda: sqlite3.connect(work))
+            def publish(_pg, connectors, cap, before_publish):
+                docs = connectors[0].fetch(None)
+                self.assertEqual(len(docs), 1)
+                self.assertTrue(docs[0].raw_content)
+                before_publish()
+                return {'counts': {'new': 1}, 'stats': {}, 'published': 1}
+            with patch.dict(os.environ, {'COLLECT_FEED_STRICT_IMAGES': '1', 'COLLECT_FEED_KEYWORD_ONLY': '0'}), \
+                 patch.object(job, 'MAX_MODEL_CALLS', 2), patch.object(job, 'MAX_NEW_DOCS', 1), \
+                 patch.object(job, '_feed_document_known', return_value=False), \
+                 patch('services.telegram_service.scrape_channel', return_value=messages), \
+                 patch.object(telegram_marks_sync, '_guard'), patch.object(telegram_marks_sync, 'GroupMarks', return_value=marks), \
+                 patch.object(telegram_deferred, 'get_connection', side_effect=lambda: sqlite3.connect(work)), \
+                 patch.object(image_reading, 'read_images'), patch.object(trial, 'run_documents', side_effect=publish) as run:
+                for _ in range(2):
+                    job.run_minimal_blog(None, Blog(), queue_path=path, telegram=Telegram(), telegram_trial=flag)
+                    if run.called: break
+            run.assert_called_once()
+            self.assertFalse(flag.exists())
+            self.assertEqual(len(pg.rows), 1)
+            queue = FeedBacklog(path)
+            self.assertIsNone(queue.next_pending_ref())
+            self.assertEqual(queue.conn.execute("SELECT count(*) FROM pending_refs WHERE connector='telegram' AND revision_pending=1").fetchone()[0], 1)
             queue.close()
 
     def test_optional_youtube_stages_discovered_refs_and_retries_missing_transcripts(self):

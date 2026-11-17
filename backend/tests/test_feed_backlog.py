@@ -1,5 +1,6 @@
 import tempfile
 import hashlib
+import json
 import sqlite3
 import unittest
 from pathlib import Path
@@ -9,6 +10,24 @@ from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference, stage_on
 
 
 class FeedBacklogTest(unittest.TestCase):
+    def test_telegram_page_is_retained_after_documents_are_staged(self):
+        class Connector:
+            def fetch(self, ref):
+                return [RawDoc('telegram', 'synthetic', raw_content='text')]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'pending.sqlite'
+            queue = FeedBacklog(path)
+            ref = SourceRef('page', meta={'messages': [{'images': ['https://example.com/image']}]})
+            queue.enqueue_ref('telegram', 'channel', ref)
+            self.assertEqual(fetch_pending_reference(queue, {'telegram': Connector()}, retain_names={'telegram'}), 1)
+            queue.close()
+            queue = FeedBacklog(path)
+            self.assertIsNone(queue.next_pending_ref())
+            self.assertEqual(queue.next()[2].raw_content, 'text')
+            stored = queue.conn.execute('SELECT payload,revision_pending FROM pending_refs').fetchone()
+            self.assertEqual(stored[1], 1)
+            self.assertEqual(json.loads(stored[0])['meta']['messages'][0]['images'], ['https://example.com/image'])
+            queue.close()
     def test_image_attempt_and_result_survive_restart(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'pending.sqlite'
