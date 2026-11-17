@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import refactor_collect_trial as trial  # noqa: E402 - the same harness and safeguards
 
 SENDS = {'briefing', 'pfintraday', 'pfclose', 'observealerts', 'observeweekly'}
-CONNECTED_SENDS = {'observeweekly'}  # other sends remain refused until their candidate state is connected
+CONNECTED_SENDS = {'briefing', 'observeweekly'}  # other sends remain refused until their candidate state is connected
 NEVER = {'backfill'}  # uncapped model calls; never scheduled automatically
 # Table-collecting jobs: the unchanged script, then the supplement tables it actually wrote are replaced in PG
 # (recorded by a sqlite authorizer; writing any table that is not a supplement table holds the run back).
@@ -376,7 +376,7 @@ def run_questions():
     import psycopg
     from fastapi import FastAPI
     from pipeline import chat_tools, llm, postgres_legacy_embeddings
-    from pipeline.postgres_legacy_projection import LegacyProjection
+    from pipeline.postgres_legacy_projection import LegacyProjection, requester_is_operator
     from pipeline.postgres_question_refresh_fixture import refresh_all_native
     from pipeline.postgres_retrieval_jobs import legacy_retrieval
     from routers.postgres_legacy_read_fixture import install
@@ -449,6 +449,8 @@ def run_observe_weekly():
     from pipeline.notify import send_telegram
     from pipeline.postgres_legacy_projection import LegacyProjection
     from routers.postgres_owner_legacy_fixture import _Borrowed
+    if not requester_is_operator():
+        raise trial.HeldBack('operator projection is unavailable')
     with trial._pg() as pg:
         if not ledgers.ready(pg):
             raise trial.HeldBack('observation ledgers are not ready')
@@ -466,6 +468,48 @@ def run_observe_weekly():
         conn.close()
 
 
+def run_briefing(now=None):
+    """Send the existing morning briefing once per KST day, respecting pre- and post-cutover run history."""
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+    import database
+    from pipeline import notify, ops, postgres_collect_runs, us_briefing  # preload legacy DB bindings
+    from pipeline.postgres_legacy_projection import LegacyProjection, requester_is_operator
+    from routers import spine_home  # noqa: F401 - preload legacy DB binding
+    now = now or datetime.now(ZoneInfo('Asia/Seoul'))
+    if not requester_is_operator():
+        raise trial.HeldBack('operator projection is unavailable')
+    if now.weekday() >= 5 or now.hour < notify.BRIEFING_HOUR:
+        return False
+    since = now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    with trial._pg() as pg:
+        if any(status in ('ok', 'skipped') for status, _ in postgres_collect_runs.runs(pg, 'briefing', since)):
+            return False
+    projection = LegacyProjection(trial._pg, '/projection', external=True)
+    conn = projection.connect()
+    try:
+        if notify._attempted_today(conn):  # the MacBook's imported history
+            return False
+    finally:
+        conn.close()
+    original = database.get_connection
+    rebound = [m for m in list(sys.modules.values()) if getattr(m, 'get_connection', None) is original]
+    try:
+        for module in rebound:
+            module.get_connection = projection.connect
+        database.get_connection = projection.connect
+        message = notify.compose_briefing()
+        if not message:
+            return False
+        if not notify.send_telegram(message):
+            raise trial.HeldBack('briefing could not be sent')
+        return True
+    finally:
+        for module in rebound:
+            module.get_connection = original
+        database.get_connection = original
+
+
 def _run(label, pg, waited):
     import sqlite3
     from pipeline import llm, postgres_collect_runs, postgres_llm_calls
@@ -481,6 +525,16 @@ def _run(label, pg, waited):
         try:
             run_observe_weekly()
             outcome = 'applied: weekly report sent'
+        except trial.Aborted as exc:
+            outcome = f'aborted: {exc}'
+        except trial.HeldBack as exc:
+            outcome = f'held back: {exc}'
+        except Exception as exc:
+            outcome = f'failed: {type(exc).__name__}'
+    elif label == 'briefing':
+        trial._instrument()
+        try:
+            outcome = 'applied: briefing sent' if run_briefing() else 'skipped: already sent or no content'
         except trial.Aborted as exc:
             outcome = f'aborted: {exc}'
         except trial.HeldBack as exc:

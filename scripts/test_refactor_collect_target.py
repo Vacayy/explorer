@@ -25,9 +25,9 @@ class CollectionTargetTest(unittest.TestCase):
                                  {'DART_API_KEY', *engine.SEND_KEYS})
 
     def test_only_connected_send_can_be_enabled(self):
-        scheduler.check_enabled({'observeweekly'})
+        scheduler.check_enabled({'briefing', 'observeweekly'})
         with self.assertRaises(SystemExit):
-            scheduler.check_enabled({'briefing'})
+            scheduler.check_enabled({'pfclose'})
 
     def test_price_catchup_waits_for_the_next_slot(self):
         with patch.dict(os.environ, {'COLLECT_PRICES_CATCHUP_AFTER': '2026-11-18T07:35:00+00:00'}):
