@@ -46,6 +46,9 @@ CHAIN_TABLE_STEPS = {'chain_macro_news', 'chain_actions', 'chain_images'}
 DOCUMENT_TABLES = {'raw_documents', 'enrichments', 'entity_links', 'entities', 'entity_keywords', 'entity_relations',
                    'narrative_edge_evidence'}
 DERIVED = ('doc_fts',)
+# The sector map, sector and US industry screens and portfolio price history, refreshed from the collected prices
+# (pipeline.postgres_sector_refresh; after the daily price collection and once after the cutover).
+SECTOR_REFRESH = 'sectorrefresh'
 COMPUTE_JOBS = {'narratives', 'contradictions', 'promote', 'proposals', 'bigpicture', 'sectoroverview',
                 *(set(CHAIN_STEPS) - CHAIN_TABLE_STEPS)}
 # chain: its document intake only (ingest with the registered sources, tagging included), capped per run and
@@ -106,6 +109,20 @@ def supplement_tables(pg, written):
     return sorted(written)
 
 
+def run_sector_refresh():
+    import psycopg
+    from pipeline import postgres_sector_refresh as sector
+    dsn, schema = os.environ['REFACTOR_POSTGRES_DSN'], trial._pg().execute('SELECT current_schema()').fetchone()[0]
+    candidate = lambda: psycopg.connect(dsn, options=f'-c search_path={schema}')  # noqa: E731
+    with candidate() as conn:
+        base = sector.base_schema(conn)
+    projection = '/projection/' + json.load(open('/projection/current.json'))['file']
+    with psycopg.connect(dsn, autocommit=True) as admin:
+        result = sector.refresh(admin, candidate, lambda store: psycopg.connect(dsn, options=f'-c search_path={store}'),
+                                projection, base=base)
+    return {'prices': result['after']['sector_market_prices'], 'load_seconds': result['load_seconds']}
+
+
 def run_compute(label):
     import psycopg
     from pipeline import postgres_scheduled_compute
@@ -136,6 +153,14 @@ def run(label):
     entry = {}
     if label in SENDS or label in NEVER:
         outcome = f'refused: {"sends messages" if label in SENDS else "uncapped model calls"}'
+    elif label == SECTOR_REFRESH:
+        try:
+            entry['refreshed'] = run_sector_refresh()
+            outcome = f"applied: prices to {entry['refreshed']['prices'][1]}, {entry['refreshed']['load_seconds']}s"
+        except ValueError as exc:
+            outcome = f'held back: {exc}'
+        except Exception as exc:  # noqa: BLE001 - the views keep reading the previous store
+            outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'
     elif label in COMPUTE_JOBS:
         from pipeline.postgres_scheduled_compute import HeldBack, Skipped
         postgres_llm_calls.install(llm, trial._pg)

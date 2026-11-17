@@ -47,6 +47,10 @@ CUTOVER_FEED_SOURCES = 'blog,telegram,note,youtube,memo,scrap'
 CATCHUP_SECONDS = 1800  # the MacBook's catchup job ran every 30 minutes
 
 
+# Jobs the Mac mini adds to the MacBook's list: the sector tables after the daily prices (KST, weekdays like prices).
+EXTRA_JOBS = [('sectorrefresh', ['scripts/refactor_sector_refresh.py'], [{'Weekday': d, 'Hour': 21, 'Minute': 0} for d in range(1, 6)])]
+
+
 def load_jobs():
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     try:
@@ -55,7 +59,7 @@ def load_jobs():
         import types
         sys.modules['dotenv'] = types.SimpleNamespace(load_dotenv=lambda *args, **kwargs: False)
     import install_launchd  # noqa: E402 — the job list itself, unchanged
-    return install_launchd.JOBS, install_launchd.CATCHUP
+    return install_launchd.JOBS + EXTRA_JOBS, {**install_launchd.CATCHUP, 'sectorrefresh': {}}
 
 
 def _matches(entry, at):
