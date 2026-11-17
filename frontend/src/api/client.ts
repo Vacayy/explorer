@@ -2,6 +2,7 @@ import axios from 'axios'
 import { ApiError, isCancelled, toApiError } from './errors.ts'
 import { validateResponse } from './contracts.ts'
 import { reportApiError } from './telemetry.ts'
+import { getMemberCsrf } from './memberCsrf.ts'
 
 /** 백엔드 주소 — 워크트리처럼 다른 포트로 띄울 때 VITE_API_BASE로 바꾼다. */
 export const API_BASE: string = import.meta.env.VITE_API_BASE ?? 'http://localhost:8000'
@@ -11,6 +12,16 @@ const api = axios.create({
   baseURL: API_BASE,
   timeout: REQUEST_TIMEOUT,
   headers: { Accept: 'application/json' },
+})
+
+api.interceptors.request.use(config => {
+  const method = (config.method ?? 'get').toLowerCase()
+  const token = getMemberCsrf()
+  if (token && typeof window !== 'undefined' && !['get', 'head', 'options'].includes(method)) {
+    const destination = new URL(config.url ?? '', new URL(config.baseURL || '/', window.location.origin))
+    if (destination.origin === window.location.origin) config.headers.set('X-CSRF-Token', token)
+  }
+  return config
 })
 
 /** 'GET /api/...' — 쿼리 문자열 없이. 오류 원인 표시·기록의 키 */

@@ -4,6 +4,8 @@
 > 목적: 현재 시스템의 전체 구조·기능·데이터를 한눈에 파악하기 위한 현황 문서.
 > 기획 배경·온톨로지는 docs/ontology.md, docs/private/specs/product-v2.md 참조. 의사결정 이력은 docs/private/DECISIONS.md.
 > 유지 규칙: 구조(테이블·파이프라인·라우터·IA·의존성)가 바뀌는 커밋은 본 문서 갱신을 포함한다 (CLAUDE.md Context Discipline).
+
+공개 모드 헤더의 계정 메뉴는 로그인, 마이페이지(`/account`), 로그아웃을 제공한다. 인증 세션의 CSRF 토큰은 메모리에만 두고 동일 출처 쓰기 요청에 전달한다. 종목 묶음의 저장된 빈 메모는 목록과 상세 응답에서 빈 문자열로 정규화한다.
 > (구 ARCHITECTURE.md·PLAN.md는 초기 대시보드 시절 문서 — docs/private/archive/로 이동, 본 문서가 현행)
 
 ## 외부 컨콜 자료 표시 경계

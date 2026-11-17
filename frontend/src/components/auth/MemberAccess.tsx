@@ -1,8 +1,11 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
+import { UserRound } from 'lucide-react'
 import { getMemberSession, googleLoginUrl, logoutMember } from '@/api/auth'
 import { Button } from '@/components/ui/button'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { PageContainer } from '@/components/shared/PageContainer'
 import { PUBLIC_ACCESS } from '@/lib/accessMode'
 import { clearMemberBrowserState, leaveMemberSession } from '@/lib/memberReset'
 import type { MemberSession } from '@/types'
@@ -80,15 +83,29 @@ export function AccountControl() {
   const access = useMemberAccess()
   const location = useLocation()
   if (access.status === 'private') return null
-  if (access.status === 'loading') return <span role="status" className="text-xs text-ink-3">계정 확인 중</span>
-  if (access.status === 'error') return <Button variant="outline" size="sm" onClick={access.retry}>로그인 확인 재시도</Button>
-  if (access.session?.login_available === false) return <span role="status" className="text-xs text-ink-3">로그인 준비 중</span>
-  if (access.status === 'anonymous') return <Button asChild size="sm" variant="outline">
-    <a href={googleLoginUrl(location.pathname + location.search)}>Google 로그인</a>
-  </Button>
-  return <div className="flex items-center gap-2">
-    <span className="text-xs text-ink-2">{access.status === 'operator' ? '운영자' : '로그인됨'}</span>
-    <Button size="sm" variant="ghost" disabled={access.busy} onClick={() => { void access.logout() }}>로그아웃</Button>
-    {access.logoutError && <span role="alert" className="text-xs text-destructive">로그아웃하지 못했습니다. 다시 시도해 주세요.</span>}
-  </div>
+  return <DropdownMenu>
+    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="rounded-full" aria-label="계정 메뉴"><UserRound aria-hidden /></Button></DropdownMenuTrigger>
+    <DropdownMenuContent align="end">
+      {access.status === 'loading' && <DropdownMenuItem disabled>계정 확인 중</DropdownMenuItem>}
+      {access.status === 'error' && <DropdownMenuItem onSelect={access.retry}>로그인 확인 재시도</DropdownMenuItem>}
+      {access.status === 'anonymous' && (access.session?.login_available === false
+        ? <DropdownMenuItem disabled>로그인 준비 중</DropdownMenuItem>
+        : <DropdownMenuItem asChild><a href={googleLoginUrl(location.pathname + location.search)}>Google 로그인</a></DropdownMenuItem>)}
+      {(access.status === 'member' || access.status === 'operator') && <>
+        <DropdownMenuItem asChild><Link to="/account">마이페이지</Link></DropdownMenuItem>
+        <DropdownMenuItem disabled={access.busy} onSelect={() => { void access.logout() }}>로그아웃</DropdownMenuItem>
+      </>}
+      {access.logoutError && <DropdownMenuItem disabled>로그아웃 실패. 다시 시도해 주세요.</DropdownMenuItem>}
+    </DropdownMenuContent>
+  </DropdownMenu>
+}
+
+export function AccountPage() {
+  const access = useMemberAccess()
+  return <PageContainer><h1 className="text-xl font-medium">마이페이지</h1>
+    {access.status === 'loading' && <p role="status">계정 확인 중</p>}
+    {access.status === 'error' && <Button onClick={access.retry}>계정 확인 재시도</Button>}
+    {access.status === 'anonymous' && <Button asChild><a href={googleLoginUrl('/account')}>Google 로그인</a></Button>}
+    {(access.status === 'member' || access.status === 'operator') && <p>{access.status === 'operator' ? '운영자 계정' : '회원 계정'}으로 로그인했습니다.</p>}
+  </PageContainer>
 }

@@ -17,7 +17,9 @@ def _group(conn, group_id: int):
     if not row:
         conn.close()
         raise HTTPException(404, "묶음을 찾을 수 없습니다.")
-    return dict(row)
+    group = dict(row)
+    group["note"] = group.get("note") or ""
+    return group
 
 
 def _rule(row, labels) -> dict:
@@ -93,6 +95,7 @@ def list_groups():
     out = []
     for row in conn.execute("SELECT * FROM stock_groups ORDER BY id").fetchall():
         group = dict(row)
+        group["note"] = group.get("note") or ""
         last_as_of = _last_as_of(conn, group["id"])
         group["member_count"] = conn.execute("SELECT COUNT(*) n FROM stock_group_members WHERE group_id=?", (group["id"],)).fetchone()["n"]
         group["rule_count"] = conn.execute("SELECT COUNT(*) n FROM watch_rules WHERE group_id=?", (group["id"],)).fetchone()["n"]

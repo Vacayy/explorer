@@ -48,7 +48,7 @@ import SavedPage from "@/components/follow/SavedPage"
 // Explore (탐색)
 import ChatPage from "@/components/chat/ChatPage"
 import { PublicTrialChatPage } from "@/components/chat/PublicTrialChatPage"
-import { MemberAccessProvider, useMemberAccess } from "@/components/auth/MemberAccess"
+import { AccountPage, MemberAccessProvider, useMemberAccess } from "@/components/auth/MemberAccess"
 import { PUBLIC_ACCESS } from "@/lib/accessMode"
 import ProjectsPage from "@/components/study/ProjectsPage"
 import ProjectPage from "@/components/study/ProjectPage"
@@ -274,6 +274,7 @@ export default function App() {
       <ErrorBoundary onReset={() => { void queryClient.refetchQueries({ type: "active", predicate: query => query.state.status === "error" }) }}><BrowserRouter><MemberAccessProvider>
         <Routes>
           <Route element={<Layout />}>
+            <Route path="account" element={<AccountPage />} />
             {/* Default */}
             <Route index element={<Navigate to="/home" replace />} />
 
