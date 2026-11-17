@@ -20,7 +20,7 @@ docker inspect "$C" | python3 -c "import sys,json;print('\n'.join(json.load(sys.
 if [ -n "${REFACTOR_API_EXTRA_ENV:-}" ]; then cat "$REFACTOR_API_EXTRA_ENV" >> "$ENV_FILE"; fi
 IMAGE=${REFACTOR_API_IMAGE:-$(docker inspect "$C" --format '{{.Config.Image}}')}  # override to switch images
 docker rm -f "$C" >/dev/null
-docker run -d --name "$C" --user 10001:10001 --network explorer-refactor-preview-private --memory "$MEMORY" --read-only \
+docker run -d --name "$C" --restart unless-stopped --user 10001:10001 --network explorer-refactor-preview-private --memory "$MEMORY" --read-only \
   --tmpfs /tmp:rw,size=512m,uid=10001,gid=10001,mode=700 --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 \
   --cpus 2 -p 127.0.0.1:18012:8000 --label explorer.purpose=refactor-single-path --env-file "$ENV_FILE" \
   -v explorer-public-codex-auth:/provider-auth -v explorer-data-rehearsal_models:/models:ro \

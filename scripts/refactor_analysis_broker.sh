@@ -18,7 +18,7 @@ case "$1" in
       mkdir -p "$(dirname "$STATE")" && chmod 700 "$(dirname "$STATE")"
       python3 "$HOME/developer/agent-whiteboard/runtime/analysis/provision.py" --state-root "$STATE" --rpc-volume "$RPC" --image-id "$SANDBOX"
     fi
-    docker run -d --name "$NAME" --user 10001:10001 --group-add "$(docker run --rm -v /var/run/docker.sock:/s --entrypoint stat "$IMAGE" -c %g /s)" \
+    docker run -d --name "$NAME" --restart unless-stopped --user 10001:10001 --group-add "$(docker run --rm -v /var/run/docker.sock:/s --entrypoint stat "$IMAGE" -c %g /s)" \
       --network none --read-only --tmpfs /tmp:rw,nosuid,nodev,size=256m,mode=1777 --cap-drop ALL \
       --security-opt no-new-privileges:true --memory 512m --label explorer.purpose=refactor-single-analysis-broker \
       -v "$RPC:/run/explorer-analysis" -v "$STATE:/state" -v /var/run/docker.sock:/var/run/docker.sock \
