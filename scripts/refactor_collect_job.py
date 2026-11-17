@@ -433,7 +433,8 @@ def run_feeds(pg, refused=None):
     from pipeline.registry import CONNECTORS
     if os.environ.get('COLLECT_FEED_MINIMAL_BLOG') == '1':
         youtube = CONNECTORS['youtube']() if os.environ.get('COLLECT_FEED_YOUTUBE') == '1' else None
-        return run_minimal_blog(pg, CONNECTORS['blog'](), refused, youtube=youtube)
+        telegram = CONNECTORS['telegram']() if os.environ.get('COLLECT_FEED_TELEGRAM') == '1' else None
+        return run_minimal_blog(pg, CONNECTORS['blog'](), refused, youtube=youtube, telegram=telegram)
     names = [name for name in FEED_SOURCES.split(',') if name]
     unknown = set(names) - set(CONNECTORS)
     if unknown:
@@ -453,7 +454,7 @@ def _blog_document_known(key):
         return work.execute("SELECT 1 FROM raw_documents WHERE source_type='blog' AND source_id=? LIMIT 1", (key,)).fetchone() is not None
 
 
-def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-backlog.sqlite', youtube=None):
+def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-backlog.sqlite', youtube=None, telegram=None):
     """One blog reference, one queued document; a failure keeps this isolated feed on hold."""
     from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference
     if os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1':
@@ -463,22 +464,31 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
         enrich.llm_available = lambda: False
     queue = FeedBacklog(queue_path)
     try:
-        allowed = {'blog'} | ({'youtube'} if youtube is not None else set())
+        deferred_analysis = False
+        allowed = {'blog'} | ({'youtube'} if youtube is not None else set()) | ({'telegram'} if telegram is not None else set())
         if queue.intent():
             raise trial.HeldBack('an earlier feed publication intent requires review')
         if queue.next(allowed=allowed) is None:
-            if youtube is not None or queue.next_pending_ref(allowed=allowed) is None:
+            if youtube is not None or telegram is not None or queue.next_pending_ref(allowed=allowed) is None:
                 from pipeline.base import SourceRef
-                choices = [SourceRef('blog')] + ([SourceRef('youtube')] if youtube is not None else [])
+                choices = [SourceRef(name) for name in sorted(allowed)]
                 selected = queue.next_ref('feed-sources', choices)
                 name = selected.key
-                source_connector = connector if name == 'blog' else youtube
-                refs = source_connector.discover() if name == 'blog' else source_connector.discover_channels()
+                source_connector = {'blog': connector, 'youtube': youtube, 'telegram': telegram}[name]
+                refs = source_connector.discover_channels() if name == 'youtube' else source_connector.discover()
                 ref = queue.next_ref(name, refs)
                 if ref is None:
                     queue.advance_ref('feed-sources', selected)
                 else:
-                    posts = connector.discover_posts(ref) if name == 'blog' else youtube.discover_channel(ref)
+                    if name == 'blog':
+                        posts = connector.discover_posts(ref)
+                    elif name == 'youtube':
+                        posts = youtube.discover_channel(ref)
+                    else:
+                        from pipeline.telegram_deferred import page_reference
+                        from services.telegram_service import scrape_channel
+                        messages = scrape_channel(ref.key)
+                        posts = [page_reference(ref.key, messages)] if messages else []
                     for post in posts:
                         if name != 'blog' or not _blog_document_known(post.key):
                             queue.enqueue_ref(name, ref.key, post)
@@ -490,11 +500,21 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
             sources = {'blog': OnePost()}
             if youtube is not None:
                 sources['youtube'] = youtube
-            fetch_pending_reference(queue, sources)
+            if telegram is not None:
+                from pipeline.connectors.telegram import TelegramConnector
+                from pipeline.telegram_deferred import ExistingMarks, cached_images, no_new_group_decision
+                sources['telegram'] = TelegramConnector(mark_store=ExistingMarks(), judge=no_new_group_decision,
+                                                        image_reader=cached_images)
+            from pipeline.telegram_deferred import NeedsAnalysis
+            try:
+                fetch_pending_reference(queue, sources)
+            except NeedsAnalysis:
+                deferred_analysis = True  # snapshot remains queued; another source lane may run next time
         item = queue.next(allowed=allowed)
         if item is None:
             return {'stats': {'feed': {'refs': 1}}, 'counts': {}, 'published': 0,
-                    'sources': ['blog'] + (['youtube'] if youtube is not None else []),
+                    'sources': sorted(allowed),
+                    'deferred_analysis': int(deferred_analysis),
                     'steps_not_connected': ['other feed sources', 'existing document revisions', 'chain postprocessing']}
         seq, source_name, doc = item
 
@@ -512,6 +532,7 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
         result = trial.run_documents(pg, [OneDocument()], 1, before_publish=check_cap)
         queue.acknowledge(seq)  # only after successful PG publish and local floor commit
         result['sources'] = [source_name]
+        result['deferred_analysis'] = int(deferred_analysis)
         result['steps_not_connected'] = ['other feed sources', 'existing document revisions', 'chain postprocessing']
         return result
     finally:

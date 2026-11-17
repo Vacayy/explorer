@@ -149,8 +149,8 @@ class TelegramConnector:
         return [SourceRef(key=r["channel_name"]) for r in rows]
 
     def fetch(self, ref: SourceRef) -> list[RawDoc]:
-        channel = ref.key
-        messages = scrape_channel(channel)
+        channel = ref.meta.get('channel', ref.key)
+        messages = ref.meta['messages'] if 'messages' in ref.meta else scrape_channel(channel)
         docs = []
         for group in group_bursts(messages, channel=channel, mark_store=self._mark_store, judge=self._judge):
             head = group[0]

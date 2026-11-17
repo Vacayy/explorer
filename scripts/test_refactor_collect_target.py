@@ -19,6 +19,31 @@ import refactor_feed_refresh as feed_refresh
 
 
 class CollectionTargetTest(unittest.TestCase):
+    def test_telegram_page_is_preserved_when_grouping_needs_analysis(self):
+        from pipeline.base import SourceRef
+        from pipeline.feed_backlog import FeedBacklog
+        from pipeline.telegram_deferred import ExistingMarks
+
+        class Blog:
+            def discover(self): return [SourceRef('feed')]
+            def discover_posts(self, ref): return []
+
+        class Telegram:
+            def discover(self): return [SourceRef('channel')]
+
+        messages = [{'message_id': str(n), 'content': 'text', 'date': f'2026-01-01T00:0{n}:00Z',
+                     'link': 'https://example.test', 'images': []} for n in (1, 2)]
+        with TemporaryDirectory() as directory, \
+             patch('services.telegram_service.scrape_channel', return_value=messages), \
+             patch.object(ExistingMarks, 'get', return_value=None):
+            path = Path(directory) / 'queue.sqlite'
+            outcomes = [job.run_minimal_blog(None, Blog(), queue_path=path, telegram=Telegram()) for _ in range(2)]
+            self.assertTrue(any(result['deferred_analysis'] for result in outcomes))
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.next_pending_ref(allowed={'telegram'})[2].meta['messages'], messages)
+            self.assertIsNone(queue.next())
+            queue.close()
+
     def test_optional_youtube_stages_discovered_refs_and_retries_missing_transcripts(self):
         from pipeline.base import SourceRef
         from pipeline.feed_backlog import FeedBacklog
