@@ -16,6 +16,18 @@ import refactor_collect_job as job
 
 
 class CollectionTargetTest(unittest.TestCase):
+    def test_all_catchup_waits_until_priority_slot(self):
+        with patch.dict(os.environ, {'COLLECT_CATCHUP_AFTER': '2026-11-17T22:10:00+00:00'}):
+            self.assertEqual(scheduler.catchup_enabled({'history'}, datetime(2026, 11, 17, 22, 9, tzinfo=timezone.utc)), set())
+            self.assertEqual(scheduler.catchup_enabled({'history'}, datetime(2026, 11, 17, 22, 10, tzinfo=timezone.utc)), {'history'})
+
+    def test_work_volume_must_be_the_collection_volume(self):
+        with patch.dict(os.environ, {'COLLECT_WORK_VOLUME': 'explorer-refactor-collect-recovery-20261118a'}):
+            self.assertEqual(engine.work_volume(), 'explorer-refactor-collect-recovery-20261118a')
+        with patch.dict(os.environ, {'COLLECT_WORK_VOLUME': 'explorer-refactor-media'}):
+            with self.assertRaises(ValueError):
+                engine.work_volume()
+
     def test_us_briefing_requires_synthesis(self):
         conn = sqlite3.connect(':memory:')
         conn.execute('CREATE TABLE job_runs(id INTEGER, job TEXT, summary TEXT, ran_at TEXT)')

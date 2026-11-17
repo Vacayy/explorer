@@ -207,6 +207,13 @@ def catchup_due(enabled, log=print):
 def catchup_enabled(enabled, now):
     """Optionally defer catch-up for a named job until its next meaningful scheduled slot."""
     result = set(enabled)
+    all_after = os.environ.get('COLLECT_CATCHUP_AFTER')
+    if all_after:
+        boundary = datetime.fromisoformat(all_after)
+        if boundary.tzinfo is None:
+            raise ValueError('COLLECT_CATCHUP_AFTER requires a timezone')
+        if now < boundary:
+            return set()
     for label, key in (('prices', 'COLLECT_PRICES_CATCHUP_AFTER'),
                        ('usbriefing', 'COLLECT_USBRIEFING_CATCHUP_AFTER')):
         after = os.environ.get(key)

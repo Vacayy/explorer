@@ -10,6 +10,7 @@ mounted at their host paths. DOCKER_HOST (unix://…) or /var/run/docker.sock.
 import http.client
 import json
 import os
+import re
 import socket
 import sys
 from pathlib import Path
@@ -18,7 +19,14 @@ from urllib.parse import quote
 API = 'explorer-refactor-single-path'
 IMAGE = 'explorer-refactor-test:psycopg-3.2.13-auth'
 NETWORK = 'explorer-refactor-preview-private'
-VOLUME = 'explorer-refactor-collect-trial'
+def work_volume():
+    name = os.environ.get('COLLECT_WORK_VOLUME', 'explorer-refactor-collect-trial')
+    if name != 'explorer-refactor-collect-trial' and not re.fullmatch(r'explorer-refactor-collect-recovery-[a-z0-9-]+', name):
+        raise ValueError('Invalid collection work volume')
+    return name
+
+
+VOLUME = work_volume()
 ROOT = Path(__file__).resolve().parent.parent
 HOME = Path(os.environ.get('HOST_HOME', Path.home()))
 STATE = HOME / 'server-data/review/refactor-single/collect-trial-schema'
