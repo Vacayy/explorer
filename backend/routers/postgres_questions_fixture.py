@@ -166,7 +166,7 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
                     proxy['obs_count'] = cur.fetchone()['n']
                 sub['proxies'] = proxies
             question['sub_questions'] = subs
-            cur.execute('SELECT event,answer,beneficiaries,created_at FROM scenarios WHERE question_id=%s '
+            cur.execute(f'SELECT event,answer,beneficiaries,created_at FROM {scenario_rows(conn)} s WHERE question_id=%s '
                         'ORDER BY created_at DESC NULLS LAST LIMIT 1', (question_id,))
             scenario = cur.fetchone()
             if scenario:
@@ -244,6 +244,10 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
             return {'error': 'event 비어 있음'}
         if projection is None:
             return {'error': '시나리오 계산이 준비되지 않았습니다'}
+        from pipeline.postgres_question_members import member_question
+        with connect() as pg:  # checked before any model call
+            if member_question(pg, question_id) and pg.execute("SELECT to_regclass('member_question_scenarios')").fetchone()[0] is None:
+                return {'error': '회원 시나리오 저장소가 준비되지 않았습니다'}
         offline = _offline.set(True)
         conn, _ = projection().write_connection(graph.GRAPH)
         try:
@@ -260,6 +264,15 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
                 _guard(pg)
                 row = pg.execute('SELECT text FROM questions WHERE id=%s', (question_id,)).fetchone()
                 label = row[0][:60] if row else event.strip()
+                if member_question(pg, question_id):
+                    # A member's scenario stays in the question: no shared graph diff, no shared scenarios row.
+                    pg.execute("INSERT INTO member_question_scenarios VALUES (%s,%s,%s,%s,%s,%s,"
+                               "to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')) ON CONFLICT (question_id) DO UPDATE SET "
+                               'event=excluded.event,answer=excluded.answer,beneficiaries=excluded.beneficiaries,'
+                               'citations=excluded.citations,model=excluded.model,created_at=excluded.created_at',
+                               (question_id, event, result.get('answer'), json.dumps(result.get('beneficiaries') or [], ensure_ascii=False),
+                                json.dumps(result.get('citations') or [], ensure_ascii=False), result.get('model')))
+                    return {'topic': label, 'answer': result.get('answer'), 'beneficiaries': result.get('beneficiaries') or []}
                 graph.publish(pg, before, graph.snapshot(conn), run_id=source)
                 pg.execute("INSERT INTO scenarios(topic,event,answer,beneficiaries,citations,narrative_version,question_id,model,created_at) "
                            "VALUES(%s,%s,%s,%s,%s,NULL,%s,%s,to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')) "
@@ -298,7 +311,7 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
                 return {'status': 'empty'}
             cur.execute('SELECT body,inputs_hash,created_at FROM question_reports WHERE question_id=%s ORDER BY id DESC LIMIT 1', (question_id,))
             cached = cur.fetchone()
-            has_scenario = cur.execute('SELECT 1 FROM scenarios WHERE question_id=%s', (question_id,)).fetchone() is not None
+            has_scenario = cur.execute(f'SELECT 1 FROM {scenario_rows(conn)} s WHERE question_id=%s', (question_id,)).fetchone() is not None
         digest = question_report._hash(ev)
         report_fresh = False
         if cached and cached['inputs_hash'] == digest and not refresh:
@@ -446,6 +459,22 @@ def create_proxy_router(connect, *, run_llm=None):
         return {'extracted': result['extracted'], 'scanned': result['scanned']}
 
     return router
+
+
+def scenario_rows(conn):
+    """Scenarios a question reads: the shared ones and, once initialized, members' question-local ones."""
+    if conn.execute("SELECT to_regclass('member_question_scenarios')").fetchone()[0] is None:
+        return 'scenarios'
+    return ('(SELECT event,answer,beneficiaries,created_at,question_id FROM scenarios UNION ALL '
+            'SELECT event,answer,beneficiaries,created_at,question_id FROM member_question_scenarios)')
+
+
+def initialize_member_scenarios(conn):
+    """Explicit deployment step: a member question's scenario, kept with the question (never the shared graph)."""
+    _guard(conn)
+    with conn.transaction():
+        conn.execute('CREATE TABLE IF NOT EXISTS member_question_scenarios (question_id BIGINT PRIMARY KEY REFERENCES questions(id) '
+                     'ON DELETE CASCADE,event TEXT NOT NULL,answer TEXT,beneficiaries TEXT,citations TEXT,model TEXT,created_at TEXT NOT NULL)')
 
 
 def initialize_question_principals(conn):
