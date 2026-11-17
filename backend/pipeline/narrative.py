@@ -243,7 +243,7 @@ def _persist_narrative(conn, topic: str, data: dict, docs: list[dict], h: str) -
         "doc_count, doc_ids_hash, model, change_summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (topic, version, data.get("title"), (data.get("core_question") or "").strip() or None,
          data.get("narrative"), category, len(docs), h,
-         f"claude-code/{NARRATIVE_MODEL}", change))
+         data.get("_produced_by") or f"claude-code/{NARRATIVE_MODEL}", change))
     nid = cur.lastrowid
     # 출처는 엣지마다 모델이 댄 근거 번호(D1…)와 인용을 원문에서 확인해 붙인다 (D-204). 전에는 모든 엣지에
     # 입력 묶음의 마지막 문서(docs[-1])를 붙여, 무관한 문서가 출처로 보였다.
@@ -447,9 +447,13 @@ def _build_prompt(topic: str, docs: list[dict], knowledge: list[dict], node_voca
 
 
 def _call(prompt: str, *, task: str = "narrative.generate") -> dict:
-    raw = llm.run(prompt, task=task).text
+    res = llm.run(prompt, task=task)
+    raw = res.text
     s, e = raw.find("{"), raw.rfind("}")
-    return json.loads(raw[s:e + 1])
+    data = json.loads(raw[s:e + 1])
+    if isinstance(data, dict):
+        data["_produced_by"] = f"{res.engine}/{res.model}"  # the engine and model that answered (a fallback included)
+    return data
 
 
 def compute_narrative(topic: str, force: bool = False) -> dict:

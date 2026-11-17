@@ -29,7 +29,16 @@ TABLE_JOBS = {'prices', 'twrevenue', 'indexintraday', 'credit', 'retail', 'marke
               'sectorbench', 'kalshi', 'trade', 'usfund', 'krcompany'}
 # Legacy computations over saved data: the computation-button path (pipeline.postgres_scheduled_compute) — their
 # overrides, graph diff and run records go to PG; model calls go through the usual gate and llm_calls.
-COMPUTE_JOBS = {'narratives', 'contradictions', 'promote', 'proposals', 'bigpicture', 'sectoroverview'}
+# The chain's computation steps after document intake (scripts/run_chain.sh order), as their own labels.
+CHAIN_STEPS = {'chain_causal': (['scripts/extract_doc_causal.py', '--limit', '10'], 'extract_doc_causal'),
+               'chain_signals': (['scripts/compute_signals.py'], None),
+               'chain_narratives': (['scripts/compute_narratives.py', '--urgent'], 'compute_narratives'),
+               'chain_events': (['scripts/extract_events.py', '--limit', '40'], 'extract_events'),
+               'chain_actions': (['scripts/scan_actions.py'], None),  # fetches DART: a collection step (table path)
+               'chain_digests': (['scripts/compute_digests.py'], None)}
+CHAIN_TABLE_STEPS = {'chain_actions'}
+COMPUTE_JOBS = {'narratives', 'contradictions', 'promote', 'proposals', 'bigpicture', 'sectoroverview',
+                *(set(CHAIN_STEPS) - CHAIN_TABLE_STEPS)}
 # chain: its document intake only (ingest with the registered sources, tagging included), capped per run and
 # published; the chain's later steps (causal extraction, signals, narratives, digests…) are not connected yet.
 FEED_SOURCES = os.environ.get('COLLECT_FEED_SOURCES', 'blog,note,memo,scrap')  # YouTube·Telegram excluded before cutover
@@ -39,6 +48,8 @@ MAX_MODEL_CALLS = int(os.environ.get('COLLECT_MAX_MODEL_CALLS', '20'))  # per co
 
 def job_argv(label):
     """(script argv relative to the project, job record name) from the MacBook job list, unchanged."""
+    if label in CHAIN_STEPS:
+        return CHAIN_STEPS[label]
     from refactor_collect_scheduler import load_jobs
     jobs, rules = load_jobs()
     argv = next(argv for name, argv, _schedule in jobs if name == label)
@@ -86,16 +97,18 @@ def run(label):
     if label in SENDS or label in NEVER:
         outcome = f'refused: {"sends messages" if label in SENDS else "uncapped model calls"}'
     elif label in COMPUTE_JOBS:
-        from pipeline.postgres_scheduled_compute import HeldBack
+        from pipeline.postgres_scheduled_compute import HeldBack, Skipped
         postgres_llm_calls.install(llm, trial._pg)
         try:
             entry['stored'] = run_compute(label)
             outcome = f"applied: {entry['stored']}"
+        except Skipped as exc:
+            outcome = f'skipped: {exc}'
         except HeldBack as exc:
             outcome = f'held back: {exc}'
         except Exception as exc:  # noqa: BLE001 - any failure: nothing stored
             outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'
-    elif label not in TABLE_JOBS and label != 'chain':
+    elif label not in TABLE_JOBS and label not in CHAIN_TABLE_STEPS and label != 'chain':
         outcome = 'unsupported: not connected to the candidate yet'
     else:
         postgres_llm_calls.install(llm, trial._pg)

@@ -1,6 +1,7 @@
 """Collection run record of the Mac mini scheduler (scripts/refactor_collect_scheduler.py) on the candidate PG schema.
 
 One row per scheduled job run, whatever its outcome: applied, partial (some sources failed, the rest applied),
+skipped (the job's own admin flag is off, counted as done like the MacBook's 'skipped'),
 held back, aborted at a source's block or request cap, failed, refused (a sending or uncapped job) or unsupported
 (not connected yet). The scheduler's catch-up reads it the way the MacBook read job_runs `sched:<label>`
 (pipeline.catchup): 'applied' counts as done, 'partial' as the MacBook's partial.

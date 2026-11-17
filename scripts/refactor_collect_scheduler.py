@@ -33,6 +33,7 @@ LOCK = Path(os.environ.get('COLLECT_SCHEDULER_LOCK', Path.home() / 'server-data/
 JOB_SECONDS = int(os.environ.get('COLLECT_JOB_SECONDS', '3600'))  # one job's time limit (the MacBook chain step limit)
 TICK_SECONDS = 20
 JOB_MEMORY = {'proposals': '3584m'}  # measured peak 2.9GiB (weekly); every other job 2g
+JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40'}  # ~30 registered Naver blog feeds per run (PM 6938365215)
 CATCHUP_SECONDS = 1800  # the MacBook's catchup job ran every 30 minutes
 
 
@@ -88,7 +89,8 @@ def run_job(label, log=print):
     try:
         done = subprocess.run([str(ROOT / 'scripts/refactor_collect_trial.sh'), 'job', label], capture_output=True,
                               text=True, timeout=JOB_SECONDS,
-                              env={**os.environ, 'CONTAINER_NAME': name, 'JOB_MEMORY': JOB_MEMORY.get(label, '2g')})
+                              env={**os.environ, 'CONTAINER_NAME': name, 'JOB_MEMORY': JOB_MEMORY.get(label, '2g'),
+                                   **({'TRIAL_HOST_CAPS': JOB_HOST_CAPS[label]} if label in JOB_HOST_CAPS else {})})
         lines = [line for line in done.stdout.splitlines() if line.startswith('{')]
         log(f'{label} rc={done.returncode} {time.monotonic() - started:.0f}s {lines[-1] if lines else "(no record line)"}')
     except subprocess.TimeoutExpired:
@@ -147,8 +149,9 @@ def run_loop(enabled, log=print):
 def check_enabled(labels):
     sys.path.insert(0, str(ROOT / 'scripts'))
     from refactor_collect_job import NEVER, SENDS
+    from refactor_collect_job import CHAIN_STEPS
     jobs, _ = load_jobs()
-    known = {label for label, _a, _s in jobs}
+    known = {label for label, _a, _s in jobs} | set(CHAIN_STEPS)
     unknown, refused = labels - known, labels & (SENDS | NEVER)
     if unknown or refused:
         raise SystemExit(f'Not enabled — unknown: {sorted(unknown)}, refused (sends/backfill): {sorted(refused)}')

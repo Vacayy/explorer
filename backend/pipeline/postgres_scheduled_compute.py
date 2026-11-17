@@ -25,6 +25,10 @@ class HeldBack(RuntimeError):
     """The computation did not prove itself; nothing stored."""
 
 
+class Skipped(RuntimeError):
+    """The script's own admin flag is off (its run_job recorded 'skipped'); nothing to store."""
+
+
 def _cap_model_calls(limit):
     """At most `limit` model calls in this run (each llm._execute: one call, its fallback included); the next is
     refused and the run is held back. Returns the counter."""
@@ -84,6 +88,8 @@ def run(script, argv, factory, *, record, source, projection_dir='/projection', 
                             (floor, record) if record else (floor,)).fetchall()
         if record and not runs:
             raise HeldBack(f'job record {record}: missing')
+        if runs and all(row['status'] == 'skipped' for row in runs):
+            raise Skipped(', '.join(sorted({row['job'] for row in runs})) + ' flag off')  # an admin choice, not a failure
         failed = [f"{row['job']} {row['status']}" for row in runs if row['status'] != 'ok']
         if failed:
             raise HeldBack(f'job record {", ".join(failed)}')
