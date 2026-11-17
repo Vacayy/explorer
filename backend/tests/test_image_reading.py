@@ -84,6 +84,13 @@ class ReadImagesTests(unittest.TestCase):
     def items(self, n):
         return [{"key": f"k{i}", "url": f"https://e.com/{i}.png", "context": "글"} for i in range(n)]
 
+    def test_saved_image_records_actual_model_label(self):
+        conn = self.connect()
+        ir._save(conn, 'synthetic', 'ok', {'kind': 'chart', 'model': 'codex-exec/test'})
+        self.assertEqual(conn.execute('SELECT model FROM image_readings WHERE image_key=?', ('synthetic',)).fetchone()[0],
+                         'codex-exec/test')
+        conn.close()
+
     def test_doc_is_atomic_when_budget_short(self):
         with patch.object(ir, "_remaining_budget", return_value=2), patch.object(ir, "_call") as call:
             out = ir.read_images(self.items(3), published_at="", source="s")

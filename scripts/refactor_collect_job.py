@@ -467,7 +467,7 @@ def _mark_identical_feed_revisions(queue):
 
 
 def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-backlog.sqlite', youtube=None, telegram=None,
-                     batch_marker=Path('/trial/feed-batch-trial')):
+                     batch_marker=Path('/trial/feed-batch-trial'), image_marker=Path('/trial/feed-image-trial')):
     """One blog reference, one queued document; a failure keeps this isolated feed on hold."""
     from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference
     keyword_only = os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1'
@@ -495,11 +495,32 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
         image_reading.read_images = cached_images  # use existing interpretation or defer the entire document
     queue = FeedBacklog(queue_path)
     try:
+        if queue.intent():
+            raise trial.HeldBack('an earlier feed publication intent requires review')
+        image_trial = image_marker.exists() or image_marker.is_symlink()
+        if image_trial:
+            info = image_marker.lstat()
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077 \
+                    or image_marker.read_text() != 'feed-image-trial-v1\n' or keyword_only or not strict_images \
+                    or not 1 <= MAX_MODEL_CALLS <= 2:
+                raise ValueError('Invalid feed image trial marker or budget')
+            from pipeline.feed_image_trial import stage_one
+            try:
+                image_result = stage_one(queue, image_marker.unlink)
+                if image_marker.is_file():
+                    image_marker.unlink()  # no eligible image; do not block later feed rounds
+            except trial.Aborted:
+                raise
+            except Exception as exc:
+                if image_marker.is_file():
+                    image_marker.unlink()
+                image_result = {'image_staged': 0, 'image_error': type(exc).__name__}
+            return {'stats': {'feed': {'refs': 0}}, 'counts': {}, 'published': 0,
+                    'sources': ['image-trial'], 'steps_not_connected': ['image result publication', 'calendar events'],
+                    **image_result}
         deferred_analysis = False
         identical_revisions = _mark_identical_feed_revisions(queue)
         allowed = {'blog'} | ({'youtube'} if youtube is not None else set()) | ({'telegram'} if telegram is not None else set())
-        if queue.intent():
-            raise trial.HeldBack('an earlier feed publication intent requires review')
         if queue.next(allowed=allowed) is None:
             if youtube is not None or telegram is not None or queue.next_pending_ref(allowed=allowed) is None:
                 from pipeline.base import SourceRef

@@ -81,6 +81,11 @@ class FeedBacklog:
                 payload_hash TEXT NOT NULL, payload TEXT NOT NULL,
                 PRIMARY KEY(kind,connector,source_key,payload_hash)
             );
+            CREATE TABLE IF NOT EXISTS staged_image_results (
+                image_key TEXT PRIMARY KEY, document_seq INTEGER NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('running','ready','filtered')),
+                result_json TEXT
+            );
         ''')
         if 'revision_pending' not in {row[1] for row in self.conn.execute('PRAGMA table_info(pending)')}:
             self.conn.execute('ALTER TABLE pending ADD COLUMN revision_pending INTEGER NOT NULL DEFAULT 0 '
@@ -193,6 +198,26 @@ class FeedBacklog:
         digest = hashlib.sha256(payload.encode()).hexdigest()
         self.conn.execute('INSERT OR IGNORE INTO superseded_payloads VALUES (?,?,?,?,?)',
                           (kind, connector, source_key, digest, payload))
+
+    def begin_image(self, seq, image_key):
+        """Persist intent before an image model attempt so an interruption cannot silently retry."""
+        with self.conn:
+            if not image_key or not self.conn.execute('SELECT 1 FROM pending WHERE seq=? AND defer_reason=?',
+                                                      (seq, 'analysis')).fetchone():
+                raise ValueError('An image-deferred document is required')
+            self.conn.execute("INSERT INTO staged_image_results VALUES (?,?,'running',NULL)", (image_key, seq))
+
+    def finish_image(self, image_key, result):
+        """Persist the result before it is eligible for further processing."""
+        if result is not None and not isinstance(result, dict):
+            raise ValueError('Image result must be an object or filtered')
+        payload = json.dumps(result, ensure_ascii=False, separators=(',', ':')) if result is not None else None
+        with self.conn:
+            changed = self.conn.execute('UPDATE staged_image_results SET status=?,result_json=? '
+                                        "WHERE image_key=? AND status='running'",
+                                        ('ready' if result is not None else 'filtered', payload, image_key)).rowcount
+            if changed != 1:
+                raise ValueError('Image attempt is missing or already completed')
 
     def next(self, allowed=None):
         """Oldest document in the next nonempty source lane, rotating between lanes."""

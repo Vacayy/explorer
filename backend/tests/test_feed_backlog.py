@@ -9,6 +9,24 @@ from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference, stage_on
 
 
 class FeedBacklogTest(unittest.TestCase):
+    def test_image_attempt_and_result_survive_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'pending.sqlite'
+            queue = FeedBacklog(path)
+            queue.enqueue('blog', 'feed', RawDoc('blog', 'id'))
+            seq = queue.next()[0]
+            queue.defer_revision(seq, reason='analysis')
+            queue.begin_image(seq, 'image-key')
+            queue.close()
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.conn.execute('SELECT status FROM staged_image_results').fetchone()[0], 'running')
+            with self.assertRaises(sqlite3.IntegrityError):
+                queue.begin_image(seq, 'image-key')
+            queue.finish_image('image-key', {'kind': 'chart', 'model': 'codex-exec/test'})
+            self.assertEqual(queue.conn.execute('SELECT status FROM staged_image_results').fetchone()[0], 'ready')
+            with self.assertRaises(ValueError):
+                queue.finish_image('image-key', None)
+            queue.close()
     def test_superseded_pending_payloads_are_preserved(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'pending.sqlite'

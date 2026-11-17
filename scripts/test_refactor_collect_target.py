@@ -24,6 +24,18 @@ class CollectionTargetTest(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
+    def test_image_trial_without_candidate_does_not_block_future_feed(self):
+        from pipeline import image_reading
+        with TemporaryDirectory() as directory:
+            path, marker = Path(directory) / 'queue', Path(directory) / 'image-marker'
+            marker.write_text('feed-image-trial-v1\n')
+            marker.chmod(0o600)
+            with patch.dict(os.environ, {'COLLECT_FEED_KEYWORD_ONLY': '0', 'COLLECT_FEED_STRICT_IMAGES': '1'}), \
+                 patch.object(job, 'MAX_MODEL_CALLS', 2), patch.object(image_reading, 'read_images'):
+                result = job.run_minimal_blog(None, object(), queue_path=path, image_marker=marker)
+            self.assertEqual(result['image_staged'], 0)
+            self.assertFalse(marker.exists())
+
     def test_batch_model_results_are_applied_to_their_staged_documents(self):
         from pipeline import enrich, feed_enrichment, image_reading
         from pipeline.base import RawDoc

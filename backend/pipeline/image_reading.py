@@ -187,6 +187,7 @@ def _call(data: bytes, ext: str, context: str, source: str, published_at: str, j
     out = llm.extract_json(res.text)
     if not out:
         raise ValueError(f"JSON 없음: {res.text[:80]!r}")
+    out['model'] = res.label
     return out
 
 
@@ -201,7 +202,7 @@ def _save(conn, key: str, status: str, out: dict | None = None, error: str | Non
             attempts=image_readings.attempts+1, error=excluded.error, model=excluded.model,
             updated_at=datetime('now')""",
         (key, status, out.get("kind"), out.get("title"), out.get("insight"), out.get("evidence"),
-         json.dumps(events, ensure_ascii=False) if events else None, error, "claude-code/haiku"))
+         json.dumps(events, ensure_ascii=False) if events else None, error, out.get('model') or "claude-code/haiku"))
     conn.commit()
 
 
