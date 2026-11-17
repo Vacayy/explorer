@@ -5,6 +5,7 @@ mode (EXPLORER_ACCESS_MODE=public) it assembles, with development's environment 
 - the auth routes, their LoginFlow on the PG identity store (pipeline.postgres_identity_store) and a
   separately provisioned login-transaction SQLite (in-progress logins only, as in development);
 - the model-call usage gate on the PG chat quota (development's trial policy and identity secret);
+- the anonymous trial chat (development's /api/public/chat contract) over the candidate document search;
 - the candidate access boundary, outermost, so it runs first.
 """
 import os
@@ -19,7 +20,7 @@ def _secret(name, size):
     return data
 
 
-def install_public(app, factory):
+def install_public(app, factory, *, trial_search=None, trial_read=None):
     from security.access_boundary import configured_access_mode
     if configured_access_mode() != 'public':
         return False
@@ -49,6 +50,11 @@ def install_public(app, factory):
         max_in_flight=int(os.environ['EXPLORER_TRIAL_MAX_IN_FLIGHT'])))
     from routers import postgres_member_thesis_fixture
     postgres_member_thesis_fixture.install(app, factory)  # thesis audits: the requester's own
+    if trial_search is not None and trial_read is not None:
+        from pipeline.postgres_trial_chat import CandidateEvidence, CandidateTrialChat
+        from routers import postgres_trial_chat
+        app.include_router(postgres_trial_chat.create_router(
+            identity, quota, identities, CandidateTrialChat(quota, CandidateEvidence(trial_search, trial_read))))
     gate.install(llm, quota)
     gate.add_middleware(app, identity=identity, factory=factory)
     app.add_middleware(CandidateAccessBoundary, routes=app.router.routes, service_factory=lambda: service)

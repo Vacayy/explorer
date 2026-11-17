@@ -253,7 +253,17 @@ def close_search():
 
 # Last, after every route: the public mode's login, usage gate and access boundary (private mode: no change).
 from routers.postgres_public_assembly import install_public  # noqa: E402
-install_public(app, factory)
+
+
+def trial_search(query, limit):
+    """Trial chat evidence: the candidate feed search over every collected document (ids by relevance)."""
+    from fastapi import Response
+    return [item.id for item in document_ui.experimental_search_feed(
+        Response(), q=query, source=None, page=1, size=limit, stock=None, industry=None, topic=None,
+        days=None, sort='relevance').items]
+
+
+install_public(app, factory, trial_search=trial_search, trial_read=document_ui.reader.get)
 
 if __name__ == '__main__':
     uvicorn.run(app, host='0.0.0.0', port=8000, access_log=False)

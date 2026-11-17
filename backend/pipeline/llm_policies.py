@@ -129,6 +129,7 @@ TASKS = MappingProxyType({
     'transcript.momentum_extract': TaskSpec('haiku', timeout=180),
     'transcript.momentum_summary': TaskSpec('sonnet', timeout=180),
     'transcript.reaction': TaskSpec('sonnet', timeout=300),
+    'trial.answer': TaskSpec('sonnet', timeout=180, schema=True),  # anonymous trial chat: one tool-free answer
     'vocab.judge': TaskSpec('sonnet', timeout=300),
     'worldview.generate': TaskSpec('opus', timeout=300, model_env='WORLDVIEW_MODEL'),
     'youtube.digest': TaskSpec('opus', timeout=400),
