@@ -20,7 +20,7 @@ def _column(table, column):
 def steps():
     """(version, name, present(conn), initialize(conn)) in application order."""
     from pipeline import postgres_identity_store, postgres_trial_quota, postgres_usage_gate
-    from pipeline import postgres_client_errors, postgres_llm_calls, postgres_owner_legacy_fixture, postgres_study_owners
+    from pipeline import postgres_client_errors, postgres_llm_calls, postgres_observe_ledgers, postgres_owner_legacy_fixture, postgres_study_owners
     from routers import postgres_member_thesis_fixture, postgres_questions_fixture
     return [
         (1, 'identity (principals, sessions)', _table('principals'), postgres_identity_store.initialize),
@@ -33,6 +33,7 @@ def steps():
         (8, 'member thesis audits', _table('member_thesis_audits'), postgres_member_thesis_fixture.initialize),
         (9, 'screen API error log', _table('client_errors'), postgres_client_errors.initialize),
         (10, 'model call record', _table('llm_calls'), postgres_llm_calls.initialize),
+        (11, 'request counts and usage events', _table('usage_events'), postgres_observe_ledgers.initialize),
     ]
 
 

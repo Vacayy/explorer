@@ -256,6 +256,8 @@ def close_search():
 
 
 # Last, after every route: the public mode's login, usage gate and access boundary (private mode: no change).
+from routers import postgres_observe_fixture  # noqa: E402
+postgres_observe_fixture.install(app, lambda: legacy_projection, factory)  # request counts, usage events, admin observe
 from routers.postgres_public_assembly import install_public  # noqa: E402
 
 
