@@ -461,6 +461,12 @@ def _feed_document_known(source, key):
         return work.execute('SELECT 1 FROM raw_documents WHERE source_type=? AND source_id=? LIMIT 1', (source, key)).fetchone() is not None
 
 
+def _feed_blog_rss_differs(key, body):
+    with sqlite3.connect(f'file:{trial.WORK}?mode=ro', uri=True) as work:
+        row = work.execute("SELECT raw_content FROM raw_documents WHERE source_type='blog' AND source_id=?", (key,)).fetchone()
+        return bool(row and (row[0] or '') != body)
+
+
 def _mark_identical_feed_revisions(queue):
     with sqlite3.connect(f'file:{trial.WORK}?mode=ro', uri=True) as work:
         return queue.mark_identical_revisions(work)
@@ -532,7 +538,8 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
         if revision_trial_exists:
             from pipeline.feed_revision_trial import SnapshotUnavailable, stage_one
             try:
-                revision_result = stage_one(queue, connector, _feed_document_known, revision_trial.unlink)
+                revision_result = stage_one(queue, connector, _feed_document_known, revision_trial.unlink,
+                                            needs_fetch=_feed_blog_rss_differs)
                 if revision_trial.is_file():
                     revision_trial.unlink()  # no eligible reference
             except trial.Aborted:

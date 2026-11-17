@@ -8,19 +8,22 @@ class SnapshotUnavailable(ValueError):
         self.attempts = attempts
 
 
-def stage_one(queue, connector, is_known, before_attempt, *, max_requests=3):
+def stage_one(queue, connector, is_known, before_attempt, *, max_requests=3, needs_fetch=None):
     selected = None
     for _seq, ref in queue.revision_refs('blog'):
         post = ref.meta.get('post') or {}
         identity = post.get('url') or post.get('title') or ''
+        body = post.get('content') or post.get('summary') or ''
         old = queue.conn.execute('SELECT defer_reason FROM pending WHERE source_type=? AND source_id=?',
                                  ('blog', identity)).fetchone()
-        if identity and (not old or old[0] != 'analysis') and is_known('blog', identity):
-            selected = (ref, identity)
+        should_fetch = bool(post.get('url') and ('blog.naver.com' in post['url'] or len(body) < 600))
+        if identity and (not old or old[0] != 'analysis') and is_known('blog', identity) \
+                and (needs_fetch is None or (body and should_fetch and needs_fetch(identity, body))):
+            selected = (ref, identity, body)
             break
     if selected is None:
         return {'revision_snapshot': 0, 'revision_requests': 0}
-    ref, identity = selected
+    ref, identity, rss_body = selected
     before_attempt()  # the one-shot flag is gone before any source request
     send, made, refused = requests.Session.send, [0], [False]
     def limited(session, request, **kwargs):
@@ -43,4 +46,5 @@ def stage_one(queue, connector, is_known, before_attempt, *, max_requests=3):
         raise ValueError('Revision snapshot is missing after staging')
     if not row[1]:
         queue.defer_revision(row[0])
-    return {'revision_snapshot': 1, 'revision_requests': made[0]}
+    return {'revision_snapshot': 1, 'revision_requests': made[0],
+            'revision_expanded_from_rss': len(doc.raw_content) > len(rss_body)}

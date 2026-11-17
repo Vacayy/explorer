@@ -189,9 +189,10 @@ class CollectionTargetTest(unittest.TestCase):
             root = Path(directory); path = root / 'queue'; flag = root / 'revision-trial'
             flag.write_text('feed-blog-revision-trial-v1\n'); flag.chmod(0o600)
             queue = FeedBacklog(path)
-            queue.enqueue_ref('blog', 'feed', SourceRef('ref', meta={'post': {'url': 'https://example.test/post'}}), revision_pending=True)
+            queue.enqueue_ref('blog', 'feed', SourceRef('ref', meta={'post': {'url': 'https://example.test/post', 'content': 'rss'}}), revision_pending=True)
             queue.close()
-            with patch.object(job, '_feed_document_known', return_value=True), patch.object(trial, 'run_documents') as publish:
+            with patch.object(job, '_feed_document_known', return_value=True), patch.object(job, '_feed_blog_rss_differs', return_value=True), \
+                 patch.object(trial, 'run_documents') as publish:
                 result = job.run_minimal_blog(None, Blog(), queue_path=path, revision_trial=flag)
             self.assertEqual(result['revision_snapshot'], 1)
             self.assertEqual(result['published'], 0)
@@ -213,9 +214,9 @@ class CollectionTargetTest(unittest.TestCase):
             root = Path(directory); path = root / 'queue'; flag = root / 'revision-trial'
             flag.write_text('feed-blog-revision-trial-v1\n'); flag.chmod(0o600)
             queue = FeedBacklog(path)
-            queue.enqueue_ref('blog', 'feed', SourceRef('ref', meta={'post': {'url': 'https://example.test/post'}}), revision_pending=True)
+            queue.enqueue_ref('blog', 'feed', SourceRef('ref', meta={'post': {'url': 'https://example.test/post', 'content': 'rss'}}), revision_pending=True)
             queue.close()
-            with patch.object(job, '_feed_document_known', return_value=True):
+            with patch.object(job, '_feed_document_known', return_value=True), patch.object(job, '_feed_blog_rss_differs', return_value=True):
                 result = job.run_minimal_blog(None, Blog(), queue_path=path, revision_trial=flag)
             self.assertEqual(result['revision_error'], 'source_unavailable')
             self.assertEqual(result['published'], 0)

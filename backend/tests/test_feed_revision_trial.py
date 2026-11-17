@@ -60,5 +60,15 @@ class RevisionTrialTests(unittest.TestCase):
         self.assertEqual(self.queue.conn.execute('SELECT count(*) FROM pending').fetchone()[0], 0)
         self.assertEqual(len(list(self.queue.revision_refs('blog'))), 1)
 
+    def test_prefers_a_different_rss_reference_needing_a_source_fetch(self):
+        self.queue.enqueue_ref('blog', 'feed', SourceRef('new-ref', meta={'post': {
+            'url': 'https://example.test/new', 'content': 'rss'}}), revision_pending=True)
+        class Connector:
+            def fetch_post(self, ref): return RawDoc('blog', ref.meta['post']['url'], raw_content='expanded source')
+        result = stage_one(self.queue, Connector(), lambda *_: True, lambda: None,
+                           needs_fetch=lambda key, body: key.endswith('/new'))
+        self.assertEqual(result['revision_snapshot'], 1)
+        self.assertTrue(result['revision_expanded_from_rss'])
+
 
 if __name__ == '__main__': unittest.main()
