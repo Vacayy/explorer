@@ -51,7 +51,8 @@ LOCAL_SOURCES = Path(os.environ.get('COLLECT_LOCAL_SOURCES', HOME / 'server-data
 API_ENV = ('REFACTOR_POSTGRES_DSN', 'REFACTOR_TEST_DISPOSABLE', 'FASTEMBED_CACHE_PATH', 'CODEX_BIN', 'CODEX_HOME',
            'CODEX_FALLBACK_MODEL', 'HOME', 'ENRICH_ENGINE')
 FORWARDED = ('TRIAL_MAX_REQUESTS', 'TRIAL_HOST_CAPS', 'COLLECT_FEED_SOURCES', 'COLLECT_MAX_NEW_DOCS',
-             'COLLECT_MAX_MODEL_CALLS', 'COLLECT_PROJECTION_WAIT', 'TRIAL_MAX_ERRORS', 'COLLECT_FEED_MINIMAL_BLOG')
+             'COLLECT_MAX_MODEL_CALLS', 'COLLECT_PROJECTION_WAIT', 'TRIAL_MAX_ERRORS', 'COLLECT_FEED_MINIMAL_BLOG',
+             'COLLECT_FEED_KEYWORD_ONLY')
 
 
 class _Unix(http.client.HTTPConnection):
@@ -135,6 +136,12 @@ def check(spec):
     media = [bind for bind in host['Binds'] if bind.split(':', 1)[0] == 'explorer-refactor-media']
     if media and (spec.get('Labels', {}).get(f'{LABEL}.job') != 'chain' or media != ['explorer-refactor-media:/app/media:ro']):
         raise ValueError('Media is only available read-only to feed intake')
+    if spec.get('Labels', {}).get(f'{LABEL}.job') == 'feed-maintenance':
+        expected = {f'{ROOT}/backend:/app/backend:ro', f'{ROOT}/scripts:/app/scripts:ro',
+                    f'{VOLUME}:/target', f'{FEED_VOLUME}:/feed'}
+        if not FEED_VOLUME or set(host['Binds']) != expected or spec.get('Cmd') not in (
+                ['python', '/app/scripts/refactor_feed_refresh.py'], ['python', '/app/scripts/refactor_feed_sync.py']):
+            raise ValueError('Invalid feed maintenance container')
     if host.get('Privileged') or host.get('CapDrop') != ['ALL'] or host.get('NetworkMode') != NETWORK \
             or host.get('PidMode') or spec.get('Labels', {}).get(LABEL) != '1':
         raise ValueError('Refused job container: privilege, network, pid or label outside the job shape')
@@ -151,6 +158,31 @@ def remove(name):
     if info['Config']['Labels'].get(LABEL) != '1':
         raise ValueError(f'Not a job container: {name}')
     call('DELETE', f'/containers/{quote(name)}?force=1')
+
+
+def feed_maintenance(action, *, limit=600):
+    """Network-isolated one-shot work-copy refresh/sync, called only while the scheduler owns its lock."""
+    if action not in ('refresh', 'sync') or not FEED_VOLUME or os.environ.get('COLLECT_TARGET') != 'live':
+        raise ValueError('Feed maintenance needs the explicitly selected live feed volume')
+    api = call('GET', f'/containers/{API}/json')
+    spec = {'Image': IMAGE, 'Cmd': ['python', f'/app/scripts/refactor_feed_{action}.py'],
+            'Env': ['PYTHONPATH=/app/backend', 'PYTHONDONTWRITEBYTECODE=1'], 'User': api['Config']['User'],
+            'WorkingDir': '/app/backend', 'Labels': {LABEL: '1', f'{LABEL}.job': 'feed-maintenance'},
+            'HostConfig': {'Binds': [f'{ROOT}/backend:/app/backend:ro', f'{ROOT}/scripts:/app/scripts:ro',
+                                     f'{VOLUME}:/target', f'{FEED_VOLUME}:/feed'],
+                           'Memory': 2 << 30, 'NetworkMode': NETWORK, 'Privileged': False, 'CapDrop': ['ALL'],
+                           'SecurityOpt': ['no-new-privileges']}}
+    check(spec)
+    ident = call('POST', '/containers/create', spec)['Id']
+    try:
+        call('POST', f'/containers/{ident}/start')
+        try:
+            code = call('POST', f'/containers/{ident}/wait', timeout=limit)['StatusCode']
+        except (socket.timeout, TimeoutError):
+            return False
+        return code == 0
+    finally:
+        call('DELETE', f'/containers/{ident}?force=1')
 
 
 def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=None, job=''):

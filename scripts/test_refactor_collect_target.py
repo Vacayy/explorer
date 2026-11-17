@@ -15,9 +15,42 @@ import refactor_collect_engine as engine
 import refactor_collect_job as job
 import refactor_feed_recover as recover
 import refactor_feed_sync as feed_sync
+import refactor_feed_refresh as feed_refresh
 
 
 class CollectionTargetTest(unittest.TestCase):
+    def test_feed_refresh_preserves_queue_and_refuses_unpublished_work(self):
+        from pipeline.base import RawDoc
+        from pipeline.feed_backlog import FeedBacklog
+        with TemporaryDirectory() as directory:
+            source, target, path = [Path(directory) / name for name in ('source', 'target', 'queue')]
+            for file, value in ((source, 'newer'), (target, 'older')):
+                db = sqlite3.connect(file)
+                db.executescript('''
+                    CREATE TABLE raw_documents(id INTEGER PRIMARY KEY, body TEXT);
+                    CREATE TABLE entities(id INTEGER PRIMARY KEY); CREATE TABLE entity_keywords(id INTEGER PRIMARY KEY);
+                    CREATE TABLE entity_relations(id INTEGER PRIMARY KEY);
+                    CREATE TABLE candidate_publish_floor(name TEXT PRIMARY KEY,value INTEGER);
+                    INSERT INTO candidate_publish_floor VALUES ('document_floor',1),('entity_floor',0),('keyword_floor',0),('relation_floor',0);
+                ''')
+                db.execute('INSERT INTO raw_documents VALUES(1,?)', (value,))
+                db.commit(); db.close()
+            q = FeedBacklog(path)
+            q.enqueue('blog', 'ref', RawDoc('blog', 'id'))
+            q.close()
+            feed_refresh.refresh(source, target, path)
+            db = sqlite3.connect(target)
+            self.assertEqual(db.execute('SELECT body FROM raw_documents').fetchone()[0], 'newer')
+            db.execute('INSERT INTO raw_documents VALUES(2,?)', ('unpublished',))
+            db.commit(); db.close()
+            with self.assertRaises(ValueError):
+                feed_refresh.refresh(source, target, path)
+            db = sqlite3.connect(target)
+            self.assertEqual(db.execute('SELECT count(*) FROM raw_documents').fetchone()[0], 2)
+            db.close()
+            q = FeedBacklog(path)
+            self.assertIsNotNone(q.next())
+            q.close()
     def test_feed_sync_appends_only_validated_document_and_preserves_existing_rows(self):
         with TemporaryDirectory() as directory:
             paths = [Path(directory) / name for name in ('source', 'target')]
@@ -37,7 +70,9 @@ class CollectionTargetTest(unittest.TestCase):
                 db.close()
             db = sqlite3.connect(paths[0])
             db.executescript("INSERT INTO raw_documents VALUES(2,'new'); INSERT INTO enrichments VALUES(1,2,'summary');"
-                             "INSERT INTO entity_links VALUES(1,2,1); UPDATE candidate_publish_floor SET value=2 WHERE name='document_floor';")
+                             "INSERT INTO entities VALUES(1); INSERT INTO entity_links VALUES(1,2,1);"
+                             "UPDATE candidate_publish_floor SET value=2 WHERE name='document_floor';"
+                             "UPDATE candidate_publish_floor SET value=1 WHERE name='entity_floor';")
             db.commit()
             db.close()
             self.assertEqual(feed_sync.sync(*paths), {'raw_documents': 1, 'enrichments': 1, 'entity_links': 1})
@@ -188,6 +223,22 @@ class CollectionTargetTest(unittest.TestCase):
             self.assertFalse(scheduler.run_job('chain', lambda *_: None))
             self.assertTrue(scheduler.FEED_HOLD.exists())
             self.assertFalse(scheduler.HOLD.exists())
+
+    def test_feed_refresh_and_sync_failures_use_separate_holds(self):
+        with TemporaryDirectory() as directory, \
+             patch.object(scheduler, 'HOLD', Path(directory) / 'global'), \
+             patch.object(scheduler, 'FEED_HOLD', Path(directory) / 'feed'), \
+             patch.dict(os.environ, {'COLLECT_CHAIN_INTAKE_ONLY': '1', 'COLLECT_FEED_WORK_VOLUME': 'explorer-refactor-collect-feed-test',
+                                     'COLLECT_FEED_AUTO_SYNC': '1'}), \
+             patch.object(scheduler, '_run_one', return_value=True), \
+             patch.object(engine, 'feed_maintenance', side_effect=[False, True, False]):
+            self.assertFalse(scheduler.run_job('chain', lambda *_: None))
+            self.assertTrue(scheduler.FEED_HOLD.exists())
+            self.assertFalse(scheduler.HOLD.exists())
+            scheduler.FEED_HOLD.unlink()
+            self.assertFalse(scheduler.run_job('chain', lambda *_: None))
+            self.assertTrue(scheduler.FEED_HOLD.exists())
+            self.assertTrue(scheduler.HOLD.exists())
 
     def test_us_briefing_requires_synthesis(self):
         conn = sqlite3.connect(':memory:')

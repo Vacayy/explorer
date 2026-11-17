@@ -455,6 +455,11 @@ def _blog_document_known(key):
 def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-backlog.sqlite'):
     """One blog reference, one queued document; a failure keeps this isolated feed on hold."""
     from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference
+    if os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1':
+        if MAX_MODEL_CALLS != 0:
+            raise ValueError('Keyword-only feed requires a zero model attempt cap')
+        from pipeline import enrich
+        enrich.llm_available = lambda: False
     queue = FeedBacklog(queue_path)
     try:
         if queue.intent():

@@ -8,7 +8,7 @@ import sqlite3
 TABLES = ('raw_documents', 'enrichments', 'entity_links', 'entities', 'entity_keywords', 'entity_relations')
 
 
-def sync(source_path, target_path):
+def sync(source_path, target_path, *, allow_noop=False):
     src = sqlite3.connect(f'file:{source_path}?mode=ro', uri=True)
     dst = sqlite3.connect(target_path)
     try:
@@ -44,8 +44,11 @@ def sync(source_path, target_path):
                     a, b = next(source, None), next(target, None)
             additions[table] = (source_columns, new)
         documents = additions['raw_documents'][1]
-        if len(documents) != 1 or any(additions[t][1] for t in ('entities', 'entity_keywords', 'entity_relations')):
-            raise ValueError('Expected exactly one document and no new graph rows')
+        if allow_noop and not any(rows for _, rows in additions.values()):
+            dst.rollback()
+            return {'raw_documents': 0, 'enrichments': 0, 'entity_links': 0}
+        if len(documents) != 1 or any(additions[t][1] for t in ('entity_keywords', 'entity_relations')):
+            raise ValueError('Expected exactly one document and no new keyword or relation rows')
         doc_id = documents[0][0]
         for table in ('enrichments', 'entity_links'):
             cols, rows = additions[table]
@@ -53,10 +56,16 @@ def sync(source_path, target_path):
                 raise ValueError('An added row belongs to another document')
         if len(additions['enrichments'][1]) != 1:
             raise ValueError('Expected one completed enrichment')
-        for table in ('raw_documents', 'enrichments', 'entity_links'):
+        link_columns, links = additions['entity_links']
+        linked = {row[link_columns.index('entity_id')] for row in links}
+        if any(row[0] not in linked for row in additions['entities'][1]):
+            raise ValueError('An added entity is not linked to the new document')
+        for table in ('raw_documents', 'enrichments', 'entities', 'entity_links'):
             cols, rows = additions[table]
             dst.executemany(f'INSERT INTO "{table}" VALUES ({",".join("?" for _ in cols)})', rows)
         dst.execute("UPDATE candidate_publish_floor SET value=? WHERE name='document_floor'", (doc_id,))
+        if additions['entities'][1]:
+            dst.execute("UPDATE candidate_publish_floor SET value=? WHERE name='entity_floor'", (additions['entities'][1][-1][0],))
         if dst.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
             raise ValueError('Target integrity check failed')
         dst.commit()
@@ -70,4 +79,4 @@ def sync(source_path, target_path):
 
 
 if __name__ == '__main__':
-    print('work rows appended:', sync('/feed/work.db', '/target/work.db'))
+    print('work rows appended:', sync('/feed/work.db', '/target/work.db', allow_noop=True))

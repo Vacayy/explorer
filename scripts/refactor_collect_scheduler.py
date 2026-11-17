@@ -143,9 +143,30 @@ def run_job(label, log=print):
         except FileExistsError:
             log('collection held: inspect the previous work copy and run before clearing the hold')
             return False
+        sync_feed = step == 'chain' and bool(os.environ.get('COLLECT_FEED_WORK_VOLUME')) \
+            and os.environ.get('COLLECT_FEED_AUTO_SYNC') == '1'
+        if sync_feed:
+            import refactor_collect_engine as engine
+            try:
+                refreshed = engine.feed_maintenance('refresh')
+            except Exception:  # a failed refresh never changes the shared work copy
+                refreshed = False
+            if not refreshed:
+                log('feed refresh failed: isolated feed remains held')
+                return False
         if not _run_one(step, log):
             log(f'collection held after {step}: inspect the work copy and run before clearing the hold')
             return False
+        if sync_feed:
+            try:
+                synchronized = engine.feed_maintenance('sync')
+            except Exception:
+                synchronized = False
+            if not synchronized:
+                # A PG publication may already exist; prevent stale work from issuing colliding IDs.
+                HOLD.touch(exist_ok=True)
+                log('feed synchronization failed: collection held for reconciliation')
+                return False
         marker_path.unlink()
     return True
 
