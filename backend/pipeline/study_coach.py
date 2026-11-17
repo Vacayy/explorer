@@ -86,6 +86,29 @@ def plan(question, background, recent, mode, *, run_llm=None):
         return {'intent':fallback,'queries':[], 'error':'검색어 계획을 만들지 못했습니다.'}
 
 
+CODEX_SOURCES=('마지막 답은 JSON {"sources":[{"url":"","title":"","date":"YYYY-MM-DD 또는 null","excerpt":"질문 관련 원문 발췌"}]} 하나로, '
+               '실제로 열어 본 페이지만 넣으세요.')
+
+
+def codex_web_evidence(result):
+    """Codex web fallback (llm_policies.WEB_FALLBACK_TASKS): Codex returns no page text, so a source is kept only if
+    Codex actually opened its URL, and its excerpt is marked as the model's copy, not tool text. YouTube is excluded."""
+    opened={e['input']['url'].rstrip('/') for e in result.tool_results if e.get('name')=='WebFetch' and not e.get('is_error')}
+    data=llm.extract_json(result.text)
+    items=[]
+    for source in (data or {}).get('sources') or []:
+        url=source.get('url') if isinstance(source,dict) else None
+        if (not isinstance(url,str) or url.rstrip('/') not in opened or urlparse(url).scheme not in ('https','http')
+                or 'youtube.' in urlparse(url).netloc or 'youtu.be' in urlparse(url).netloc):
+            continue
+        date=source.get('date') if isinstance(source.get('date'),str) and re.fullmatch(r'\d{4}-\d{2}-\d{2}',source.get('date') or '') else None
+        items.append({'kind':'web','title':str(source.get('title') or url)[:300],'href':url,'date':date,
+            'text':'웹 원문을 연 모델이 옮긴 발췌(도구 원문 아님, Codex 대체).\n'+str(source.get('excerpt') or '')[:4000],'tool':'study_web'})
+        if len(items)==2:break
+    if items:return items,None
+    return [],'웹 검색에서 열람이 확인된 출처를 확보하지 못했습니다. 검증 완료로 말할 수 없습니다.'
+
+
 def web_fetch_failed(text):
     return bool(re.match(r'\s*(?:The server returned HTTP [45]\d\d|Error fetching|Failed to fetch|Unable to fetch|Access denied)', text, re.I))
 
@@ -94,7 +117,10 @@ def web_evidence(query, *, run_llm=None):
     if llm.llm_engine()!='claude-code':
         return [],'현재 모델 연결에서는 웹 검색을 지원하지 않습니다.'
     try:
-        result=(run_llm or llm.run)('WebSearch를 한 번 사용해 다음 공개 주제를 검색하세요. 공식 문서·기업 발표·논문 같은 1차 출처를 우선하세요. 검색 결과 중 가장 직접 관련된 1~2개 URL을 WebFetch로 열어 질문 관련 근거와 발행일을 확인하세요. 각 도구 결과만 확보하고 짧게 종료하세요. 검색어: '+query, task='study.web')
+        result=(run_llm or llm.run)('WebSearch를 한 번 사용해 다음 공개 주제를 검색하세요. 공식 문서·기업 발표·논문 같은 1차 출처를 우선하세요. 검색 결과 중 가장 직접 관련된 1~2개 URL을 WebFetch로 열어 질문 관련 근거와 발행일을 확인하세요. 각 도구 결과만 확보하고 짧게 종료하세요. '
+            +CODEX_SOURCES+' 검색어: '+query, task='study.web')
+        if result.engine=='codex-exec':
+            return codex_web_evidence(result)
         links={};search_text=[]
         for entry in result.tool_results:
             if entry.get('name')!='WebSearch' or entry.get('is_error'):continue

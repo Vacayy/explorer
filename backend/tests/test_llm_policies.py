@@ -77,8 +77,10 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(changed.primary.model,'haiku')
 
     def test_capabilities_and_disabled_fallback(self):
-        self.assertIsNone(resolve('study.web',environ={}).fallback)
-        self.assertIsNone(resolve('chain.analyze',environ={}).fallback)
+        # Web research falls back only to Codex's own web search (llm_policies.WEB_FALLBACK_TASKS).
+        self.assertEqual(resolve('study.web',environ={}).fallback.engine,'codex-exec')
+        self.assertEqual(resolve('chain.analyze',environ={}).fallback.engine,'codex-exec')
+        self.assertIsNone(resolve('study.web',environ={'LLM_FALLBACK_ENGINE':'none'}).fallback)
         self.assertIsNone(resolve('document.tag',engine='api',environ={}).fallback)
         self.assertIsNone(resolve('chat.answer',environ={'LLM_FALLBACK_ENGINE':'none'}).fallback)
         with self.assertRaises(ValueError):resolve('study.web',engine='api',environ={})
