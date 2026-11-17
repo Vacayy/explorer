@@ -37,6 +37,8 @@ _ADMIN = re.compile(r'^/api/spine/(admin|approvals|agent-proposals|keywords|rese
                     r'knowledge/items/[^/]+/(approve|reject)|narrative-candidates/)|^/api/spine/sources/(telegram|blog|youtube/[^/]+|collect)'
                     r'|^/api/(industries|business|ir-notes|blog|telegram)/|^/api/spine/knowledge$|^/api/spine/sources/youtube$')
 _OPERATOR_COMPUTE = re.compile(r'^/api/analysis/(runs|discovery)|^/api/spine/tw/chain-report$|^/api/spine/proxy-boards')
+# The operator's own boards are personal judgement and work records: reads are the operator's too (PM #3 6946944271).
+_OPERATOR_READS = re.compile(r'^/api/spine/proxy-boards(/|$)')
 # Collection triggers: external fetches once the real collectors run (not_run on the candidate), never anonymous.
 _COLLECTION = re.compile(r'^/api/financials/[^/]+/collect$|^/api/spine/(regimes/collect|risk/snapshot|sources/refresh)$'
                          r'|^/api/spine/transcript/(check/[^/]+|collect|calendar/refresh)$|^/api/spine/us/[^/]+/prices/collect$')
@@ -61,7 +63,7 @@ def route_policy(method, path):
         return 'member'  # default-watch creates the requester's default group on first read
     if _PERSONAL.match(path):  # questions too: the user's own tracked questions, read by the PG-native router
         return 'operator'
-    if _ADMIN.match(path) or (_OPERATOR_COMPUTE.match(path) and method not in {'GET', 'HEAD'}) or \
+    if _ADMIN.match(path) or _OPERATOR_READS.match(path) or (_OPERATOR_COMPUTE.match(path) and method not in {'GET', 'HEAD'}) or \
             (_COLLECTION.match(path) and method not in {'GET', 'HEAD'}):
         return 'operator'
     return 'public' if method in {'GET', 'HEAD'} else 'compute'

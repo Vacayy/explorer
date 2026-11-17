@@ -460,6 +460,12 @@ def _scope_to_requester(conn, pg):
             conn.execute(f'CREATE TEMP TABLE "{table}" AS SELECT * FROM main."{table}"')
             temp.add(table)
         conn.execute(statement)
+    # A requester with no portfolio: the legacy readers create the default portfolio group on first read, which the
+    # read-only file refuses (a 500). An empty group in this connection's copy lets them answer with nothing.
+    if conn.execute("SELECT 1 FROM temp.sqlite_master WHERE type='table' AND name='stock_groups'").fetchone() and \
+            not conn.execute("SELECT 1 FROM temp.stock_groups WHERE kind='portfolio'").fetchone():
+        from pipeline.portfolio import GROUP_NAME
+        conn.execute("INSERT INTO temp.stock_groups (id, name, kind) VALUES (-1, ?, 'portfolio')", (GROUP_NAME,))
 
 
 _MEMBER_QUESTION = "SELECT question_id FROM question_principals"
@@ -635,3 +641,24 @@ def derive_owner_narrative_decisions(root, pg):
         root.execute("UPDATE narrative_candidates SET status=?,narrative_topic=?,dismissed_until=?,"
                      "detail_json=json_patch(COALESCE(detail_json,'{}'),?) WHERE tag=?",
                      (status, topic, until, json.dumps(patch, ensure_ascii=False), tag))
+
+
+# Operator decisions laid over collected rows that every reader shares on purpose (not personal state).
+SHARED_DECISIONS = ('feature_flags', 'era_checks', 'research_candidates', 'agent_proposals', 'entity_keywords',
+                    'pricing_claims', 'pricing_observations', 'pricing_days')
+
+
+def check_override_shadows(pg):
+    """Public-mode self-check (architect #3 6947039949): every override table a read connection lays over the file must
+    have a TEMP shadow there (else the derive writes the read-only file and every read fails), and a personal one
+    must be in the operator's personal state (else a member reads it). Returns the warnings; raises on the first kind."""
+    from pipeline.postgres_owner_overrides import COMPUTED, OVERRIDES
+    registered = {name for (name,) in pg.execute('SELECT table_name FROM owner_override_keys')} \
+        if pg.execute("SELECT to_regclass('owner_override_keys')").fetchone()[0] is not None else set()
+    laid = (set(OVERRIDES) | registered) - set(COMPUTED)
+    unshadowed = sorted(laid - set(SHADOWED))
+    if unshadowed:
+        raise RuntimeError(f'Override tables without a read shadow (every read would fail): {unshadowed}')
+    by_row = {statement.split('temp.')[1].split()[0] for statement in PERSONAL_ROWS}  # personal rows of shared tables
+    return [f'override table {name} is neither shared on purpose nor personal' for name in
+            sorted(laid - set(SHARED_DECISIONS) - set(PERSONAL_TABLES) - by_row)]

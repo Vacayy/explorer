@@ -10,6 +10,7 @@ mode (EXPLORER_ACCESS_MODE=public) it first refuses to start while a schema migr
 - the candidate access boundary, outermost, so it runs first; an ambiguous or unclassified route refuses the
   start, and at startup one anonymous public read must pass the whole stack.
 """
+import logging
 import os
 from pathlib import Path
 
@@ -37,8 +38,11 @@ def install_public(app, factory, *, trial_search=None, trial_read=None):
     from security.trial_quota import TrialPolicy
 
     from pipeline.postgres_schema_migrations import require_applied
+    from pipeline.postgres_legacy_projection import check_override_shadows
     with factory() as conn:
         require_applied(conn)  # never expose before every per-member ledger exists
+        for warning in check_override_shadows(conn):  # refuses the start if an override table has no read shadow
+            logging.getLogger(__name__).warning('Public self-check: %s', warning)
     config = AuthConfig.from_environment()
     identities = PostgreSQLIdentityStore(factory)
     transactions = LoginTransactions(config.login_db)

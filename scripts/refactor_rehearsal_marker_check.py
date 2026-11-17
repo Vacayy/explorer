@@ -7,7 +7,7 @@ FRONT = sys.argv[1]; D = sys.argv[2]; BASE = 'http://127.0.0.1:18015'
 routes = json.load(open(FRONT + '/src/api/generated/routes.json')); samples = json.load(open(FRONT + '/scripts/live-contract-samples.json'))
 sessions = {who: open(f'{D}/{who}.session').read().split() for who in ('operator', 'member')}
 MARKERS = ['[리허설 합성] 대화', '[리허설 합성] 질문', '[리허설 합성] 답변', '[리허설 합성] 하위 질문', '[리허설 합성] 보드',
-           '[리허설 합성] 리포트', 'rehearsal-synthetic-alert', '[리허설 합성] 충돌']
+           '[리허설 합성] 리포트', 'rehearsal-synthetic-alert', '[리허설 합성] 충돌', '[리허설 합성] 시나리오', '[리허설 합성] 관측']
 def fill(path):
     v = samples['paths'].get(path)
     if v is not None: return v if isinstance(v, list) else [v]
