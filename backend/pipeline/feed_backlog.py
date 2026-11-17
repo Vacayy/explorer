@@ -76,6 +76,11 @@ class FeedBacklog:
             CREATE TABLE IF NOT EXISTS ref_cursor (singleton INTEGER PRIMARY KEY CHECK(singleton=1), lane TEXT);
             INSERT OR IGNORE INTO ref_cursor VALUES (1, NULL);
             CREATE TABLE IF NOT EXISTS ref_lane_cursor (lane TEXT PRIMARY KEY, seq INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS superseded_payloads (
+                kind TEXT NOT NULL, connector TEXT NOT NULL, source_key TEXT NOT NULL,
+                payload_hash TEXT NOT NULL, payload TEXT NOT NULL,
+                PRIMARY KEY(kind,connector,source_key,payload_hash)
+            );
         ''')
         if 'revision_pending' not in {row[1] for row in self.conn.execute('PRAGMA table_info(pending)')}:
             self.conn.execute('ALTER TABLE pending ADD COLUMN revision_pending INTEGER NOT NULL DEFAULT 0 '
@@ -97,6 +102,10 @@ class FeedBacklog:
         lane = hashlib.sha256((connector + '\0' + lane_ref).encode()).hexdigest()
         payload = json.dumps(asdict(ref), ensure_ascii=False, separators=(',', ':'))
         with self.conn:
+            old = self.conn.execute('SELECT payload FROM pending_refs WHERE connector=? AND ref_key=?',
+                                    (connector, ref.key)).fetchone()
+            if old is not None and old[0] != payload:
+                self._preserve_superseded('reference', connector, ref.key, old[0])
             self.conn.execute('INSERT INTO pending_refs(connector,ref_key,lane,payload,revision_pending) VALUES (?,?,?,?,?) '
                               'ON CONFLICT(connector,ref_key) DO UPDATE SET payload=excluded.payload, '
                               'revision_pending=max(pending_refs.revision_pending,excluded.revision_pending)',
@@ -169,12 +178,21 @@ class FeedBacklog:
             raise ValueError('Cannot replace a document while its publication is in progress')
         lane = hashlib.sha256((connector + '\0' + ref).encode()).hexdigest()
         payload = json.dumps(asdict(doc), ensure_ascii=False, separators=(',', ':'))
+        old = self.conn.execute('SELECT connector,payload FROM pending WHERE source_type=? AND source_id=?',
+                                (doc.source_type, doc.source_id)).fetchone()
+        if old is not None and old[1] != payload:
+            self._preserve_superseded('document', old[0], doc.source_type + '\0' + doc.source_id, old[1])
         self.conn.execute('INSERT INTO pending(source_type,source_id,lane,connector,payload) VALUES (?,?,?,?,?) '
                           'ON CONFLICT(source_type,source_id) DO UPDATE SET '
                           "defer_reason=CASE WHEN pending.defer_reason='identical' AND pending.payload<>excluded.payload "
                           "THEN 'revision' ELSE pending.defer_reason END,payload=excluded.payload",
                           (doc.source_type, doc.source_id, lane, connector, payload))
         self.conn.commit()  # fetched material survives a later source failure
+
+    def _preserve_superseded(self, kind, connector, source_key, payload):
+        digest = hashlib.sha256(payload.encode()).hexdigest()
+        self.conn.execute('INSERT OR IGNORE INTO superseded_payloads VALUES (?,?,?,?,?)',
+                          (kind, connector, source_key, digest, payload))
 
     def next(self, allowed=None):
         """Oldest document in the next nonempty source lane, rotating between lanes."""

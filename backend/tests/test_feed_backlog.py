@@ -9,6 +9,20 @@ from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference, stage_on
 
 
 class FeedBacklogTest(unittest.TestCase):
+    def test_superseded_pending_payloads_are_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'pending.sqlite'
+            queue = FeedBacklog(path)
+            queue.enqueue('blog', 'feed', RawDoc('blog', 'id', raw_content='old'))
+            queue.enqueue('blog', 'feed', RawDoc('blog', 'id', raw_content='new'))
+            queue.enqueue_ref('youtube', 'channel', SourceRef('video', {'title': 'old'}))
+            queue.enqueue_ref('youtube', 'channel', SourceRef('video', {'title': 'new'}))
+            queue.close()
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.next()[2].raw_content, 'new')
+            kinds = dict(queue.conn.execute('SELECT kind,count(*) FROM superseded_payloads GROUP BY kind'))
+            self.assertEqual(kinds, {'document': 1, 'reference': 1})
+            queue.close()
     def test_identical_revision_is_kept_and_new_payload_reopens_review(self):
         with tempfile.TemporaryDirectory() as directory:
             queue = FeedBacklog(Path(directory) / 'pending.sqlite')
