@@ -39,6 +39,8 @@ def steps():
         (14, 'collection counters (live tables, folded rebuilds)', _table('live_version'), postgres_live_tables.initialize),
         (15, 'contradiction scan record table', postgres_legacy_supplement.has_doc_scans,
          postgres_legacy_supplement.initialize_doc_scans),
+        (16, 'image backfill record table', postgres_legacy_supplement.has_backfill_docs,
+         postgres_legacy_supplement.initialize_backfill_docs),
     ]
 
 

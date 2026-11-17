@@ -18,8 +18,8 @@ from pipeline.postgres_snapshot import _insert_batches
 # Excluded: tables replaced by PG-native ledgers, chunk/financial bulk loaded by
 # later units, and telemetry that the read paths do not need.
 EXCLUDED = frozenset({'doc_chunks', 'llm_calls', 'usage_events',
-                      'api_requests_hourly', 'client_errors', 'image_backfill_docs'})
-# Not telemetry after all: the contradiction scan's record of judged documents (without it the neutral pairs of
+                      'api_requests_hourly', 'client_errors'})
+# Not telemetry after all (progress records): the contradiction scan's record of judged documents (without it the neutral pairs of
 # the last 7 days are judged again every day). Registered empty until the next import carries the collector's rows.
 DOC_SCANS_DDL = ('CREATE TABLE knowledge_doc_scans (\n        doc_id     INTEGER PRIMARY KEY REFERENCES raw_documents(id) '
                  "ON DELETE CASCADE,\n        scanned_at TEXT DEFAULT (datetime('now'))\n    )")
@@ -27,6 +27,22 @@ DOC_SCANS_DDL = ('CREATE TABLE knowledge_doc_scans (\n        doc_id     INTEGER
 
 def has_doc_scans(conn):
     return conn.execute("SELECT 1 FROM legacy_supplement_tables WHERE table_name='knowledge_doc_scans'").fetchone() is not None
+
+
+# The image backfill's record of finished documents (without it every old document looks unprocessed).
+BACKFILL_DOCS_DDL = ('CREATE TABLE image_backfill_docs (\n        doc_id      INTEGER PRIMARY KEY,\n'
+                     "        done_at     TEXT DEFAULT (datetime('now'))\n    )")
+
+
+def has_backfill_docs(conn):
+    return conn.execute("SELECT 1 FROM legacy_supplement_tables WHERE table_name='image_backfill_docs'").fetchone() is not None
+
+
+def initialize_backfill_docs(conn):
+    _guard(conn)
+    with conn.transaction():
+        conn.execute("INSERT INTO legacy_supplement_tables (table_name,columns,schema_sql,row_count) VALUES "
+                     "('image_backfill_docs',%s,%s,0) ON CONFLICT DO NOTHING", (Jsonb(['doc_id', 'done_at']), BACKFILL_DOCS_DDL))
 
 
 def initialize_doc_scans(conn):

@@ -11,6 +11,9 @@ import plistlib
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from refactor_collect_scheduler import CUTOVER_FEED_SOURCES  # noqa: E402
+
 LABEL = 'dev.explorer.refactor-collect-scheduler'
 ROOT = Path(__file__).resolve().parent.parent
 STAGING = Path.home() / 'server-data/review/refactor-single/launchagent'
@@ -23,6 +26,7 @@ def plist(enabled):
                                  '--enable', enabled],
             'WorkingDirectory': str(ROOT),
             'EnvironmentVariables': {'DOCKER_HOST': f'unix://{Path.home()}/.colima/default/docker.sock',
+                                     'COLLECT_FEED_SOURCES': CUTOVER_FEED_SOURCES,  # loaded only at the cutover
                                      'PATH': '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin'},
             'RunAtLoad': True, 'KeepAlive': True, 'ThrottleInterval': 60,
             'StandardOutPath': str(logs / 'collect-scheduler.log'), 'StandardErrorPath': str(logs / 'collect-scheduler.log')}

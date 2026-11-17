@@ -36,7 +36,10 @@ HOST_CAPS = {host: int(cap) for host, _, cap in (item.partition('=') for item in
 
 
 def cap_of(host):
-    return HOST_CAPS.get(host, MAX_REQUESTS)
+    """A host's cap: exact name, or a key starting with '.' for every host under that domain (a CDN's numbered hosts)."""
+    if host in HOST_CAPS:
+        return HOST_CAPS[host]
+    return next((cap for key, cap in HOST_CAPS.items() if key.startswith('.') and host.endswith(key)), MAX_REQUESTS)
 requests_by_host, statuses, per_host = Counter(), Counter(), Counter()
 stopped = []  # the first stop reason; kept, because a source may swallow the exception raised at the stop
 

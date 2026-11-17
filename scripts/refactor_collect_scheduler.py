@@ -38,7 +38,12 @@ JOB_MEMORY = {'proposals': '3584m'}  # measured peak 2.9GiB (weekly); every othe
 # image backfill (its own budget, not connected), vault export and the search index (the projection builder).
 CHAIN_SEQUENCE = ('chain_macro_news', 'chain', 'chain_causal', 'chain_signals', 'chain_narratives', 'chain_events',
                   'chain_actions', 'chain_digests')
-JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40'}  # ~30 registered Naver blog feeds per run (PM 6938365215)
+# Per-run host caps of the intake (PM 6938365215, 6940286658): ~30 Naver blog feeds, 32 Telegram channel pages,
+# 25 YouTube channel feeds plus captions, Telegram images read within the 30-minute image budget (numbered CDN hosts).
+JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40,t.me=40,www.youtube.com=40,.telesco.pe=40'}
+# The intake's sources after the cutover (registry order: scrap reads Telegram documents); before it, the default
+# (no Telegram or YouTube) keeps the MacBook the only collector from this IP.
+CUTOVER_FEED_SOURCES = 'blog,telegram,note,youtube,memo,scrap'
 CATCHUP_SECONDS = 1800  # the MacBook's catchup job ran every 30 minutes
 
 
