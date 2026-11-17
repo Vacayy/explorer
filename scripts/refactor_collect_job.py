@@ -530,13 +530,16 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
             raise trial.HeldBack('an earlier feed publication intent requires review')
         revision_result = {'revision_snapshot': 0, 'revision_requests': 0}
         if revision_trial_exists:
-            from pipeline.feed_revision_trial import stage_one
+            from pipeline.feed_revision_trial import SnapshotUnavailable, stage_one
             try:
                 revision_result = stage_one(queue, connector, _feed_document_known, revision_trial.unlink)
                 if revision_trial.is_file():
                     revision_trial.unlink()  # no eligible reference
             except trial.Aborted:
                 raise
+            except SnapshotUnavailable as exc:
+                revision_result = {'revision_snapshot': 0, 'revision_requests': exc.attempts,
+                                   'revision_error': 'source_unavailable'}
             except Exception as exc:
                 raise trial.HeldBack(f'revision snapshot failed: {type(exc).__name__}') from None
         image_trial = image_marker.exists() or image_marker.is_symlink()

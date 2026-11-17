@@ -2,6 +2,12 @@
 import requests
 
 
+class SnapshotUnavailable(ValueError):
+    def __init__(self, attempts):
+        super().__init__('Revision source snapshot unavailable')
+        self.attempts = attempts
+
+
 def stage_one(queue, connector, is_known, before_attempt, *, max_requests=3):
     selected = None
     for _seq, ref in queue.revision_refs('blog'):
@@ -29,7 +35,7 @@ def stage_one(queue, connector, is_known, before_attempt, *, max_requests=3):
     finally:
         requests.Session.send = send
     if refused[0] or doc.source_type != 'blog' or doc.source_id != identity or not (doc.raw_content or '').strip():
-        raise ValueError('Revision snapshot was not safely captured')
+        raise SnapshotUnavailable(made[0])
     queue.enqueue('blog', ref.key, doc)
     row = queue.conn.execute('SELECT seq,revision_pending FROM pending WHERE source_type=? AND source_id=?',
                              ('blog', identity)).fetchone()

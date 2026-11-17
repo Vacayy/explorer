@@ -201,6 +201,28 @@ class CollectionTargetTest(unittest.TestCase):
             self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending WHERE revision_pending=1').fetchone()[0], 1)
             self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending_refs WHERE revision_pending=1').fetchone()[0], 1)
             queue.close()
+    def test_revision_source_unavailable_does_not_stop_other_feed_work(self):
+        from pipeline.base import SourceRef
+        from pipeline.feed_backlog import FeedBacklog
+        class Blog:
+            def discover(self): return []
+            def fetch_post(self, ref):
+                from pipeline.base import RawDoc
+                return RawDoc('blog', 'https://example.test/post', raw_content='')
+        with TemporaryDirectory() as directory:
+            root = Path(directory); path = root / 'queue'; flag = root / 'revision-trial'
+            flag.write_text('feed-blog-revision-trial-v1\n'); flag.chmod(0o600)
+            queue = FeedBacklog(path)
+            queue.enqueue_ref('blog', 'feed', SourceRef('ref', meta={'post': {'url': 'https://example.test/post'}}), revision_pending=True)
+            queue.close()
+            with patch.object(job, '_feed_document_known', return_value=True):
+                result = job.run_minimal_blog(None, Blog(), queue_path=path, revision_trial=flag)
+            self.assertEqual(result['revision_error'], 'source_unavailable')
+            self.assertEqual(result['published'], 0)
+            self.assertFalse(flag.exists())
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending_refs WHERE revision_pending=1').fetchone()[0], 1)
+            queue.close()
     def test_telegram_enable_flag_rejects_insecure_file(self):
         with TemporaryDirectory() as directory:
             flag = Path(directory) / 'telegram-enabled'
