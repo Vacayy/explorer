@@ -455,10 +455,22 @@ _MEMBER_ROWS = {  # a member's tracked questions stay out of the operator's lega
 }
 
 
+_MEMBER_PROJECTS = 'SELECT project_id FROM study_project_principals'
+_MEMBER_STUDIES = ('SELECT id FROM study_sessions WHERE id IN (SELECT study_id FROM study_principals) '
+                   f'OR project_id IN ({_MEMBER_PROJECTS})')
+_MEMBER_STUDY_ROWS = {  # members' studies (pipeline.postgres_study_owners) likewise
+    'study_projects': f'id NOT IN ({_MEMBER_PROJECTS})',
+    'study_sessions': f'id NOT IN ({_MEMBER_STUDIES})',
+    'study_project_members': f'project_id NOT IN ({_MEMBER_PROJECTS})',
+    'study_annotations': f'study_id NOT IN ({_MEMBER_STUDIES})',
+}
+
+
 def _operator_rows(pg, name):
     """The rows of a PG-native ledger the projection (the operator's legacy view) shows."""
-    if name in _MEMBER_ROWS and pg.execute("SELECT to_regclass('question_principals')").fetchone()[0] is not None:
-        return _MEMBER_ROWS[name]
+    for rows, mapping in ((_MEMBER_ROWS, 'question_principals'), (_MEMBER_STUDY_ROWS, 'study_principals')):
+        if name in rows and pg.execute('SELECT to_regclass(%s)', (mapping,)).fetchone()[0] is not None:
+            return rows[name]
     return 'true'
 
 

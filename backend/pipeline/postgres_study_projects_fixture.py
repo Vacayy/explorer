@@ -5,6 +5,7 @@ import json
 from fastapi import HTTPException
 from psycopg.rows import dict_row
 from pipeline.postgres_graph_fixture import _guard
+from pipeline import postgres_study_owners as owners
 
 NOW = "to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')"
 
@@ -13,9 +14,15 @@ class StudyProjectsFixture:
     def __init__(self, connect):
         self.connect = connect
 
+    def check(self, pid):
+        with self.connect() as c:
+            _guard(c)
+            owners.check_project(c, pid)
+
     @staticmethod
     def _project(cur, pid, *, lock=False):
-        cur.execute('SELECT * FROM study_projects WHERE id=%s' + (' FOR UPDATE' if lock else ''), (pid,))
+        predicate, params = owners.project_visible(cur.connection)  # the requester's own projects
+        cur.execute(f'SELECT * FROM study_projects p WHERE id=%s AND {predicate}' + (' FOR UPDATE' if lock else ''), (pid, *params))
         project = cur.fetchone()
         if not project:
             raise HTTPException(404, '스터디 프로젝트를 찾을 수 없습니다.')
@@ -24,10 +31,11 @@ class StudyProjectsFixture:
     def listing(self):
         with self.connect() as c:
             _guard(c)
+            predicate, params = owners.project_visible(c)
             with c.cursor(row_factory=dict_row) as cur:
                 cur.execute('''SELECT p.*,(SELECT count(*) FROM study_project_members m
                     WHERE m.project_id=p.id AND m.removed_at IS NULL) AS document_count
-                    FROM study_projects p ORDER BY updated_at DESC,id DESC LIMIT 200''')
+                    FROM study_projects p WHERE ''' + predicate + ' ORDER BY updated_at DESC,id DESC LIMIT 200', params)
                 return list(cur.fetchall())
 
     def create(self, title):
@@ -35,7 +43,9 @@ class StudyProjectsFixture:
             raise HTTPException(422, '프로젝트 이름을 입력해 주세요.')
         with self.connect() as c:
             _guard(c)
+            owners.project_visible(c)  # refuses a member before the ownership tables exist
             row = c.execute(f"INSERT INTO study_projects(title,note,revision,created_at,updated_at) VALUES(%s,'',1,{NOW},{NOW}) RETURNING id", (title.strip(),)).fetchone()
+            owners.claim_project(c, row[0])
             return {'id': row[0]}
 
     def read(self, pid):

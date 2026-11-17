@@ -24,11 +24,13 @@ def create_router(store, turns=None):
     if turns is not None:
         @router.post('/{pid}/ask')
         def ask(pid: int, body: Question, background: BackgroundTasks):
+            store.check(pid)  # the requester's own project
             result=turns.queue(pid,body,project=True)
             if result['created']:
                 background.add_task(turns.execute,result['id'],project=True)
             return result
         @router.post('/{pid}/turns/{tid}/recover')
         def recover(pid: int, tid: int):
+            store.check(pid)
             return turns.recover(pid,tid,project=True)
     return router

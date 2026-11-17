@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from psycopg import sql
 from psycopg.rows import dict_row
 from pipeline.postgres_graph_fixture import _guard
+from pipeline import postgres_study_owners as owners
 
 TABLES = {
     'study_projects': 'id title note revision conversation_id created_at updated_at',
@@ -105,9 +106,14 @@ def import_studies(source, target):
 
 
 class StudyFixture:
-    """Study read and annotation mutations against the same isolated PG schema."""
+    """Study read and annotation mutations against the same isolated PG schema (the requester's own studies)."""
     def __init__(self, connect):
         self.connect = connect
+
+    def check(self, study_id):
+        with self.connect() as c:
+            _guard(c)
+            owners.check_session(c, study_id)
 
     def open_document(self, document_id):
         with self.connect() as c:
@@ -115,8 +121,10 @@ class StudyFixture:
             with c.cursor(row_factory=dict_row) as cur:
                 # Imported fixture tables do not retain SQLite UNIQUE clauses.
                 # Serialize this document's create-or-open operation explicitly.
-                cur.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))', ('study:0:' + str(document_id),))
-                cur.execute('SELECT id FROM study_sessions WHERE document_id=%s AND project_id=0', (document_id,))
+                cur.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))',
+                            ('study:0:' + str(document_id) + ':' + (owners.owner() or ''),))
+                predicate, params = owners.session_visible(c)  # each requester opens their own study of a document
+                cur.execute(f'SELECT id FROM study_sessions s WHERE document_id=%s AND project_id=0 AND {predicate}', (document_id, *params))
                 row = cur.fetchone()
                 if row:
                     return {'id': row['id']}
@@ -132,20 +140,24 @@ class StudyFixture:
                 cur.execute("""INSERT INTO study_sessions(document_id,project_id,title,source_url,source_type,published_at,body_kind,body,content_hash,created_at,updated_at)
                     VALUES(%s,0,%s,%s,%s,%s,%s,%s,%s,to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS'),to_char(timezone('utc',now()),'YYYY-MM-DD HH24:MI:SS')) RETURNING id""",
                     (document_id, doc.get('title') or '제목 없는 자료', doc.get('url'), doc.get('source_type'), doc.get('published_at'), kind, body, hashlib.sha256(body.encode()).hexdigest()))
-                return {'id': cur.fetchone()['id']}
+                study_id = cur.fetchone()['id']
+                owners.claim_session(c, study_id)
+                return {'id': study_id}
 
     def listing(self):
         with self.connect() as c:
             _guard(c)
+            predicate, params = owners.session_visible(c)
             with c.cursor(row_factory=dict_row) as cur:
                 cur.execute("""SELECT s.id,s.title,s.document_id,s.updated_at,s.conversation_id,
                     (SELECT count(*) FROM study_annotations a WHERE a.study_id=s.id AND a.deleted_at IS NULL) AS annotation_count
-                    FROM study_sessions s WHERE s.project_id=0 ORDER BY s.updated_at DESC LIMIT 100""")
+                    FROM study_sessions s WHERE s.project_id=0 AND """ + predicate + ' ORDER BY s.updated_at DESC LIMIT 100', params)
                 return list(cur.fetchall())
 
     def read(self, study_id):
         with self.connect() as c:
             _guard(c)
+            owners.check_session(c, study_id)
             with c.cursor(row_factory=dict_row) as cur:
                 cur.execute('SELECT * FROM study_sessions WHERE id=%s', (study_id,))
                 row = cur.fetchone()
@@ -160,6 +172,7 @@ class StudyFixture:
     def add_annotation(self, study_id, body):
         with self.connect() as c:
             _guard(c)
+            owners.check_session(c, study_id)
             with c.cursor(row_factory=dict_row) as cur:
                 cur.execute('SELECT body FROM study_sessions WHERE id=%s FOR UPDATE', (study_id,))
                 row = cur.fetchone()
@@ -178,6 +191,7 @@ class StudyFixture:
     def edit_annotation(self, study_id, annotation_id, body):
         with self.connect() as c:
             _guard(c)
+            owners.check_session(c, study_id)
             found = c.execute('SELECT 1 FROM study_sessions WHERE id=%s', (study_id,)).fetchone()
             if not found:
                 raise HTTPException(404, '스터디를 찾을 수 없습니다')

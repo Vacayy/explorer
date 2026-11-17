@@ -30,25 +30,30 @@ def create_router(store, turns=None, actions=None):
     if actions is not None:
         @router.get('/{study_id}/actions')
         def list_actions(study_id: int):
+            store.check(study_id)
             return actions.listing(study_id)
 
         @router.post('/{study_id}/actions')
         def action(study_id: int, body: AnnotationActionRequest, background: BackgroundTasks):
+            store.check(study_id)
             result=actions.queue(study_id,body)
             background.add_task(actions.drain,result['owner_key'])
             return result
 
         @router.post('/{study_id}/actions/resume')
         def resume(study_id: int, background: BackgroundTasks):
+            store.check(study_id)
             background.add_task(actions.drain,actions.owner_for(study_id))
             return {'ok':True}
 
         @router.post('/{study_id}/actions/{action_id}/cancel')
         def cancel(study_id: int,action_id: int):
+            store.check(study_id)
             return actions.cancel(study_id,action_id)
 
         @router.post('/{study_id}/actions/{action_id}/recover')
         def recover(study_id: int,action_id: int,background: BackgroundTasks):
+            store.check(study_id)
             result=actions.recover(study_id,action_id)
             background.add_task(actions.drain,actions.owner_for(study_id))
             return result
@@ -56,6 +61,7 @@ def create_router(store, turns=None, actions=None):
     if turns is not None:
         @router.post('/{study_id}/ask')
         def ask(study_id: int, body: StudyQuestion, background: BackgroundTasks):
+            store.check(study_id)  # the requester's own study
             result = turns.queue(study_id,body)
             if result['created']:
                 background.add_task(turns.execute,result['id'])
@@ -63,6 +69,7 @@ def create_router(store, turns=None, actions=None):
 
         @router.post('/{study_id}/turns/{turn_id}/recover')
         def recover(study_id: int, turn_id: int):
+            store.check(study_id)
             return turns.recover(study_id,turn_id)
 
     return router
