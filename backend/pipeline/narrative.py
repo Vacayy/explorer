@@ -76,7 +76,7 @@ def _node_vocab(conn, limit: int = 60) -> list[str]:
     """인과 노드 정규화용 — 기존 노드 이름을 프롬프트에 주입해 파편화 방어 (live vocab)."""
     rows = conn.execute(
         "SELECT name FROM entities WHERE type IN ('sector','theme','macro','policy','event') "
-        "AND status IS NOT 'merged' ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        "AND status IS NOT 'merged' ORDER BY created_at DESC, id DESC LIMIT ?", (limit,)).fetchall()
     return [r["name"] for r in rows]
 
 

@@ -96,7 +96,9 @@ def apply(pg, base, source, *, operator):
                     if out.get(column) is not None and out[column] in mapped.get(parent, {}):
                         out[column] = mapped[parent][out[column]]
                 return out
-            for ident, row in sorted(src.items(), key=lambda item: str(item[0])):
+            # In old-id order (numeric where the key is), so new ids keep the MacBook's order (messages of a conversation).
+            for ident, row in sorted(src.items(), key=lambda item: tuple((0, v, '') if isinstance(v, int) else (1, 0, str(v))
+                                                                          for v in item[0])):
                 if ident in old:
                     continue
                 if renumber and ident[0] in table_map:
@@ -213,7 +215,8 @@ def apply_requested(pg, base, source):
                 counts['applied'] += 1
             next_ordinal = max([o for o, _ in visible.values()] + [0]) + 1
             next_id = max([int(k) for k in visible] + [max([int(k[0]) for k in src] + [0])]) + 1 if renumber else None
-            for (ident,), row in sorted(src.items(), key=lambda item: str(item[0])):
+            for (ident,), row in sorted(src.items(), key=lambda item: (0, item[0][0], '') if isinstance(item[0][0], int)
+                                        else (1, 0, str(item[0][0]))):
                 if (ident,) in old:
                     continue
                 if renumber and ident in mapped:

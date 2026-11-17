@@ -252,7 +252,7 @@ def start(root: str, outline: str = "bottom_up") -> tuple[int, bool]:
     conn = get_connection()
     try:
         r = conn.execute("SELECT id FROM chain_reports WHERE root=? AND IFNULL(outline,'bottom_up')=? AND status='running' "
-                         "AND created_at >= datetime('now','-30 minutes') ORDER BY id DESC LIMIT 1", (root, outline)).fetchone()
+                         "AND created_at >= datetime('now','-30 minutes') ORDER BY created_at DESC, id DESC LIMIT 1", (root, outline)).fetchone()
         if r:
             return r["id"], False
         cur = conn.execute("INSERT INTO chain_reports (root, status, progress, model, outline) VALUES (?, 'running', '트리 고르는 중', ?, ?)",
@@ -355,7 +355,7 @@ def history(root: str, limit: int = 10) -> list[dict]:
     conn = get_connection()
     try:
         return [dict(r) for r in conn.execute("SELECT id, root, status, IFNULL(outline,'bottom_up') outline, created_at, finished_at FROM chain_reports WHERE root=? "
-                                              "ORDER BY id DESC LIMIT ?", (root, limit))]
+                                              "ORDER BY created_at DESC, id DESC LIMIT ?", (root, limit))]
     finally:
         conn.close()
 

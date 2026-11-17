@@ -11,7 +11,8 @@ def db():
     c = sqlite3.connect(":memory:")
     c.row_factory = sqlite3.Row
     c.executescript("""CREATE TABLE questions (id INTEGER PRIMARY KEY, text TEXT, status TEXT, lead_verdict TEXT, confirm_verdict TEXT,
-        divergence TEXT, verdict_summary TEXT, created_by TEXT DEFAULT 'portfolio', updated_at TEXT DEFAULT '2026-08-18 23:00:00');
+        divergence TEXT, verdict_summary TEXT, created_by TEXT DEFAULT 'portfolio', updated_at TEXT DEFAULT '2026-08-18 23:00:00',
+        created_at TEXT DEFAULT (datetime('now')));
         CREATE TABLE sub_questions (id INTEGER PRIMARY KEY, question_id INT, text TEXT, falsifier TEXT, verdict TEXT);""" + pa.SCHEMA)
     pt.ensure_schema(c)
     pt.ensure_schema(c)                                         # 두 번 불러도 안전

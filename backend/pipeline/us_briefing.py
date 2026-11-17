@@ -166,7 +166,7 @@ def _enrich_coverage(conn, ticker: str) -> dict:
     nar = conn.execute(
         f"SELECT n.title t, n.body b FROM entity_relations r JOIN narratives n ON n.id=r.narrative_id "
         f"WHERE (r.src_id IN ({ph}) OR r.dst_id IN ({ph})) AND r.narrative_id IS NOT NULL "
-        f"ORDER BY n.id DESC LIMIT 1", ids + ids).fetchone()
+        f"ORDER BY n.created_at DESC, n.id DESC LIMIT 1", ids + ids).fetchone()
     return {"coverage": "covered", "entity_id": us_eid or home_eid,
             "mentions_3d": m["n"] if m else 0,
             "narrative": nar["t"] if nar else None,

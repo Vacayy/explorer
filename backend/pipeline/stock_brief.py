@@ -153,7 +153,7 @@ def get_cached(conn, entity_id: int):
     """최신 브리프 — append-only 히스토리에서 max(id)."""
     return conn.execute(
         "SELECT brief, thesis_check, revision_call, inputs_hash, created_at FROM stock_briefs "
-        "WHERE entity_id=? ORDER BY id DESC LIMIT 1", (entity_id,)).fetchone()
+        "WHERE entity_id=? ORDER BY created_at DESC, id DESC LIMIT 1", (entity_id,)).fetchone()
 
 
 def _build_prompt(name: str, inp: dict) -> str:

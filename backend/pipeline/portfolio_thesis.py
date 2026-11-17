@@ -40,7 +40,7 @@ def theses(conn: sqlite3.Connection, codes: list[str], created_by: str = "portfo
     judged_at은 마지막 판정 시각 — 판정 엔진이 꺼진 동안(08-19~) 옛 판정을 오늘 것처럼 보이지 않게 함께 낸다."""
     out = {}
     for code in codes:
-        q = conn.execute("SELECT * FROM questions WHERE stock_code=? AND status='tracking' AND created_by=? ORDER BY id DESC LIMIT 1",
+        q = conn.execute("SELECT * FROM questions WHERE stock_code=? AND status='tracking' AND created_by=? ORDER BY created_at DESC, id DESC LIMIT 1",
                          (code, created_by)).fetchone()
         if not q:
             continue

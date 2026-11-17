@@ -640,7 +640,7 @@ def refresh_themes(conn, season: str) -> dict:
         if len(items) < 2:
             continue
         h = hashlib.sha1(json.dumps([sorted((r["ticker"], r["meta_json"]) for r in items), THEME_PROMPT_VERSION]).encode()).hexdigest()
-        prev = conn.execute("SELECT * FROM season_themes WHERE season=? AND sector=? ORDER BY id DESC LIMIT 1", (season, sec)).fetchone()
+        prev = conn.execute("SELECT * FROM season_themes WHERE season=? AND sector=? ORDER BY created_at DESC, id DESC LIMIT 1", (season, sec)).fetchone()
         if prev and prev["input_hash"] == h:
             skipped += 1
             continue
@@ -762,7 +762,7 @@ def season_overview(season: str | None = None, *, persist_core: bool = True, rec
         sectors.setdefault(it["sector"], []).append(it)
     sector_rows = []
     for key, items in sectors.items():
-        th = conn.execute("SELECT * FROM season_themes WHERE season=? AND sector=? ORDER BY id DESC LIMIT 1", (season, key)).fetchone()
+        th = conn.execute("SELECT * FROM season_themes WHERE season=? AND sector=? ORDER BY created_at DESC, id DESC LIMIT 1", (season, key)).fetchone()
         body = json.loads(th["body_json"]) if th else None
         sector_rows.append({"key": key, "name": sector_name(key), "etf": sector_etf(key), "verdict": th["verdict"] if th else None,
                             "one_line": (body or {}).get("one_line"), "n_reported": len(items),
@@ -848,7 +848,7 @@ def sector_detail(key: str, season: str | None = None, *, persist_core: bool = T
         for e in _event_rows(conn, s):
             if e["ticker"] in members and e["confirmed"] and e["event_date"] <= today:
                 rows.append({"ticker": e["ticker"], "d1": at(path(conn, e["ticker"], e["event_date"], etf, before=1, after=2), 1)})
-        th = conn.execute("SELECT verdict, body_json FROM season_themes WHERE season=? AND sector=? ORDER BY id DESC LIMIT 1", (s, key)).fetchone()
+        th = conn.execute("SELECT verdict, body_json FROM season_themes WHERE season=? AND sector=? ORDER BY created_at DESC, id DESC LIMIT 1", (s, key)).fetchone()
         history.append({"season": s, "label": f"{s[:4]} Q{s[-1]}",
                         "rows": rows, "verdict": th["verdict"] if th else None,
                         "one_line": json.loads(th["body_json"]).get("one_line") if th else None})

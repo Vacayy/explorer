@@ -116,7 +116,7 @@ def _generate_report(ev: dict, *, run_llm=None) -> str | None:
 
 def _latest_report(conn, question_id: int):
     return conn.execute(
-        "SELECT body, inputs_hash, created_at FROM question_reports WHERE question_id=? ORDER BY id DESC LIMIT 1",
+        "SELECT body, inputs_hash, created_at FROM question_reports WHERE question_id=? ORDER BY created_at DESC, id DESC LIMIT 1",
         (question_id,)).fetchone()
 
 

@@ -47,7 +47,7 @@ def us_list():
     def _stance(ticker: str, lt: str):
         s = conn.execute(
             "SELECT stance FROM lens_readings WHERE stock_code=? AND lens_type=? AND market='us' "
-            "ORDER BY id DESC LIMIT 1", (ticker, lt)).fetchone()
+            "ORDER BY created_at DESC, id DESC LIMIT 1", (ticker, lt)).fetchone()
         return s["stance"] if s else None
 
     grouped: dict[str, list] = {}

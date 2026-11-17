@@ -279,7 +279,7 @@ def run_and_store(text: str) -> dict:
 def list_audits(limit: int = 30) -> list[dict]:
     conn = get_connection()
     rows = conn.execute(
-        "SELECT id, thesis_text, result_json, created_at FROM thesis_audits ORDER BY id DESC LIMIT ?",
+        "SELECT id, thesis_text, result_json, created_at FROM thesis_audits ORDER BY created_at DESC, id DESC LIMIT ?",
         (limit,)).fetchall()
     conn.close()
     import json

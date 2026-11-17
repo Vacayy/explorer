@@ -224,7 +224,7 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
                 raise HTTPException(404, '질문 없음')
             if not ev['subs']:
                 return {'status': 'empty', 'body': None, 'created_at': None, 'stale': False}
-            cur.execute('SELECT body,inputs_hash,created_at FROM question_reports WHERE question_id=%s ORDER BY id DESC LIMIT 1', (question_id,))
+            cur.execute('SELECT body,inputs_hash,created_at FROM question_reports WHERE question_id=%s ORDER BY created_at DESC, id DESC LIMIT 1', (question_id,))
             cached = cur.fetchone()
             if not cached:
                 return {'status': 'empty', 'body': None, 'created_at': None, 'stale': True}
@@ -309,7 +309,7 @@ def create_router(connect, *, run_llm=None, search=None, projection=None):
                 raise HTTPException(404, '질문 없음')
             if not question_report._has_material(ev):
                 return {'status': 'empty'}
-            cur.execute('SELECT body,inputs_hash,created_at FROM question_reports WHERE question_id=%s ORDER BY id DESC LIMIT 1', (question_id,))
+            cur.execute('SELECT body,inputs_hash,created_at FROM question_reports WHERE question_id=%s ORDER BY created_at DESC, id DESC LIMIT 1', (question_id,))
             cached = cur.fetchone()
             has_scenario = cur.execute(f'SELECT 1 FROM {scenario_rows(conn)} s WHERE question_id=%s', (question_id,)).fetchone() is not None
         digest = question_report._hash(ev)

@@ -116,7 +116,7 @@ def list_knowledge(status: str = "active"):
                (SELECT count(DISTINCT rd.source_type) FROM knowledge_evidence ke
                   JOIN raw_documents rd ON rd.id=ke.doc_id
                   WHERE ke.knowledge_id=k.id AND ke.stance='support') src_div
-        FROM knowledge k WHERE k.review_status=? ORDER BY k.id DESC""", (status,)).fetchall()
+        FROM knowledge k WHERE k.review_status=? ORDER BY k.created_at DESC, k.id DESC""", (status,)).fetchall()
     out = []
     for r in rows:
         ents = [KnowledgeEntity(name=e["name"], type=e["type"], aliases=e["aliases"])
