@@ -432,7 +432,8 @@ def run_compute(label):
 def run_feeds(pg, refused=None):
     from pipeline.registry import CONNECTORS
     if os.environ.get('COLLECT_FEED_MINIMAL_BLOG') == '1':
-        return run_minimal_blog(pg, CONNECTORS['blog'](), refused)
+        youtube = CONNECTORS['youtube']() if os.environ.get('COLLECT_FEED_YOUTUBE') == '1' else None
+        return run_minimal_blog(pg, CONNECTORS['blog'](), refused, youtube=youtube)
     names = [name for name in FEED_SOURCES.split(',') if name]
     unknown = set(names) - set(CONNECTORS)
     if unknown:
@@ -452,7 +453,7 @@ def _blog_document_known(key):
         return work.execute("SELECT 1 FROM raw_documents WHERE source_type='blog' AND source_id=? LIMIT 1", (key,)).fetchone() is not None
 
 
-def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-backlog.sqlite'):
+def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-backlog.sqlite', youtube=None):
     """One blog reference, one queued document; a failure keeps this isolated feed on hold."""
     from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference
     if os.environ.get('COLLECT_FEED_KEYWORD_ONLY') == '1':
@@ -465,27 +466,36 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
         if queue.intent():
             raise trial.HeldBack('an earlier feed publication intent requires review')
         if queue.next() is None:
-            if queue.next_pending_ref() is None:
-                ref = queue.next_ref('blog', connector.discover())
+            if youtube is not None or queue.next_pending_ref() is None:
+                from pipeline.base import SourceRef
+                choices = [SourceRef('blog')] + ([SourceRef('youtube')] if youtube is not None else [])
+                selected = queue.next_ref('feed-sources', choices)
+                name = selected.key
+                source_connector = connector if name == 'blog' else youtube
+                refs = source_connector.discover() if name == 'blog' else source_connector.discover_channels()
+                ref = queue.next_ref(name, refs)
                 if ref is None:
-                    raise trial.HeldBack('no blog sources are configured')
-                posts = connector.discover_posts(ref)
-                for post in posts:
-                    if not _blog_document_known(post.key):
-                        queue.enqueue_ref('blog', ref.key, post)
-                queue.advance_ref('blog', ref)
-                if queue.next_pending_ref() is None:
-                    return {'stats': {'blog': {'refs': 1}}, 'counts': {}, 'published': 0,
-                            'sources': ['blog'], 'steps_not_connected': ['other feed sources',
-                            'existing document revisions', 'chain postprocessing']}
+                    queue.advance_ref('feed-sources', selected)
+                else:
+                    posts = connector.discover_posts(ref) if name == 'blog' else youtube.discover_channel(ref)
+                    for post in posts:
+                        if name != 'blog' or not _blog_document_known(post.key):
+                            queue.enqueue_ref(name, ref.key, post)
+                    queue.advance_ref(name, ref)
+                    queue.advance_ref('feed-sources', selected)
             class OnePost:
                 def fetch(self, ref):
                     return [connector.fetch_post(ref)]
-            fetch_pending_reference(queue, {'blog': OnePost()})
+            sources = {'blog': OnePost()}
+            if youtube is not None:
+                sources['youtube'] = youtube
+            fetch_pending_reference(queue, sources)
         item = queue.next()
         if item is None:
-            raise trial.HeldBack('blog reference returned no documents')
-        seq, _, doc = item
+            return {'stats': {'feed': {'refs': 1}}, 'counts': {}, 'published': 0,
+                    'sources': ['blog'] + (['youtube'] if youtube is not None else []),
+                    'steps_not_connected': ['other feed sources', 'existing document revisions', 'chain postprocessing']}
+        seq, source_name, doc = item
 
         class OneDocument:
             def discover(self):
@@ -500,7 +510,7 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
 
         result = trial.run_documents(pg, [OneDocument()], 1, before_publish=check_cap)
         queue.acknowledge(seq)  # only after successful PG publish and local floor commit
-        result['sources'] = ['blog']
+        result['sources'] = [source_name]
         result['steps_not_connected'] = ['other feed sources', 'existing document revisions', 'chain postprocessing']
         return result
     finally:

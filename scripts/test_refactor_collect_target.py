@@ -19,6 +19,36 @@ import refactor_feed_refresh as feed_refresh
 
 
 class CollectionTargetTest(unittest.TestCase):
+    def test_optional_youtube_stages_discovered_refs_and_retries_missing_transcripts(self):
+        from pipeline.base import SourceRef
+        from pipeline.feed_backlog import FeedBacklog
+        seen = []
+
+        class Blog:
+            def discover(self):
+                return [SourceRef('blog-feed')]
+            def discover_posts(self, ref):
+                seen.append('blog')
+                return []
+
+        class YouTube:
+            def discover_channels(self):
+                return [SourceRef('channel')]
+            def discover_channel(self, ref):
+                seen.append('youtube')
+                return [SourceRef('video', {'channel_id': 'channel'})]
+            def fetch(self, ref):
+                return []
+
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'queue.sqlite'
+            for _ in range(2):
+                job.run_minimal_blog(None, Blog(), queue_path=path, youtube=YouTube())
+            self.assertEqual(set(seen), {'blog', 'youtube'})
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.next_pending_ref()[2].key, 'video')
+            self.assertIsNone(queue.next())
+            queue.close()
     def test_feed_refresh_preserves_queue_and_refuses_unpublished_work(self):
         from pipeline.base import RawDoc
         from pipeline.feed_backlog import FeedBacklog

@@ -389,7 +389,8 @@ class YouTubeConnector:
     source_type = "youtube"
 
     def __init__(self, video_ids: list[str] | None = None, channel_ids: list[str] | None = None,
-                 *, registry_loader=None, title_repair=None):
+                 *, registry_loader=None, title_repair=None, max_new_per_channel=MAX_NEW_PER_CHANNEL,
+                 repair_titles=True):
         # video_ids 지정 시 그것만(링크 단건), channel_ids 지정 시 그 채널만(즉시 수집, D-199 — 활성·수집 플래그 무시),
         # 아니면 활성 채널 신규 영상 전체
         self._video_ids = video_ids
@@ -398,6 +399,23 @@ class YouTubeConnector:
             raise ValueError('Registry loader and title repair must be provided together')
         self._registry_loader = registry_loader
         self._title_repair = title_repair
+        self._max_new_per_channel = max_new_per_channel
+        self._repair_titles = repair_titles
+
+    def discover_channels(self) -> list[SourceRef]:
+        """Return enabled channels without performing external requests."""
+        conn = get_connection()
+        try:
+            rows = conn.execute("SELECT channel_id FROM youtube_channels WHERE is_active=1 "
+                                "AND COALESCE(collect_enabled,1)=1").fetchall()
+            return [SourceRef(key=row['channel_id']) for row in rows]
+        finally:
+            conn.close()
+
+    def discover_channel(self, ref: SourceRef) -> list[SourceRef]:
+        """Capture every item in one returned listing; provider retention remains a limit."""
+        connector = YouTubeConnector(channel_ids=[ref.key], max_new_per_channel=None, repair_titles=False)
+        return connector.discover()
 
     def discover(self) -> list[SourceRef]:
         if self._video_ids is not None:
@@ -426,7 +444,7 @@ class YouTubeConnector:
             try:
                 f, entries = _rss_entries(cid)
                 channel_title = _feed_channel_title(f.feed, cid)
-                if channel_title:
+                if channel_title and self._repair_titles:
                     (self._title_repair or _repair_channel_title)(cid, channel_title)
                 items = [{"video_id": e.get("yt_videoid") or (e.get("id", "").split(":")[-1]),
                           "title": e.get("title", ""), "published": e.get("published", "")} for e in entries]
@@ -450,7 +468,7 @@ class YouTubeConnector:
                     "title": it.get("title", ""), "published": it.get("published", ""),
                     "channel_id": cid, "channel": channel_title or ch["title"]}))
                 new += 1
-                if new >= MAX_NEW_PER_CHANNEL:
+                if self._max_new_per_channel is not None and new >= self._max_new_per_channel:
                     break
         return refs
 

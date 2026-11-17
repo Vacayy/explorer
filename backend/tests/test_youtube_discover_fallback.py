@@ -65,6 +65,21 @@ class DiscoverFallbackTests(unittest.TestCase):
         self.assertEqual(refs[0].meta['published'], '')
         self.assertEqual(refs[0].meta['channel_id'], CID)
 
+    def test_staged_channel_listing_keeps_every_returned_new_reference(self):
+        ids = [f'video{i:06d}' for i in range(8)]
+        feed = Mock()
+        entries = [{'yt_videoid': ident, 'title': 'test', 'published': ''} for ident in ids]
+        connector = youtube.YouTubeConnector()
+        with patch.object(youtube, '_rss_entries', return_value=(feed, entries)), \
+             patch.object(youtube, '_feed_channel_title', return_value='channel'), \
+             patch.object(youtube, '_repair_channel_title') as repair:
+            channels = connector.discover_channels()
+            refs = connector.discover_channel(channels[0])
+            default = connector.discover()
+        self.assertEqual(len(refs), 8)
+        self.assertEqual(len(default), youtube.MAX_NEW_PER_CHANNEL)
+        self.assertEqual(repair.call_count, 1)  # staging deliberately leaves channel metadata untouched
+
 
 if __name__ == '__main__':
     unittest.main()
