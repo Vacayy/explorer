@@ -26,7 +26,13 @@ NEVER = {'backfill'}  # uncapped model calls; never scheduled automatically
 # Table-collecting jobs: the unchanged script, then the supplement tables it actually wrote are replaced in PG
 # (recorded by a sqlite authorizer; writing any table that is not a supplement table holds the run back).
 TABLE_JOBS = {'prices', 'twrevenue', 'indexintraday', 'credit', 'retail', 'market', 'krmovers', 'extseries',
-              'sectorbench', 'kalshi', 'trade', 'usfund', 'krcompany'}
+              'sectorbench', 'kalshi', 'trade', 'usfund', 'krcompany', 'markettoday', 'usbriefing'}
+# Home jobs on the table path whose model calls are capped per run (each llm._execute is one call, its fallback
+# included): a Market Today slot is one call; the US briefing is the macro light (macro.interpret), the macro issues
+# (briefing.macro) and the synthesis (briefing.synthesize), one each (cached ones make none). Their network reads are optional (index values, macro series): the legacy job still
+# writes its result when every one fails, so 'no source answered' does not hold them back.
+TABLE_MODEL_CAPS = {'markettoday': 1, 'usbriefing': 3}
+NETWORK_OPTIONAL = {'markettoday', 'usbriefing'}
 # Legacy computations over saved data: the computation-button path (pipeline.postgres_scheduled_compute) — their
 # overrides, graph diff and run records go to PG; model calls go through the usual gate and llm_calls.
 # The chain's computation steps after document intake (scripts/run_chain.sh order), as their own labels.
@@ -208,6 +214,49 @@ def run_peer():
             'companies': len(runtime.catalog.companies)}
 
 
+def _cap_table_model_calls(limit):
+    """At most `limit` model calls in this run; a further one is refused and noted (the run is then held back)."""
+    from pipeline import llm
+    execute, made, refused = llm._execute, [0], []
+
+    def capped(*args, **kwargs):
+        if made[0] >= limit:
+            refused.append(1)
+            raise RuntimeError(f'model call cap {limit} reached')
+        made[0] += 1
+        return execute(*args, **kwargs)
+    llm._execute = capped
+    return refused
+
+
+def _defer_big_picture_event():
+    """market_today.py runs the weekly big picture's event check after the 16:00 wrap in the same process; its outputs
+    (source digests, graph rows) are not supplement tables, so here it is only noted and runs afterwards as its own
+    computation (the legacy also never lets its failure change the slot's result)."""
+    from pipeline import weekly_big_picture
+    requested, original = [], weekly_big_picture.run
+
+    def note(trigger):
+        requested.append(trigger)
+        weekly_big_picture.run = original  # the deferred run below is the real one
+        return {'status': 'deferred', 'trigger': trigger}
+    weekly_big_picture.run = note
+    return requested
+
+
+def _run_big_picture_event():
+    import psycopg
+    from pipeline import postgres_scheduled_compute
+    dsn, schema = os.environ['REFACTOR_POSTGRES_DSN'], trial._pg().execute('SELECT current_schema()').fetchone()[0]
+    try:
+        return postgres_scheduled_compute.run('scripts/weekly_big_picture.py', ['--event'],
+                                              lambda: psycopg.connect(dsn, options=f'-c search_path={schema}'),
+                                              record='weekly_big_picture:event', source='scheduled markettoday event',
+                                              max_calls=MAX_MODEL_CALLS)
+    except Exception as exc:  # noqa: BLE001 - recorded with the slot's run, never changes it
+        return f'{type(exc).__name__}: {str(exc)[:200]}'
+
+
 def run_compute(label):
     import psycopg
     from pipeline import postgres_scheduled_compute
@@ -299,12 +348,20 @@ def run(label):
                 argv, record = job_argv(label)
                 os.chdir('/app')
                 before = _capture_documents()
+                refused = _cap_table_model_calls(TABLE_MODEL_CAPS[label]) if label in TABLE_MODEL_CAPS else None
+                event = _defer_big_picture_event() if label == 'markettoday' else None
                 trial._watch_writes()
-                trial._run_script(*argv)
+                try:
+                    trial._run_script(*argv)
+                except trial.HeldBack:
+                    if not refused:
+                        raise
                 if trial.stopped:
                     raise trial.Aborted(trial.stopped[0])
-                if trial.requests_by_host and not trial.statuses:  # a script may record 'ok' with every fetch failed
-                    raise trial.HeldBack('no source answered')
+                if refused:
+                    raise trial.HeldBack(f'model call cap {TABLE_MODEL_CAPS[label]} reached (a later call was refused)')
+                if trial.requests_by_host and not trial.statuses and label not in NETWORK_OPTIONAL:
+                    raise trial.HeldBack('no source answered')  # a script may record 'ok' with every fetch failed
                 if record:
                     trial._job_record(record, started)
                 written = {t for t in trial.written if not t.startswith(DERIVED)}
@@ -316,6 +373,8 @@ def run(label):
                 rest = written - DOCUMENT_TABLES
                 entry['applied'] = trial._apply_supplement(pg, supplement_tables(pg, rest)) if rest else {}
                 outcome = 'applied: ' + ', '.join(f'{t} {n}' for t, n in (entry['applied'] or {}).items())
+                if event:  # the 16:00 wrap's big picture check, on the computation path after the slot is in PG
+                    entry['big_picture_event'] = _run_big_picture_event()
         except trial.Aborted as exc:
             outcome = f'aborted: {exc}'
         except trial.HeldBack as exc:

@@ -47,7 +47,10 @@ JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40,t.me=40,www.youtube.com=40,.tel
                  # symbol search as the fallback, 10 Treasury series from FRED; any other host keeps the default 20
                  'credit': 'scanner.tradingview.com=150,symbol-search.tradingview.com=60,fred.stlouisfed.org=12',
                  # peer: one daily-price page per catalog company (104 now)
-                 'peer': 'stock.naver.com=120'}
+                 'peer': 'stock.naver.com=120',
+                 # US briefing: macro series from FRED (three tries when all fail), Yahoo quotes·charts·headlines for the
+                 # indices, macro proxies and the movers; newswire feeds keep the default 20
+                 'usbriefing': 'fred.stlouisfed.org=40,.finance.yahoo.com=150'}
 # A job's own stop rules: history stops at 50 upstream errors, credit at 10 (403/429 stop every job at the first).
 JOB_ENV = {'history': {'TRIAL_MAX_ERRORS': '50'}, 'credit': {'TRIAL_MAX_ERRORS': '10'}, 'peer': {'TRIAL_MAX_ERRORS': '10'}}
 # The intake's sources after the cutover (registry order: scrap reads Telegram documents); before it, the default
