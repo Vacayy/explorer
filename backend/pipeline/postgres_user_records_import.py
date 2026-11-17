@@ -248,3 +248,39 @@ def apply_requested(pg, base, source):
                     settle(str(ident), visible[str(ident)][0], before, after)
             report[table] = {k: v for k, v in counts.items() if v}
     return {table: counts for table, counts in report.items() if counts}
+
+
+# The operator's alert state, replaced whole by the MacBook's (architect #3 6945152408): which principle rules are
+# being broken now and which alerts were already sent, so turning the sends on at the cutover never repeats an alert.
+# Kept through the override ledger (a key the MacBook lacks: a NULL override hides it).
+ALERT_STATE = (('portfolio_principle_state', 'key'), ('portfolio_alerts_sent', 'key'))
+
+
+def replace_alert_state(pg, source):
+    _guard(pg)
+    report = {}
+    with pg.transaction():
+        for table, key in ALERT_STATE:
+            columns, src = _rows(source, table, (key,))
+            if not columns:
+                continue
+            pg.execute('INSERT INTO owner_override_keys VALUES (%s,%s) ON CONFLICT (table_name) DO NOTHING', (table, key))
+            visible = _visible(pg, table, key)
+            wanted = {str(k[0]): row for k, row in src.items()}
+            next_ordinal = max([o for o, _ in visible.values()] + [0]) + 1
+            counts = {'set': 0, 'hidden': 0}
+            for value, row in wanted.items():
+                current = visible.get(value, (None, None))
+                if current[1] is not None and _digest(current[1], columns) == _digest(row, columns):
+                    continue
+                ordinal = current[0] if current[0] is not None else next_ordinal
+                next_ordinal += current[0] is None
+                _store(pg, 'override', table, value, row, ordinal)
+                counts['set'] += 1
+            for value, (ordinal, _row) in visible.items():
+                if value not in wanted:
+                    pg.execute('INSERT INTO owner_row_overrides (table_name, key, row_data, row_ordinal) VALUES (%s,%s,NULL,%s) '
+                               'ON CONFLICT (table_name, key) DO UPDATE SET row_data=NULL, updated_at=now()', (table, value, ordinal))
+                    counts['hidden'] += 1
+            report[table] = {**counts, 'macbook_rows': len(wanted)}
+    return report

@@ -50,6 +50,10 @@ def main():
             out['requested'] = user_records.apply_requested(pg, base, source)
             out['requested_seconds'] = round(time.monotonic() - started, 1)
             out['requested_rerun'] = user_records.apply_requested(pg, base, source)
+            started = time.monotonic()
+            out['alert_state'] = user_records.replace_alert_state(pg, source)
+            out['alert_state_seconds'] = round(time.monotonic() - started, 1)
+            out['alert_state_rerun'] = user_records.replace_alert_state(pg, source)
     print(json.dumps(out, ensure_ascii=False, default=str))
 
 
