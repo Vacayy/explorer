@@ -6,7 +6,7 @@ import uuid
 
 import psycopg
 
-from pipeline import feed_receipts, postgres_collect_runs
+from pipeline import feed_receipts, postgres_collect_runs, postgres_feed_scrap
 from pipeline.base import RawDoc
 from pipeline.feed_backlog import FeedBacklog
 
@@ -19,6 +19,9 @@ class FeedReceiptTest(unittest.TestCase):
                           'label TEXT NOT NULL,started_at TEXT NOT NULL,outcome TEXT NOT NULL,detail TEXT,'
                           "requests_json TEXT NOT NULL DEFAULT '{}',model_calls INTEGER,result_json TEXT NOT NULL DEFAULT '{}')")
         self.conn.execute('CREATE TEMP TABLE publication (value INTEGER)')
+        self.conn.execute('CREATE TEMP TABLE legacy_supplement_tables (table_name TEXT, columns TEXT[], row_count INTEGER)')
+        self.conn.execute('CREATE TEMP TABLE legacy_supplement_rows (table_name TEXT, row_ordinal BIGINT, row_data JSONB)')
+        self.conn.execute("INSERT INTO legacy_supplement_tables VALUES ('scrap_links',ARRAY['url','doc_id','status'],0)")
         self.token = str(uuid.uuid4())
 
     def tearDown(self):
@@ -67,3 +70,30 @@ class FeedReceiptTest(unittest.TestCase):
             self.assertIsNone(queue.next())
             self.assertEqual(self.conn.execute('SELECT count(*) FROM publication').fetchone()[0], 1)
             queue.close()
+
+    def test_scrap_ledger_compare_and_atomic_publication(self):
+        first = {'url': 'https://example.test/one', 'doc_id': 10, 'status': 'ok'}
+        other = {'url': 'https://example.test/two', 'doc_id': 20, 'status': 'ok'}
+        with self.assertRaises(ValueError):
+            postgres_feed_scrap.apply(self.conn, before=None, after=first)
+        with self.conn.transaction():
+            postgres_feed_scrap.apply(self.conn, before=None, after=other)
+
+        def failed():
+            postgres_feed_scrap.apply(self.conn, before=None, after=first)
+            raise RuntimeError('simulated failure')
+        with self.assertRaises(RuntimeError):
+            feed_receipts.publish_once(self.conn, self.token, '2026-01-01', failed)
+        self.assertEqual(self.conn.execute('SELECT count(*) FROM legacy_supplement_rows').fetchone()[0], 1)
+        feed_receipts.publish_once(self.conn, self.token, '2026-01-01',
+                                   lambda: postgres_feed_scrap.apply(self.conn, before=None, after=first))
+        self.assertEqual(self.conn.execute('SELECT count(*) FROM legacy_supplement_rows').fetchone()[0], 2)
+        self.assertEqual(self.conn.execute('SELECT row_count FROM legacy_supplement_tables').fetchone()[0], 2)
+        with self.assertRaises(RuntimeError), self.conn.transaction():
+            postgres_feed_scrap.apply(self.conn, before=None, after=first)
+        changed = {**first, 'doc_id': 11}
+        with self.conn.transaction():
+            postgres_feed_scrap.apply(self.conn, before=first, after=changed)
+        self.assertEqual(self.conn.execute('SELECT row_count FROM legacy_supplement_tables').fetchone()[0], 2)
+        with self.assertRaises(RuntimeError), self.conn.transaction():
+            postgres_feed_scrap.apply(self.conn, before=first, after=changed)
