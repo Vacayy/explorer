@@ -31,13 +31,16 @@ OVERRIDES = {'feature_flags': 'name', 'era_checks': 'key', 'research_candidates'
              'pipeline_runs': 'name',  # batch markers computations leave (knowledge promotion and others)
              'pricing_claims': 'id', 'pricing_observations': 'trade_date|claim_id', 'pricing_days': 'trade_date',
              # The operator's alert state, replaced whole from the MacBook at the cutover (postgres_user_records_import).
-             'portfolio_principle_state': 'key', 'portfolio_alerts_sent': 'key', 'alert_state': 'key'}
+             'portfolio_principle_state': 'key', 'portfolio_alerts_sent': 'key', 'alert_state': 'key',
+             'catalysts': 'id', 'portfolio_event_estimates': 'stock_code|kind',
+             'transcript_calendar': 'ticker', 'entity_digests': 'entity_id|period|period_start'}
 # Computation outputs: copied into TEMP only for the computing request; reads see them from the
 # next projection build (the computing request answers with the result itself).
 COMPUTED = ('lens_readings', 'source_digests', 'models', 'narratives', 'knowledge_falsifiers',
             'knowledge_evidence', 'knowledge_entities', 'scenarios', 'reports', 'company_profiles', 'trade_beneficiaries',
             'stock_briefs', 'era_commentary', 'thesis_audits',
-            'transcript_reactions', 'transcripts', 'earnings_expectations', 'knowledge_doc_scans', 'signals', 'pipeline_runs')
+            'transcript_reactions', 'transcripts', 'earnings_expectations', 'knowledge_doc_scans', 'signals', 'pipeline_runs',
+            'catalysts', 'transcript_calendar', 'entity_digests')
 
 
 def initialize(conn):

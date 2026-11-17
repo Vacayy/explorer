@@ -900,6 +900,25 @@ class CollectionTargetTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             scheduler.check_enabled({'backfill'})
 
+    def test_close_override_startup_and_personal_estimates_scope(self):
+        from pipeline import postgres_legacy_projection as projection
+        class PG:
+            def execute(self, query, args=()):
+                if 'to_regclass' in query:
+                    return types.SimpleNamespace(fetchone=lambda: ('owner_override_keys',))
+                return [(x,) for x in ('catalysts', 'portfolio_event_estimates', 'transcript_calendar', 'entity_digests')]
+        projection.check_override_shadows(PG())
+        self.assertIn('portfolio_event_estimates', projection.SHADOWED)
+        self.assertIn('portfolio_event_estimates', projection.PERSONAL_TABLES)
+        conn = sqlite3.connect(':memory:')
+        conn.execute('CREATE TEMP TABLE portfolio_event_estimates(stock_code TEXT, kind TEXT)')
+        conn.execute("INSERT INTO temp.portfolio_event_estimates VALUES ('synthetic','estimate')")
+        with patch.object(projection, 'requester_scope', return_value=('anonymous', None)), \
+             patch.object(projection, 'PERSONAL_ROWS', ()):
+            projection._scope_to_requester(conn, PG())
+        self.assertEqual(conn.execute('SELECT count(*) FROM temp.portfolio_event_estimates').fetchone()[0], 0)
+        conn.close()
+
     def test_inactive_withdrawn_close_keys_do_not_disable_public_startup(self):
         from pipeline import postgres_legacy_projection as projection, postgres_owner_overrides as overrides
         class PG:
