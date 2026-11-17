@@ -5,7 +5,7 @@ Same safeguards as the isolated trial (scripts/refactor_collect_trial.py): sourc
 function. Every run, whatever its outcome, is recorded in PG collect_runs. Before the cutover the target is the
 disposable clone schema by default; the explicit live target must match the running API's schema.
 
-Refused here, whatever the scheduler asks: jobs that send (Telegram) and the uncapped overnight tagging backfill.
+Refused here: unconnected sends and the uncapped overnight tagging backfill.
 Jobs not connected yet are recorded as 'unsupported' and not run.
 
   python scripts/refactor_collect_job.py <label>
@@ -21,7 +21,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import refactor_collect_trial as trial  # noqa: E402 - the same harness and safeguards
 
-SENDS = {'briefing', 'pfintraday', 'pfclose', 'observealerts', 'observeweekly'}  # Telegram; on only after the cutover
+SENDS = {'briefing', 'pfintraday', 'pfclose', 'observealerts', 'observeweekly'}
+CONNECTED_SENDS = {'observeweekly'}  # other sends remain refused until their candidate state is connected
 NEVER = {'backfill'}  # uncapped model calls; never scheduled automatically
 # Table-collecting jobs: the unchanged script, then the supplement tables it actually wrote are replaced in PG
 # (recorded by a sqlite authorizer; writing any table that is not a supplement table holds the run back).
@@ -442,6 +443,29 @@ def run(label):
         held.close()  # releases the heavy lock
 
 
+def run_observe_weekly():
+    """Render the existing weekly report from candidate ledgers; send to the configured operator only."""
+    from pipeline import observe, postgres_observe_ledgers as ledgers
+    from pipeline.notify import send_telegram
+    from pipeline.postgres_legacy_projection import LegacyProjection
+    from routers.postgres_owner_legacy_fixture import _Borrowed
+    with trial._pg() as pg:
+        if not ledgers.ready(pg):
+            raise trial.HeldBack('observation ledgers are not ready')
+    projection = LegacyProjection(trial._pg, '/projection', external=True)
+    conn = ledgers.observe_connection(projection, trial._pg, 7)
+    old_get, old_flush = observe.get_connection, observe.flush
+    observe.get_connection = lambda: _Borrowed(conn)
+    observe.flush = lambda: None  # this one-shot process has no API request buffer
+    try:
+        message = observe.weekly_message()
+        if not message or not send_telegram(message):
+            raise trial.HeldBack('weekly report could not be sent')
+    finally:
+        observe.get_connection, observe.flush = old_get, old_flush
+        conn.close()
+
+
 def _run(label, pg, waited):
     import sqlite3
     from pipeline import llm, postgres_collect_runs, postgres_llm_calls
@@ -450,8 +474,19 @@ def _run(label, pg, waited):
             trial.band_ids(work)
     started = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
     entry = {}
-    if label in SENDS or label in NEVER:
+    if (label in SENDS and label not in CONNECTED_SENDS) or label in NEVER:
         outcome = f'refused: {"sends messages" if label in SENDS else "uncapped model calls"}'
+    elif label == 'observeweekly':
+        trial._instrument()
+        try:
+            run_observe_weekly()
+            outcome = 'applied: weekly report sent'
+        except trial.Aborted as exc:
+            outcome = f'aborted: {exc}'
+        except trial.HeldBack as exc:
+            outcome = f'held back: {exc}'
+        except Exception as exc:
+            outcome = f'failed: {type(exc).__name__}'
     elif label == SECTOR_REFRESH:
         try:
             entry['refreshed'] = run_sector_refresh()

@@ -77,14 +77,14 @@ def _logs(ident):
 
 
 # Collection credentials (PM #3 6940013382: checked and passed safely, values never printed or recorded). They live
-# only in a host file readable by its owner alone; only these names reach a job container. Sending (Telegram bot)
-# is not among them: sending jobs are refused.
+# only in a host file readable by its owner alone; Telegram credentials reach only a connected sending job.
 SECRETS_FILE = HOME / 'server-data/review/refactor-single/collect-secrets.env'
 SECRET_KEYS = ('DART_API_KEY', 'DATA_GO_KR_KEY', 'FRED_API_KEY', 'ALPHAVANTAGE_API_KEY', 'FMP_API_KEY', 'SEC_USER_AGENT',
                'KRX_ID', 'KRX_PW')
+SEND_KEYS = ('TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID')
 
 
-def secrets():
+def secrets(keys=SECRET_KEYS):
     """{name: value} from the secrets file (absent before the cutover: {}); refused unless owner-only (0600)."""
     if not SECRETS_FILE.exists():
         return {}
@@ -94,7 +94,7 @@ def secrets():
     found = {}
     for line in SECRETS_FILE.read_text().splitlines():
         name, sep, value = line.strip().partition('=')
-        if sep and name in SECRET_KEYS and value:
+        if sep and name in keys and value:
             found[name] = value
     return found
 
@@ -144,7 +144,11 @@ def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=No
             'PYTHONPATH=/app/backend:/opt/local-sources', 'PYTHONDONTWRITEBYTECODE=1']
     env += [f'{key}={os.environ[key]}' for key in FORWARDED if os.environ.get(key)]
     env += [f'{key}={value}' for key, value in (extra_env or {}).items()]  # this job's own caps
-    env += [f'{key}={value}' for key, value in secrets().items()]
+    keys = SECRET_KEYS + SEND_KEYS if job == 'observeweekly' else SECRET_KEYS
+    found = secrets(keys)
+    if job == 'observeweekly' and any(not found.get(key) for key in SEND_KEYS):
+        raise ValueError('Telegram send credentials are missing')
+    env += [f'{key}={value}' for key, value in found.items()]
     binds = [f'{ROOT}/backend:/app/backend:ro', f'{ROOT}/scripts:/app/scripts:ro',
              'explorer-refactor-single-projection:/projection:ro', f'{VOLUME}:/trial',
              'explorer-public-codex-auth:/provider-auth', 'explorer-data-rehearsal_models:/models:ro',

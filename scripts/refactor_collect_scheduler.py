@@ -7,7 +7,7 @@ when each job would run, in Asia/Seoul time as launchd did on the MacBook.
 --run executes only the jobs named in --enable, one at a time (a run started while another runs waits in a
 queue; repeats of a waiting job coalesce, as launchd does), each as a one-shot container
 (scripts/refactor_collect_trial.sh job <label> → scripts/refactor_collect_job.py, per-host request cap, record
-in PG collect_runs). A file lock keeps a second scheduler from starting. Sending jobs and the overnight backfill
+in PG collect_runs). A file lock keeps a second scheduler from starting. Unconnected sends and the overnight backfill
 are refused. Missed runs are caught up as on the MacBook (pipeline.catchup over collect_runs, checked at start
 and every 30 minutes while idle). The live target is opt-in; without it only a disposable clone is allowed.
 Nothing is enabled by default.
@@ -277,11 +277,11 @@ def run_loop(enabled, log=print):
 
 def check_enabled(labels):
     sys.path.insert(0, str(ROOT / 'scripts'))
-    from refactor_collect_job import NEVER, SENDS
+    from refactor_collect_job import CONNECTED_SENDS, NEVER, SENDS
     from refactor_collect_job import CHAIN_STEPS
     jobs, _ = load_jobs()
     known = {label for label, _a, _s in jobs} | set(CHAIN_STEPS)
-    unknown, refused = labels - known, labels & (SENDS | NEVER)
+    unknown, refused = labels - known, labels & ((SENDS - CONNECTED_SENDS) | NEVER)
     if unknown or refused:
         raise SystemExit(f'Not enabled — unknown: {sorted(unknown)}, refused (sends/backfill): {sorted(refused)}')
 

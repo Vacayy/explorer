@@ -10,9 +10,25 @@ from unittest.mock import patch
 
 import refactor_collect_trial as trial
 import refactor_collect_scheduler as scheduler
+import refactor_collect_engine as engine
 
 
 class CollectionTargetTest(unittest.TestCase):
+    def test_send_secrets_require_explicit_key_selection(self):
+        with TemporaryDirectory() as directory:
+            secret_file = Path(directory) / 'secrets'
+            secret_file.write_text('DART_API_KEY=test\nTELEGRAM_BOT_TOKEN=test\nTELEGRAM_CHAT_ID=test\n')
+            secret_file.chmod(0o600)
+            with patch.object(engine, 'SECRETS_FILE', secret_file):
+                self.assertEqual(set(engine.secrets()), {'DART_API_KEY'})
+                self.assertEqual(set(engine.secrets(engine.SECRET_KEYS + engine.SEND_KEYS)),
+                                 {'DART_API_KEY', *engine.SEND_KEYS})
+
+    def test_only_connected_send_can_be_enabled(self):
+        scheduler.check_enabled({'observeweekly'})
+        with self.assertRaises(SystemExit):
+            scheduler.check_enabled({'briefing'})
+
     def test_price_catchup_waits_for_the_next_slot(self):
         with patch.dict(os.environ, {'COLLECT_PRICES_CATCHUP_AFTER': '2026-11-18T07:35:00+00:00'}):
             self.assertEqual(scheduler.catchup_enabled({'prices', 'watch'}, datetime(2026, 11, 18, 7, 34, tzinfo=timezone.utc)), {'watch'})
