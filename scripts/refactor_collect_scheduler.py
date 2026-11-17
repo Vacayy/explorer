@@ -140,11 +140,12 @@ def due_now(jobs, enabled, last, now, next_interval):
 
 
 def wait_ready(log=print, every=30):
-    """Until PG answers and migrations are applied; then job containers left by a stopped scheduler are removed and
+    """Until Docker and PG answer and migrations are applied; then job containers left by a stopped scheduler are removed and
     their runs recorded as interrupted (catch-up then counts them as attempts)."""
     import refactor_collect_engine as engine
     while True:
         try:
+            engine.call('GET', '/_ping', raw=True, timeout=10)  # Docker (Colima) answers: after a reboot it may start later
             code, output = engine.run(['python', '/app/scripts/refactor_collect_job.py', '--ready'], internet=False, limit=120)
             if code == 0:
                 break
