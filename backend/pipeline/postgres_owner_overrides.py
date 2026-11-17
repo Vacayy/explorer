@@ -26,13 +26,14 @@ OVERRIDES = {'feature_flags': 'name', 'era_checks': 'key', 'research_candidates'
              'earnings_expectations': 'ticker|fiscal_year|fiscal_period|snapshot',
              'scenarios': 'topic', 'reports': 'id', 'company_profiles': 'id', 'trade_beneficiaries': 'id',
              'stock_briefs': 'id', 'era_commentary': 'input_hash', 'thesis_audits': 'id',
-             'transcript_reactions': 'transcript_id'}
+             'transcript_reactions': 'transcript_id',
+             'pricing_claims': 'id', 'pricing_observations': 'trade_date|claim_id', 'pricing_days': 'trade_date'}
 # Computation outputs: copied into TEMP only for the computing request; reads see them from the
 # next projection build (the computing request answers with the result itself).
 COMPUTED = ('lens_readings', 'source_digests', 'models', 'narratives', 'knowledge_falsifiers',
             'knowledge_evidence', 'knowledge_entities', 'scenarios', 'reports', 'company_profiles', 'trade_beneficiaries',
             'stock_briefs', 'era_commentary', 'thesis_audits',
-            'transcript_reactions', 'earnings_expectations')
+            'transcript_reactions', 'earnings_expectations', 'pricing_claims', 'pricing_observations', 'pricing_days')
 
 
 def initialize(conn):
