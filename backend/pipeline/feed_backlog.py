@@ -198,6 +198,32 @@ class FeedBacklog:
             self.conn.execute('UPDATE pending SET revision_pending=1 WHERE seq=?', (seq,))
             self.conn.execute('UPDATE feed_cursor SET lane=? WHERE singleton=1', (row[0],))
 
+    def batch(self, *, allowed, limit):
+        """Return bounded pending documents in source-lane rotation without acknowledging any."""
+        if not allowed or limit <= 0:
+            return []
+        from collections import defaultdict, deque
+        marks = ','.join('?' for _ in allowed)
+        rows = self.conn.execute('SELECT seq,connector,lane,payload FROM pending WHERE revision_pending=0 '
+                                 f'AND connector IN ({marks}) ORDER BY seq LIMIT 200', tuple(sorted(allowed)))
+        groups = defaultdict(deque)
+        for seq, connector, lane, payload in rows:
+            groups[lane].append((seq, connector, RawDoc(**json.loads(payload))))
+        last = self.conn.execute('SELECT lane FROM feed_cursor WHERE singleton=1').fetchone()[0] or ''
+        lanes = sorted(groups)
+        lanes = [lane for lane in lanes if lane > last] + [lane for lane in lanes if lane <= last]
+        result = []
+        while lanes and len(result) < limit:
+            remaining = []
+            for lane in lanes:
+                if len(result) == limit:
+                    break
+                result.append(groups[lane].popleft())
+                if groups[lane]:
+                    remaining.append(lane)
+            lanes = remaining
+        return result
+
     def acknowledge(self, seq):
         """Call only after publication succeeds; deleting and advancing the cursor are atomic."""
         with self.conn:

@@ -7,6 +7,17 @@ from pipeline.feed_backlog import FeedBacklog, fetch_pending_reference, stage_on
 
 
 class FeedBacklogTest(unittest.TestCase):
+    def test_batch_rotates_source_lanes_without_acknowledging(self):
+        with tempfile.TemporaryDirectory() as directory:
+            queue = FeedBacklog(Path(directory) / 'pending.sqlite')
+            for lane, ident in [('a', '1'), ('a', '2'), ('b', '3'), ('b', '4')]:
+                queue.enqueue('blog', lane, RawDoc('blog', ident))
+            batch = queue.batch(allowed={'blog'}, limit=2)
+            self.assertEqual(len(batch), 2)
+            self.assertIn(batch[0][2].source_id, {'1', '3'})
+            self.assertEqual({x[2].source_id for x in batch}, {'1', '3'})
+            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending').fetchone()[0], 4)
+            queue.close()
     def test_existing_revision_payload_is_retained_but_does_not_block_new_docs(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'pending.sqlite'

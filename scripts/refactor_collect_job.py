@@ -450,8 +450,12 @@ def run_feeds(pg, refused=None):
 
 
 def _blog_document_known(key):
+    return _feed_document_known('blog', key)
+
+
+def _feed_document_known(source, key):
     with sqlite3.connect(f'file:{trial.WORK}?mode=ro', uri=True) as work:
-        return work.execute("SELECT 1 FROM raw_documents WHERE source_type='blog' AND source_id=? LIMIT 1", (key,)).fetchone() is not None
+        return work.execute('SELECT 1 FROM raw_documents WHERE source_type=? AND source_id=? LIMIT 1', (source, key)).fetchone() is not None
 
 
 def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-backlog.sqlite', youtube=None, telegram=None):
@@ -516,33 +520,40 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
                 fetch_pending_reference(queue, sources)
             except NeedsAnalysis:
                 deferred_analysis = True  # snapshot remains queued; another source lane may run next time
-        item = queue.next(allowed=allowed)
-        if item is None:
+        selected = []
+        deferred_revisions = 0
+        for item in queue.batch(allowed=allowed, limit=25):
+            if _feed_document_known(item[2].source_type, item[2].source_id):
+                queue.defer_revision(item[0])
+                deferred_revisions += 1
+            elif len(selected) < min(MAX_NEW_DOCS, 5):
+                selected.append(item)
+        if not selected:
             return {'stats': {'feed': {'refs': 1}}, 'counts': {}, 'published': 0,
                     'sources': sorted(allowed),
                     'deferred_analysis': int(deferred_analysis),
+                    'deferred_revisions': deferred_revisions,
                     'steps_not_connected': ['other feed sources', 'existing document revisions', 'chain postprocessing']}
-        seq, source_name, doc = item
 
-        class OneDocument:
+        class QueuedDocuments:
             def discover(self):
                 return [None]
 
             def fetch(self, _ref):
-                return [doc]
+                return [item[2] for item in selected]
 
         def check_cap():
             if refused:
                 raise trial.HeldBack(f'feed model call cap {MAX_MODEL_CALLS} reached')
 
-        result = trial.run_documents(pg, [OneDocument()], 1, before_publish=check_cap)
+        result = trial.run_documents(pg, [QueuedDocuments()], min(MAX_NEW_DOCS, 5), before_publish=check_cap)
         if result['counts'].get('existing_skipped'):
-            queue.defer_revision(seq)  # retain its payload until existing-document revisions are connected
-            result['deferred_revision'] = 1
-        else:
+            raise trial.HeldBack('a selected document became existing during collection; retain the batch')
+        for seq, _, _ in selected:
             queue.acknowledge(seq)  # only after successful PG publish and local floor commit
-        result['sources'] = [source_name]
+        result['sources'] = sorted({item[1] for item in selected})
         result['deferred_analysis'] = int(deferred_analysis)
+        result['deferred_revisions'] = deferred_revisions
         result['steps_not_connected'] = ['other feed sources', 'existing document revisions', 'chain postprocessing']
         return result
     finally:

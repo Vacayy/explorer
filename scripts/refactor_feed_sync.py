@@ -47,15 +47,16 @@ def sync(source_path, target_path, *, allow_noop=False):
         if allow_noop and not any(rows for _, rows in additions.values()):
             dst.rollback()
             return {'raw_documents': 0, 'enrichments': 0, 'entity_links': 0}
-        if len(documents) != 1 or any(additions[t][1] for t in ('entity_keywords', 'entity_relations')):
-            raise ValueError('Expected exactly one document and no new keyword or relation rows')
-        doc_id = documents[0][0]
+        if not 1 <= len(documents) <= 5 or any(additions[t][1] for t in ('entity_keywords', 'entity_relations')):
+            raise ValueError('Expected one to five documents and no new keyword or relation rows')
+        doc_ids = {row[0] for row in documents}
         for table in ('enrichments', 'entity_links'):
             cols, rows = additions[table]
-            if any(row[cols.index('doc_id')] != doc_id for row in rows):
+            if any(row[cols.index('doc_id')] not in doc_ids for row in rows):
                 raise ValueError('An added row belongs to another document')
-        if len(additions['enrichments'][1]) != 1:
-            raise ValueError('Expected one completed enrichment')
+        enrichment_cols, enrichments = additions['enrichments']
+        if len(enrichments) != len(documents) or {row[enrichment_cols.index('doc_id')] for row in enrichments} != doc_ids:
+            raise ValueError('Expected one completed enrichment per document')
         link_columns, links = additions['entity_links']
         linked = {row[link_columns.index('entity_id')] for row in links}
         if any(row[0] not in linked for row in additions['entities'][1]):
@@ -63,7 +64,7 @@ def sync(source_path, target_path, *, allow_noop=False):
         for table in ('raw_documents', 'enrichments', 'entities', 'entity_links'):
             cols, rows = additions[table]
             dst.executemany(f'INSERT INTO "{table}" VALUES ({",".join("?" for _ in cols)})', rows)
-        dst.execute("UPDATE candidate_publish_floor SET value=? WHERE name='document_floor'", (doc_id,))
+        dst.execute("UPDATE candidate_publish_floor SET value=? WHERE name='document_floor'", (max(doc_ids),))
         if additions['entities'][1]:
             dst.execute("UPDATE candidate_publish_floor SET value=? WHERE name='entity_floor'", (additions['entities'][1][-1][0],))
         if dst.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':

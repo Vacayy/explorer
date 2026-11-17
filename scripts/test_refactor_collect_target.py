@@ -139,6 +139,24 @@ class CollectionTargetTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 feed_sync.sync(*paths)
 
+    def test_feed_batch_defers_existing_before_publishing_new(self):
+        from pipeline.base import RawDoc
+        from pipeline.feed_backlog import FeedBacklog
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'queue.sqlite'
+            queue = FeedBacklog(path)
+            queue.enqueue('blog', 'feed', RawDoc('blog', 'existing'))
+            queue.enqueue('blog', 'feed', RawDoc('blog', 'fresh'))
+            queue.close()
+            result = {'counts': {'new': 1}, 'stats': {}, 'published': [1]}
+            with patch.object(job, '_feed_document_known', side_effect=lambda _source, key: key == 'existing'), \
+                 patch.object(trial, 'run_documents', return_value=result):
+                job.run_minimal_blog(None, object(), queue_path=path)
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending WHERE revision_pending=1').fetchone()[0], 1)
+            self.assertIsNone(queue.next())
+            queue.close()
+
     def test_recovery_requires_one_matching_complete_queued_document(self):
         from pipeline.base import RawDoc
         from pipeline.feed_backlog import FeedBacklog
@@ -219,12 +237,13 @@ class CollectionTargetTest(unittest.TestCase):
                 return [SourceRef('feed')]
 
             def discover_posts(self, _ref):
-                return [SourceRef('first'), SourceRef('second')]
+                return [SourceRef('first', {'post': {'url': 'first'}}), SourceRef('second', {'post': {'url': 'second'}})]
 
             def fetch_post(self, ref):
                 return RawDoc('blog', ref.key)
 
-        with TemporaryDirectory() as directory, patch.object(job, '_blog_document_known', return_value=False):
+        with TemporaryDirectory() as directory, patch.object(job, '_blog_document_known', return_value=False), \
+             patch.object(job, '_feed_document_known', return_value=False):
             path = Path(directory) / 'backlog.sqlite'
             with patch.object(trial, 'run_documents', side_effect=RuntimeError('simulated publication failure')):
                 with self.assertRaises(RuntimeError):
