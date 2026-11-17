@@ -68,7 +68,39 @@ def _logs(ident):
     return ''.join(out)
 
 
-def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=None):
+LABEL = 'explorer.collect'  # every job container carries it; only labelled containers are stopped or removed here
+
+
+def check(spec):
+    """Mistake guard, not a security boundary (the socket holder can do anything; PM #3 6940036896): a job container
+    is only ever the collection image with the listed mounts, unprivileged, all capabilities dropped, no socket."""
+    host = spec['HostConfig']
+    allowed = {f'{ROOT}/backend', f'{ROOT}/scripts', 'explorer-refactor-single-projection', VOLUME,
+               'explorer-public-codex-auth', 'explorer-data-rehearsal_models',
+               f'{HOME}/server-data/review/refactor-single/codex-gate',
+               f'{HOME}/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py'}
+    sources = {bind.split(':', 1)[0] for bind in host['Binds']}
+    if spec['Image'] != IMAGE or sources - allowed or any('docker.sock' in bind for bind in host['Binds']):
+        raise ValueError(f'Refused job container: image {spec["Image"]}, mounts {sorted(sources - allowed)}')
+    if host.get('Privileged') or host.get('CapDrop') != ['ALL'] or host.get('NetworkMode') != NETWORK \
+            or host.get('PidMode') or spec.get('Labels', {}).get(LABEL) != '1':
+        raise ValueError('Refused job container: privilege, network, pid or label outside the job shape')
+
+
+def orphans():
+    """(name, label) of job containers left behind (a scheduler stopped mid-run, a reboot)."""
+    found = call('GET', '/containers/json?all=1&filters=' + quote(json.dumps({'label': [f'{LABEL}=1']})))
+    return [(c['Names'][0].lstrip('/'), c['Labels'].get(f'{LABEL}.job', '')) for c in found]
+
+
+def remove(name):
+    info = call('GET', f'/containers/{quote(name)}/json')
+    if info['Config']['Labels'].get(LABEL) != '1':
+        raise ValueError(f'Not a job container: {name}')
+    call('DELETE', f'/containers/{quote(name)}?force=1')
+
+
+def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=None, job=''):
     """Create, start and wait for one job container; returns (exit code, output). Removed afterwards."""
     api = call('GET', f'/containers/{API}/json')
     env = [item for item in api['Config']['Env'] if item.split('=', 1)[0] in API_ENV]
@@ -85,7 +117,10 @@ def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=No
              f'{HOME}/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py:/control/codex-credential-gate.py:ro']
     units = {'g': 1 << 30, 'm': 1 << 20}
     spec = {'Image': IMAGE, 'Cmd': argv, 'Env': env, 'User': api['Config']['User'], 'WorkingDir': '/app/backend',
-            'HostConfig': {'Binds': binds, 'Memory': int(memory[:-1]) * units[memory[-1]], 'NetworkMode': NETWORK}}
+            'Labels': {LABEL: '1', f'{LABEL}.job': job},
+            'HostConfig': {'Binds': binds, 'Memory': int(memory[:-1]) * units[memory[-1]], 'NetworkMode': NETWORK,
+                           'Privileged': False, 'CapDrop': ['ALL'], 'SecurityOpt': ['no-new-privileges']}}
+    check(spec)
     ident = call('POST', '/containers/create' + (f'?name={quote(name)}' if name else ''), spec)['Id']
     try:
         if internet:

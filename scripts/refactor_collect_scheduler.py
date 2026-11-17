@@ -96,7 +96,7 @@ def _run_one(label, log=print):
     import refactor_collect_engine as engine
     started = time.monotonic()
     started_utc = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
-    code, output = engine.run(['python', '/app/scripts/refactor_collect_job.py', label],
+    code, output = engine.run(['python', '/app/scripts/refactor_collect_job.py', label], job=label,
                               name=f'explorer-collect-{label}-{os.getpid()}', memory=JOB_MEMORY.get(label, '2g'),
                               internet=os.environ.get('NO_INTERNET') != '1', limit=JOB_SECONDS,
                               extra_env={'TRIAL_HOST_CAPS': JOB_HOST_CAPS[label]} if label in JOB_HOST_CAPS else None)
@@ -139,7 +139,30 @@ def due_now(jobs, enabled, last, now, next_interval):
     return due
 
 
+def wait_ready(log=print, every=30):
+    """Until PG answers and migrations are applied; then job containers left by a stopped scheduler are removed and
+    their runs recorded as interrupted (catch-up then counts them as attempts)."""
+    import refactor_collect_engine as engine
+    while True:
+        try:
+            code, output = engine.run(['python', '/app/scripts/refactor_collect_job.py', '--ready'], internet=False, limit=120)
+            if code == 0:
+                break
+            log(f'not ready: {output.strip()[-200:]}')
+        except (RuntimeError, OSError, ValueError) as exc:
+            log(f'not ready: {exc}')
+        time.sleep(every)
+    now = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
+    for name, label in engine.orphans():
+        engine.remove(name)
+        if label:
+            engine.run(['python', '/app/scripts/refactor_collect_job.py', '--stopped', label, now,
+                        'cut off (left by a stopped scheduler or a reboot)', 'interrupted'], internet=False, limit=120)
+        log(f'removed left-over job container {name}')
+
+
 def run_loop(enabled, log=print):
+    wait_ready(log)
     jobs, _catchup = load_jobs()
     queue, next_interval, checked = [], {}, 0.0
     last = datetime.now(SEOUL).replace(second=0, microsecond=0)

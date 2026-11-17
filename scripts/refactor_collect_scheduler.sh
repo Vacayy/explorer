@@ -12,7 +12,8 @@ NAME=explorer-refactor-collect-scheduler
 IMAGE=explorer-refactor-test:psycopg-3.2.13-auth
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 STATE_DIR=$HOME/server-data/review/refactor-single
-args=(--user 0 -v /var/run/docker.sock:/var/run/docker.sock -v "$ROOT:$ROOT:ro" -v "$STATE_DIR:$STATE_DIR"
+# No network for the scheduler itself (only job containers get outbound access); the socket is its only reach.
+args=(--user 0 --network none -v /var/run/docker.sock:/var/run/docker.sock -v "$ROOT:$ROOT:ro" -v "$STATE_DIR:$STATE_DIR"
       -e HOME="$HOME" -e HOST_HOME="$HOME" -e PYTHONDONTWRITEBYTECODE=1 -w "$ROOT" --memory=256m)
 for key in NO_INTERNET COLLECT_JOB_SECONDS TRIAL_MAX_REQUESTS COLLECT_FEED_SOURCES COLLECT_MAX_NEW_DOCS COLLECT_MAX_MODEL_CALLS COLLECT_PROJECTION_WAIT; do
   [ -n "${!key:-}" ] && args+=(-e "$key=${!key}")

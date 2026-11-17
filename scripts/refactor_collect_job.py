@@ -182,16 +182,26 @@ def catchup(labels, now=None):
     return due_labels
 
 
-def record_stop(label, started, reason):
-    """A run the scheduler stopped (time limit): recorded as failed, so catch-up counts the attempt."""
+def record_stop(label, started, reason, kind='failed'):
+    """A run the scheduler stopped (time limit) or found cut off (a reboot): recorded, so catch-up counts the attempt."""
     from pipeline import postgres_collect_runs
-    print(postgres_collect_runs.record(trial._pg(), label, started, f'failed: {reason}'))
+    print(postgres_collect_runs.record(trial._pg(), label, started, f'{kind}: {reason}'))
+
+
+def ready():
+    """The scheduler starts jobs only once PG answers and every migration is applied (a reboot may start it first)."""
+    from pipeline.postgres_schema_migrations import pending
+    missing = pending(trial._pg())
+    print('ready' if not missing else f'pending migrations {missing}')
+    return not missing
 
 
 if __name__ == '__main__':
     if sys.argv[1] == '--catchup':
         catchup(set(sys.argv[2].split(',')))
     elif sys.argv[1] == '--stopped':
-        record_stop(sys.argv[2], sys.argv[3], sys.argv[4])
+        record_stop(*sys.argv[2:6])
+    elif sys.argv[1] == '--ready':
+        sys.exit(0 if ready() else 1)
     else:
         run(sys.argv[1])
