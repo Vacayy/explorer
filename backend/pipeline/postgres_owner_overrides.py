@@ -33,7 +33,7 @@ OVERRIDES = {'feature_flags': 'name', 'era_checks': 'key', 'research_candidates'
 COMPUTED = ('lens_readings', 'source_digests', 'models', 'narratives', 'knowledge_falsifiers',
             'knowledge_evidence', 'knowledge_entities', 'scenarios', 'reports', 'company_profiles', 'trade_beneficiaries',
             'stock_briefs', 'era_commentary', 'thesis_audits',
-            'transcript_reactions', 'transcripts', 'earnings_expectations', 'pricing_claims', 'pricing_observations', 'pricing_days')
+            'transcript_reactions', 'transcripts', 'earnings_expectations')
 
 
 def initialize(conn):

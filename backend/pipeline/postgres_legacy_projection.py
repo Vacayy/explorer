@@ -48,7 +48,9 @@ SHADOWED = ('portfolio_transactions', 'stock_group_members', 'stock_groups', 'wa
             'saved_items', 'tracker_conditions', 'transcript_follow', 'knowledge', 'trade_follow', 'narrative_candidates',
             'telegram_channels', 'blog_sources', 'youtube_channels',
             'industry_groups', 'industry_members', 'business_segments', 'ir_notes',
-            'feature_flags', 'era_checks', 'research_candidates', 'agent_proposals', 'entity_keywords', *NATIVE)
+            'feature_flags', 'era_checks', 'research_candidates', 'agent_proposals', 'entity_keywords',
+            # Small computation outputs a screen reads right after its button: overrides shown at once, not next build.
+            'pricing_claims', 'pricing_observations', 'pricing_days', *NATIVE)
 CHECK_SECONDS = 10
 log = logging.getLogger(__name__)
 

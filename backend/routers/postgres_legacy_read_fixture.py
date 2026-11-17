@@ -174,6 +174,7 @@ def install(app, projection, *, database_host):
     from models.kalshi import KalshiDetail
     from fastapi import Path, Query
     from models.us import UsMoversResponse
+    from routers.spine_quotes import Quote
     router = APIRouter()
 
     @router.get('/api/spine/indices')
@@ -208,6 +209,11 @@ def install(app, projection, *, database_host):
         if force:
             raise HTTPException(405, 'Collection is unavailable in the read-only preview')
         return spine_us.us_movers(force=False)  # an expired cache answers stale/error offline, never refetches
+
+    @router.get('/api/spine/quotes', response_model=list[Quote])
+    def quotes(codes: str):
+        # A live Naver polling proxy; this API has no outbound network (no screen calls it).
+        raise HTTPException(503, 'Live quotes are unavailable on the candidate')
 
     @router.get('/api/spine/us/briefing', response_model=UsBriefing)
     def us_briefing(force: bool = False, trade_date: str | None = None):
