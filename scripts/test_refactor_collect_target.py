@@ -940,6 +940,12 @@ class CollectionTargetTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 projection.check_override_shadows(pg)
 
+    def test_kalshi_api_has_a_bounded_cap_for_categories_and_candles(self):
+        caps = dict(item.split('=', 1) for item in scheduler.JOB_HOST_CAPS['kalshi'].split(','))
+        self.assertEqual(int(caps['api.elections.kalshi.com']), 60)
+        with patch.object(trial, 'HOST_CAPS', {key: int(value) for key, value in caps.items()}):
+            self.assertEqual(trial.cap_of('api.elections.kalshi.com'), 60)
+
     def test_credit_history_host_has_an_explicit_bounded_cap(self):
         caps = dict(item.split('=', 1) for item in scheduler.JOB_HOST_CAPS['credit'].split(','))
         self.assertEqual(int(caps['data.tradingview.com']), 150)
