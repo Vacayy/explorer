@@ -106,6 +106,37 @@ class CollectionTargetTest(unittest.TestCase):
             self.assertEqual(queue.conn.execute("SELECT count(*) FROM pending WHERE defer_reason='analysis'").fetchone()[0], 1)
             self.assertIsNone(queue.next())
             queue.close()
+    def test_blog_text_publication_keeps_unresolved_image_original_for_later(self):
+        from pipeline.base import RawDoc
+        from pipeline.feed_backlog import FeedBacklog
+        from pipeline import image_reading, normalize, telegram_deferred
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'queue.sqlite'
+            queue = FeedBacklog(path)
+            queue.enqueue('blog', 'feed', RawDoc('blog', 'new', raw_content='<p>text</p><img src="https://example.com/a.png">', kind='html'))
+            seq = queue.next()[0]
+            queue.defer_revision(seq, reason='analysis')
+            queue.close()
+            def cached(items, *, missing, **kwargs):
+                missing.append('synthetic-image')
+                return {'synthetic-image': None}
+            def normalize_text(doc):
+                image_reading.read_images([{'key': 'synthetic-image'}])
+                return 'text'
+            with patch.dict(os.environ, {'COLLECT_FEED_STRICT_IMAGES': '1', 'COLLECT_FEED_KEYWORD_ONLY': '0'}), \
+                 patch.object(job, 'MAX_MODEL_CALLS', 2), patch.object(job, '_feed_document_known', return_value=False), \
+                 patch.object(telegram_deferred, 'cached_images', side_effect=cached), \
+                 patch.object(image_reading, 'read_images'), patch.object(normalize, 'to_markdown', side_effect=normalize_text), \
+                 patch.object(trial, 'run_documents', return_value={'counts': {}, 'stats': {}, 'published': 1}) as publish:
+                result = job.run_minimal_blog(None, object(), queue_path=path)
+            self.assertEqual(result['published'], 1)
+            self.assertEqual(result['deferred_analysis'], 1)
+            publish.assert_called_once()
+            queue = FeedBacklog(path)
+            retained = list(queue.analysis_pending())
+            self.assertEqual(len(retained), 1)
+            self.assertIn('<img', retained[0][2].raw_content)
+            queue.close()
     def test_telegram_page_is_preserved_when_grouping_needs_analysis(self):
         from pipeline.base import SourceRef
         from pipeline.feed_backlog import FeedBacklog

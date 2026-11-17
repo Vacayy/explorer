@@ -36,15 +36,19 @@ def no_new_group_decision(*args):
     raise NeedsAnalysis('New grouping decisions require analysis')
 
 
-def cached_images(items, **kwargs):
+def cached_images(items, *, allow_missing=False, missing=None, **kwargs):
     if not items:
         return {}
     keys = [item['key'] for item in items[:image_reading.MAX_PER_DOC]]
     conn = get_connection()
     try:
         rows = image_reading._rows(conn, keys)
-        if any(image_reading._needs(rows.get(key)) for key in keys):
-            raise NeedsAnalysis('New image interpretation requires analysis')
+        unresolved = [key for key in keys if image_reading._needs(rows.get(key))]
+        if unresolved:
+            if not allow_missing:
+                raise NeedsAnalysis('New image interpretation requires analysis')
+            if missing is not None:
+                missing.extend(unresolved)
         return {key: image_reading.format_note(rows.get(key)) for key in keys}
     finally:
         conn.close()

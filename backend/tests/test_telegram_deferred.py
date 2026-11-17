@@ -25,3 +25,13 @@ class TelegramDeferredTest(unittest.TestCase):
         with patch.object(deferred, 'get_connection', return_value=conn):
             with self.assertRaises(deferred.NeedsAnalysis):
                 deferred.cached_images([{'key': 'missing'}])
+
+    def test_missing_blog_image_can_preserve_text_and_mark_pending(self):
+        conn = sqlite3.connect(':memory:')
+        conn.row_factory = sqlite3.Row
+        conn.execute('CREATE TABLE image_readings(image_key TEXT,status TEXT,attempts INTEGER)')
+        missing = []
+        with patch.object(deferred, 'get_connection', return_value=conn):
+            notes = deferred.cached_images([{'key': 'missing'}], allow_missing=True, missing=missing)
+        self.assertEqual(notes, {'missing': None})
+        self.assertEqual(missing, ['missing'])

@@ -247,6 +247,22 @@ class FeedBacklog:
             self.conn.execute('UPDATE pending SET revision_pending=1,defer_reason=? WHERE seq=?', (reason, seq))
             self.conn.execute('UPDATE feed_cursor SET lane=? WHERE singleton=1', (row[0],))
 
+    def analysis_pending(self):
+        """Read retained blog originals; callers check publication state before use."""
+        rows = self.conn.execute("SELECT seq,connector,payload FROM pending WHERE revision_pending=1 "
+                                 "AND defer_reason='analysis' AND connector='blog' ORDER BY seq")
+        for seq, connector, payload in rows:
+            yield seq, connector, RawDoc(**json.loads(payload))
+
+    def retain_analysis(self, seq):
+        """Keep the original and image work after publishing the text-only document."""
+        with self.conn:
+            row = self.conn.execute('SELECT lane FROM pending WHERE seq=? AND connector=?', (seq, 'blog')).fetchone()
+            if row is None or self.conn.execute('SELECT 1 FROM publication_intent WHERE seq=?', (seq,)).fetchone():
+                raise ValueError('Pending blog document cannot be retained')
+            self.conn.execute("UPDATE pending SET revision_pending=1,defer_reason='analysis' WHERE seq=?", (seq,))
+            self.conn.execute('UPDATE feed_cursor SET lane=? WHERE singleton=1', (row[0],))
+
     def batch(self, *, allowed, limit):
         """Return bounded pending documents in source-lane rotation without acknowledging any."""
         if not allowed or limit <= 0:

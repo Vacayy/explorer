@@ -489,10 +489,13 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
             raise ValueError('Keyword-only feed requires a zero model attempt cap')
         from pipeline import enrich
         enrich.llm_available = lambda: False
+    missing_images = []
     if strict_images:
         from pipeline import image_reading
         from pipeline.telegram_deferred import cached_images
-        image_reading.read_images = cached_images  # use existing interpretation or defer the entire document
+        def blog_images(items, **kwargs):
+            return cached_images(items, allow_missing=True, missing=missing_images, **kwargs)
+        image_reading.read_images = blog_images  # existing notes only; preserve missing work in the queue
     queue = FeedBacklog(queue_path)
     try:
         if queue.intent():
@@ -521,7 +524,13 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
         deferred_analysis = False
         identical_revisions = _mark_identical_feed_revisions(queue)
         allowed = {'blog'} | ({'youtube'} if youtube is not None else set()) | ({'telegram'} if telegram is not None else set())
-        if queue.next(allowed=allowed) is None:
+        unpublished_analysis = []
+        for item in queue.analysis_pending():
+            if not _feed_document_known(item[2].source_type, item[2].source_id):
+                unpublished_analysis.append(item)
+                if len(unpublished_analysis) >= max_documents:
+                    break
+        if queue.next(allowed=allowed) is None and not unpublished_analysis:
             if youtube is not None or telegram is not None or queue.next_pending_ref(allowed=allowed) is None:
                 from pipeline.base import SourceRef
                 choices = [SourceRef(name) for name in sorted(allowed)]
@@ -569,7 +578,7 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
                 fetch_pending_reference(queue, sources)
             except NeedsAnalysis:
                 deferred_analysis = True  # snapshot remains queued; another source lane may run next time
-        selected = []
+        selected = unpublished_analysis[:max_documents]
         deferred_revisions = 0
         for item in queue.batch(allowed=allowed, limit=25):
             if _feed_document_known(item[2].source_type, item[2].source_id):
@@ -581,9 +590,13 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
             from pipeline.normalize import to_markdown
             from pipeline.telegram_deferred import NeedsAnalysis
             ready = []
+            retain_analysis = set()
             for item in selected:
                 try:
+                    before_missing = len(missing_images)
                     item[2].markdown = to_markdown(item[2])
+                    if len(missing_images) != before_missing:
+                        retain_analysis.add(item[0])
                     ready.append(item)
                 except NeedsAnalysis:
                     queue.defer_revision(item[0], reason='analysis')
@@ -643,7 +656,11 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
         if result['counts'].get('existing_skipped') or any(isinstance(v, str) for v in result['stats'].values()):
             raise trial.HeldBack('a selected document failed or became existing; retain the batch')
         for seq, _, _ in selected:
-            queue.acknowledge(seq)  # only after successful PG publish and local floor commit
+            if strict_images and seq in retain_analysis:
+                queue.retain_analysis(seq)  # keep original and staged results for later image completion
+                deferred_analysis = True
+            else:
+                queue.acknowledge(seq)  # only after successful PG publish and local floor commit
         result['sources'] = sorted({item[1] for item in selected})
         result['deferred_analysis'] = int(deferred_analysis)
         result['deferred_revisions'] = deferred_revisions
