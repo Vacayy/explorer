@@ -81,17 +81,17 @@ CATCHUP_SECONDS = 1800  # the MacBook's catchup job ran every 30 minutes
 EXTRA_JOBS = [('sectorrefresh', ['scripts/refactor_sector_refresh.py'], [{'Weekday': d, 'Hour': 21, 'Minute': 0} for d in range(1, 6)]),
               # The candidate PG backup daily (the MacBook's backup hour) and a restore check of the newest dump weekly:
               # a dump that does not restore is not a backup (architect #3 6947453973).
-              ('pgbackup', ['scripts/refactor_pg_backup.sh', 'backup'], {'Hour': 4, 'Minute': 30}),
-              ('pgrestorecheck', ['scripts/refactor_pg_backup.sh', 'check'], {'Weekday': 0, 'Hour': 5, 'Minute': 0})]
+              ('pgbackup', ['scripts/refactor_pg_backup.sh', 'rotate'], {'Hour': 4, 'Minute': 30}),
+              ('pgrestorecheck', ['scripts/refactor_pg_backup.sh', 'check-current'], {'Weekday': 0, 'Hour': 5, 'Minute': 0})]
 # Jobs that need the host's docker CLI (the backup execs into the PG container), run here instead of in a job container;
-# recorded in collect_runs like the others. A restore check counts only when it says every row count is equal.
-HOST_JOBS = {'pgbackup': ('sh', '-c', 'scripts/refactor_pg_backup.sh backup'),
-             'pgrestorecheck': ('sh', '-c', 'scripts/refactor_pg_backup.sh check "$(ls -t "$HOME"/server-data/backups/refactor-pg/'
-                                            '*-candidate.dump | head -1)"')}
+# recorded in collect_runs like the others. The check requires the dump's full table inventory.
+HOST_JOBS = {'pgbackup': ('scripts/refactor_pg_backup.sh', 'rotate'),
+             'pgrestorecheck': ('scripts/refactor_pg_backup.sh', 'check-current')}
 HOST_OK = {'pgbackup': '-candidate.dump', 'pgrestorecheck': 'restore check ok'}
 SAFE_BACKUP_REFUSAL = object()
 SAFE_BACKUP_MESSAGES = {'not enough host space for a backup', 'not enough VM space for a backup',
-                        'backup deferred: heavy lock busy'}
+                        'backup deferred: heavy lock busy', 'backup deferred: rotation busy',
+                        'not enough VM space for a restore check'}
 
 
 def load_jobs():
@@ -200,7 +200,7 @@ def _run_one(label, log=print):
         recorded, _ = engine.run(['python', '/app/scripts/refactor_collect_job.py', '--stopped', label, started_utc, last, kind],
                                  internet=False, limit=300)
         log(f'{label} {kind} {time.monotonic() - started:.0f}s {last}')
-        if label == 'pgbackup' and kind == 'failed' and last in SAFE_BACKUP_MESSAGES and recorded == 0:
+        if label in ('pgbackup', 'pgrestorecheck') and kind == 'failed' and last in SAFE_BACKUP_MESSAGES and recorded == 0:
             return SAFE_BACKUP_REFUSAL
         return kind == 'applied'
     feed_env = {}

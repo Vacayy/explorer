@@ -1,11 +1,15 @@
 #!/bin/bash
 # Candidate PG backup and restore check (pilot plan: daily backup during the pilot, a restore check before the cutover).
 # The live candidate schema and every schema its views read (the base, the sector store) are dumped together (custom format, compressed) to a
-# host directory with a SHA-256; all dumps are retained. `check` restores into a newly created uniquely named scratch
-# database, compares table inventories, and drops only the scratch database created by that invocation.
+# host directory with a SHA-256. Manual dumps are retained. Scheduled rotation publishes only a restored dump.
+# `check` restores in an isolated container with an ephemeral Docker volume.
 #   scripts/refactor_pg_backup.sh backup        # prints the dump path
 #   scripts/refactor_pg_backup.sh check <dump>
-set -eu
+#   scripts/refactor_pg_backup.sh rotate | check-current
+set -euo pipefail
+case "${1:-}" in
+  rotate|check-current) exec python3 "$(dirname "$0")/refactor_pg_backup_rotation.py" "$1" ;;
+esac
 DB=explorer-refactor-preview-db
 DIR=${REFACTOR_BACKUP_DIR:-$HOME/server-data/backups/refactor-pg}
 SCHEMA_FILE=${REFACTOR_SCHEMA_CONFIG:-$HOME/server-data/review/refactor-single-schema.json}
@@ -31,7 +35,7 @@ restore_space_kb() {
   [ "$required_kb" -ge "$MIN_VM_FREE_KB" ] || required_kb=$MIN_VM_FREE_KB
   printf '%s\n' "$required_kb"
 }
-case "$1" in
+case "${1:-}" in
   backup)
     mkdir -p "$DIR" && chmod 700 "$DIR"
     # Dump only the selected schemas; table+index bytes plus 3 GiB are a conservative host budget.
@@ -49,32 +53,69 @@ case "$1" in
     ;;
   check)
     dump=$2
-    (cd "$(dirname "$dump")" && shasum -a 256 -c "$(basename "$dump").sha256" >/dev/null) || { echo 'checksum mismatch'; exit 1; }
+    sha_file="$dump.sha256"
+    expected=$(awk -v name="$(basename "$dump")" '$2==name && NF==2 {print $1}' "$sha_file")
+    [[ "$expected" =~ ^[0-9a-f]{64}$ ]] &&
+      [ "$expected" = "$(shasum -a 256 < "$dump" | awk '{print $1}')" ] ||
+      { echo 'checksum mismatch'; exit 1; }
     # A compressed dump may expand to the whole database size; keep an additional GiB free.
     required_kb=$(restore_space_kb)
     [ "$(vm_free)" -gt "$required_kb" ] || { echo 'not enough VM space for a restore check'; exit 1; }
-    scratch="explorer_restore_$(date -u +%Y%m%d%H%M%S)_$$"
-    exists=$(docker exec "$DB" psql -U fixture -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname='$scratch'")
-    [ -z "$exists" ] || { echo 'scratch database name already exists'; exit 1; }
+    image=$(docker inspect --format '{{.Image}}' "$DB")
+    [[ "$image" =~ ^sha256:[0-9a-f]{64}$ ]]
     scratch_dir=$(mktemp -d "${TMPDIR:-/tmp}/explorer-restore-check.XXXXXXXX")
+    scratch="explorer-pg-restore-${scratch_dir##*.}"
+    volume="$scratch-data"
+    volume_created=0
     created=0
-    trap '[ "$created" -eq 0 ] || docker exec "$DB" dropdb -U fixture --if-exists "$scratch" >/dev/null 2>&1 || true; rm -rf "$scratch_dir"' EXIT
-    docker exec "$DB" createdb -U fixture "$scratch"
+    cleanup() {
+      if [ "$created" -eq 1 ]; then
+        docker stop --time 30 "$scratch" >/dev/null 2>&1 || true
+        docker rm "$scratch" >/dev/null || return 1
+        created=0
+      fi
+      if [ "$volume_created" -eq 1 ]; then
+        docker volume rm "$volume" >/dev/null || return 1
+        volume_created=0
+      fi
+      rm -rf -- "$scratch_dir"
+    }
+    trap 'cleanup' EXIT
+    trap 'exit 1' INT TERM
+    docker volume create "$volume" >/dev/null
+    volume_created=1
+    POSTGRES_PASSWORD=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
+    export POSTGRES_PASSWORD
+    docker create --pull never --name "$scratch" --network none --log-driver none \
+      --memory 2g --cpus 1 --env POSTGRES_PASSWORD --env POSTGRES_USER=fixture \
+      --env POSTGRES_DB=fixture --mount "type=volume,src=$volume,dst=/var/lib/postgresql/data" \
+      "$image" -c 'listen_addresses=' >/dev/null
     created=1
-    docker exec -i "$DB" pg_restore -U fixture -d "$scratch" --no-owner --exit-on-error < "$dump"
-    counts="SELECT n.nspname||'.'||c.relname, (xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM %I.%I', n.nspname, c.relname), false, true, '')))[1]::text
-            FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind='r' AND n.nspname IN ($(printf "'%s'," $SCHEMAS | sed 's/,$//')) ORDER BY 1"
-    docker exec "$DB" psql -U fixture -d fixture -AtF'|' -c "$counts" > "$scratch_dir/live-counts"
-    docker exec "$DB" psql -U fixture -d "$scratch" -AtF'|' -c "$counts" > "$scratch_dir/restored-counts"
-    tables=$(wc -l < "$scratch_dir/live-counts" | tr -d ' ')
-    # The restore itself is the test (it stops at the first error); the live service keeps writing after the dump, so
-    # row counts are reported, not judged. Every live table must be there.
-    if ! diff -q <(cut -d'|' -f1 "$scratch_dir/live-counts") <(cut -d'|' -f1 "$scratch_dir/restored-counts") >/dev/null; then
-      echo "restore check FAILED: the restored table inventory differs from live"
-      exit 1
-    else
-      moved=$(diff "$scratch_dir/live-counts" "$scratch_dir/restored-counts" | grep -c '^<' || true)
-      echo "restore check ok: $tables tables restored; $moved with rows written since the dump"
-    fi
+    unset POSTGRES_PASSWORD
+    docker start "$scratch" >/dev/null
+    ready=0
+    for ((attempt=0; attempt<60; attempt++)); do
+      if docker exec "$scratch" sh -c 'test "$(cat /proc/1/comm)" = postgres && pg_isready -U fixture -d fixture' >/dev/null 2>&1; then
+        ready=1
+        break
+      fi
+      sleep 1
+    done
+    [ "$ready" -eq 1 ] || { echo 'isolated restore database did not start'; exit 1; }
+    docker exec -i "$scratch" pg_restore --list < "$dump" |
+      awk '$4=="TABLE" && $5 ~ /^refactor_fixture_[0-9a-f]+$/ {print $5 "." $6}' |
+      LC_ALL=C sort > "$scratch_dir/expected"
+    [ -s "$scratch_dir/expected" ] || { echo 'restore check FAILED: no expected tables'; exit 1; }
+    docker exec -i "$scratch" pg_restore -U fixture -d fixture --no-owner --exit-on-error < "$dump"
+    docker exec "$scratch" psql -XAt -U fixture -d fixture -c \
+      "SELECT schemaname || '.' || tablename FROM pg_tables WHERE schemaname ~ '^refactor_fixture_[0-9a-f]{32}$'" |
+      LC_ALL=C sort > "$scratch_dir/restored"
+    cmp -s "$scratch_dir/expected" "$scratch_dir/restored" ||
+      { echo 'restore check FAILED: the restored table inventory differs from the dump'; exit 1; }
+    tables=$(wc -l < "$scratch_dir/restored" | tr -d ' ')
+    cleanup
+    trap - EXIT
+    echo "restore check ok: $tables tables restored in isolation"
     ;;
+  *) echo 'usage: refactor_pg_backup.sh backup | rotate | check <dump> | check-current' >&2; exit 2 ;;
 esac
