@@ -17,6 +17,7 @@ import os
 import sqlite3
 import stat
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -970,15 +971,30 @@ def run_observe_alerts():
 
 @contextmanager
 def portfolio_dart_connection(conn):
-    """DART's company lookup must read the same projection, never the legacy default database."""
+    """Use the projection and a disposable cache in this single-threaded one-shot job."""
     from services import dart_service
     from routers.postgres_owner_legacy_fixture import _Borrowed
     original = dart_service.get_connection
+    original_get_dart = dart_service._get_dart
+
+    def get_dart_with_temporary_cache():
+        # OpenDartReader initializes a relative docs_cache directory. The source
+        # tree is mounted read-only; restore the process cwd even on failure.
+        previous_cwd = os.getcwd()
+        with tempfile.TemporaryDirectory(prefix='explorer-dart-') as cache_dir:
+            try:
+                os.chdir(cache_dir)
+                return original_get_dart()
+            finally:
+                os.chdir(previous_cwd)
+
     dart_service.get_connection = lambda: _Borrowed(conn)
+    dart_service._get_dart = get_dart_with_temporary_cache
     try:
         yield
     finally:
         dart_service.get_connection = original
+        dart_service._get_dart = original_get_dart
 
 
 def portfolio_failure_location(exc):
