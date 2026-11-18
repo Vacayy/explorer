@@ -824,6 +824,12 @@ class CollectionTargetTest(unittest.TestCase):
             with self.assertRaises(trial.HeldBack):
                 job.preserve_briefing_rows(pg, path, {'macro_news'})
 
+    def test_trade_skip_requires_no_business_writes(self):
+        self.assertTrue(job.validate_trade_skip('skipped', {'job_runs'}))
+        self.assertFalse(job.validate_trade_skip('ok', {'trade_stats'}))
+        with self.assertRaises(trial.HeldBack):
+            job.validate_trade_skip('skipped', {'job_runs', 'trade_follow'})
+
     def test_closed_index_noop_requires_no_requests_or_other_writes(self):
         with patch('pipeline.index_intraday.due_markets', return_value=[]), \
              patch.object(trial, 'requests_by_host', {}), patch.object(trial, 'other_files', set()):

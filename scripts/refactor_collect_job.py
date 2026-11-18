@@ -245,6 +245,15 @@ class ClosedIndexMarket(Exception):
     """An expected no-op outside index trading hours."""
 
 
+def validate_trade_skip(status, written):
+    """Accept the freshness no-op only when no business table was changed."""
+    if status != 'skipped':
+        return False
+    if set(written) - LOCAL_LEDGERS - {'job_runs'}:
+        raise trial.HeldBack('trade skipped after business table writes')
+    return True
+
+
 def closed_index_noop(label):
     """The legacy index collector intentionally does nothing outside market hours."""
     if label != 'indexintraday' or trial.requests_by_host or trial.other_files:
@@ -1243,7 +1252,10 @@ def _run(label, pg, waited):
                     raise trial.HeldBack('no source answered')  # a script may record 'ok' with every fetch failed
                 record_status = None
                 if record:
-                    record_status = trial._job_record(record, started, allowed=('ok', 'partial') if label == 'usbriefing' else ('ok',))
+                    allowed = ('ok', 'partial') if label == 'usbriefing' else ('ok', 'skipped') if label == 'trade' else ('ok',)
+                    record_status = trial._job_record(record, started, allowed=allowed)
+                if label == 'trade' and validate_trade_skip(record_status, trial.written):
+                    raise ClosedIndexMarket('trade upstream unchanged')
                 if label == 'usbriefing':
                     with sqlite3.connect(trial.WORK) as work:
                         if record_status == 'partial':
