@@ -38,7 +38,7 @@ _ADMIN = re.compile(r'^/api/spine/(admin|approvals|agent-proposals|keywords|rese
                     r'|^/api/(industries|business|ir-notes|blog|telegram)/|^/api/spine/knowledge$|^/api/spine/sources/youtube$')
 _OPERATOR_COMPUTE = re.compile(r'^/api/analysis/(runs|discovery)|^/api/spine/tw/chain-report$|^/api/spine/proxy-boards')
 # The operator's own boards are personal judgement and work records: reads are the operator's too (PM #3 6946944271).
-_OPERATOR_READS = re.compile(r'^/api/spine/proxy-boards(/|$)|^/api/analysis/(runs|discovery)(/|$)')
+_OPERATOR_READS = re.compile(r'^/api/spine/proxy-boards(/|$)')
 # Collection triggers: external fetches once the real collectors run (not_run on the candidate), never anonymous.
 _COLLECTION = re.compile(r'^/api/financials/[^/]+/collect$|^/api/spine/(regimes/collect|risk/snapshot|sources/refresh)$'
                          r'|^/api/spine/transcript/(check/[^/]+|collect|calendar/refresh)$|^/api/spine/us/[^/]+/prices/collect$')
