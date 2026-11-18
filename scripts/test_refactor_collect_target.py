@@ -1036,6 +1036,11 @@ class CollectionTargetTest(unittest.TestCase):
             self.assertEqual(scheduler.catchup_enabled({'prices', 'watch'}, datetime(2026, 11, 18, 7, 34, tzinfo=timezone.utc)), {'watch'})
             self.assertEqual(scheduler.catchup_enabled({'prices', 'watch'}, datetime(2026, 11, 18, 7, 35, tzinfo=timezone.utc)), {'prices', 'watch'})
 
+    def test_kr_movers_catchup_waits_for_the_closing_slot(self):
+        with patch.dict(os.environ, {'COLLECT_KRMOVERS_CATCHUP_AFTER': '2026-11-18T07:20:00+00:00'}):
+            self.assertEqual(scheduler.catchup_enabled({'krmovers', 'watch'}, datetime(2026, 11, 18, 7, 19, tzinfo=timezone.utc)), {'watch'})
+            self.assertEqual(scheduler.catchup_enabled({'krmovers', 'watch'}, datetime(2026, 11, 18, 7, 20, tzinfo=timezone.utc)), {'krmovers', 'watch'})
+
     def test_us_briefing_catchup_waits_for_market_close_slot(self):
         with patch.dict(os.environ, {'COLLECT_USBRIEFING_CATCHUP_AFTER': '2026-11-17T21:30:00+00:00'}):
             self.assertEqual(scheduler.catchup_enabled({'usbriefing'}, datetime(2026, 11, 17, 21, 29, tzinfo=timezone.utc)), set())
