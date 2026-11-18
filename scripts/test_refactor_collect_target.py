@@ -845,6 +845,14 @@ class CollectionTargetTest(unittest.TestCase):
         self.assertIs(dart_service.get_connection, original)
         conn.close()
 
+    def test_portfolio_failure_location_never_contains_exception_message(self):
+        try:
+            raise ValueError('private-data-canary')
+        except ValueError as exc:
+            detail = job.portfolio_failure_location(exc)
+        self.assertIn('ValueError', detail)
+        self.assertNotIn('private-data-canary', detail)
+
     def test_closed_index_noop_requires_no_requests_or_other_writes(self):
         with patch('pipeline.index_intraday.due_markets', return_value=[]), \
              patch.object(trial, 'requests_by_host', {}), patch.object(trial, 'other_files', set()):

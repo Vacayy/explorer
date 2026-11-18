@@ -19,6 +19,7 @@ import stat
 import sys
 import threading
 import time
+import traceback
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -980,6 +981,16 @@ def portfolio_dart_connection(conn):
         dart_service.get_connection = original
 
 
+def portfolio_failure_location(exc):
+    """Record only an exception class and application source location, never the exception message."""
+    frames = traceback.extract_tb(exc.__traceback__)
+    frame = next((item for item in reversed(frames) if '/app/backend/' in item.filename), None)
+    name = Path(frame.filename).name if frame else 'unknown'
+    if not name.replace('_', '').replace('.', '').isalnum() or len(name) > 80:
+        name = 'unknown'
+    return f'{type(exc).__name__} {name}:{frame.lineno if frame else 0}'
+
+
 def run_portfolio_intraday():
     """Run the legacy operator alerts on writable TEMP state, then persist the sent keys and fresh quotes."""
     from pipeline import portfolio_alerts, postgres_live_tables, postgres_owner_overrides as overrides
@@ -1016,7 +1027,7 @@ def run_portfolio_intraday():
     if failure is not None:
         if isinstance(failure, trial.Aborted):
             raise failure
-        raise trial.HeldBack('portfolio alert failed after state reconciliation')
+        raise trial.HeldBack('portfolio alert failed after state reconciliation: ' + portfolio_failure_location(failure))
     if result.get('errors'):
         raise trial.HeldBack('portfolio alert reported partial failure after state reconciliation')
     return bool(result.get('sent'))
