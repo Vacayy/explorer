@@ -267,7 +267,8 @@ def catchup_enabled(enabled, now):
         if now < boundary:
             return set()
     for label, key in (('prices', 'COLLECT_PRICES_CATCHUP_AFTER'),
-                       ('usbriefing', 'COLLECT_USBRIEFING_CATCHUP_AFTER')):
+                       ('usbriefing', 'COLLECT_USBRIEFING_CATCHUP_AFTER'),
+                       ('krmovers', 'COLLECT_KRMOVERS_CATCHUP_AFTER')):
         after = os.environ.get(key)
         if after:
             boundary = datetime.fromisoformat(after)
