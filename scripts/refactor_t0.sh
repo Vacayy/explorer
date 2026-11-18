@@ -3,13 +3,23 @@
 # Each step is run by hand in order and reported; none starts the next. PAYLOAD is the verified, frozen MacBook
 # snapshot (freeze.sh layout: backend/db, vault, media, logs, backend/local_sources), read-only from here on.
 #   PAYLOAD=~/server-data/incoming/explorer-final-freeze-<T0> scripts/refactor_t0.sh <step>
+# Historical replay steps also require REFACTOR_BASE_BACKUP pointing to the original 11-14 base directory.
 # steps: verify | stop | dump | r2 | members | r3 | gates | files | rebuild | public
 set -euo pipefail
+BASE=${REFACTOR_BASE_BACKUP:-}
+case "${1:-}" in
+  r2|members|r3|gates)
+    if [[ -z "$BASE" || ! -r "$BASE/stock_explorer.db" ]]; then
+      echo "Historical replay requires REFACTOR_BASE_BACKUP with the original stock_explorer.db" >&2
+      exit 2
+    fi
+    BASE=$(cd "$BASE" && pwd -P)
+    ;;
+esac
 export DOCKER_HOST=${DOCKER_HOST:-unix://$HOME/.colima/default/docker.sock}
 cd "$(dirname "$0")/.."
 eval "$(sed -n 10,40p scripts/refactor_collect_trial.sh)"; ROOT=$PWD
 DATA=$HOME/server-data
-BASE=$DATA/staging/refactor-preview-backup-20261116T050656Z   # the 11-14 base the live schema was built from
 WORK=$DATA/review/refactor-single/t0; mkdir -p "$WORK"; chmod 700 "$WORK"
 STATE=$WORK/schema; echo "$LIVE" > "$STATE"   # the live schema, on purpose: REFACTOR_T0=live below
 SOURCE_DB=${PAYLOAD:-}/backend/db/stock_explorer.db
