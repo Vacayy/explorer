@@ -53,6 +53,8 @@ def route_policy(method, path):
         return 'member'  # each member's own conversations (pipeline.postgres_conversations)
     if path == '/api/spine/questions/propose':
         return 'operator'  # proposes from the shared narratives into the operator's tracker
+    if method == 'POST' and re.fullmatch(r'/api/spine/doc/[^/]+/digest', path):
+        return 'operator'  # model-backed video jobs are operated by the owner
     if path.startswith('/api/spine/questions'):
         return 'member'  # each member's own tracked questions (question_principals)
     if _MEMBER.match(path):

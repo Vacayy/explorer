@@ -12,6 +12,10 @@ from security.login_flow import SESSION_COOKIE, session_csrf
 
 
 class CandidateAnalysisAccessTest(unittest.TestCase):
+    def test_video_digest_is_operator_only_without_restricting_document_reads(self):
+        self.assertEqual(route_policy('POST', '/api/spine/doc/{doc_id}/digest'), 'operator')
+        self.assertEqual(route_policy('GET', '/api/spine/doc/{doc_id}'), 'public')
+
     def test_analysis_reads_are_public_and_writes_are_operator_only(self):
         paths = ['/api/analysis/runs', '/api/analysis/runs/{run_id}',
                  '/api/analysis/runs/{run_id}/events', '/api/analysis/runs/{run_id}/artifacts/{artifact_id}',
