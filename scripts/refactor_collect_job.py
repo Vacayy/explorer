@@ -19,6 +19,7 @@ import stat
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -966,6 +967,19 @@ def run_observe_alerts():
     return bool(result['sent'])
 
 
+@contextmanager
+def portfolio_dart_connection(conn):
+    """DART's company lookup must read the same projection, never the legacy default database."""
+    from services import dart_service
+    from routers.postgres_owner_legacy_fixture import _Borrowed
+    original = dart_service.get_connection
+    dart_service.get_connection = lambda: _Borrowed(conn)
+    try:
+        yield
+    finally:
+        dart_service.get_connection = original
+
+
 def run_portfolio_intraday():
     """Run the legacy operator alerts on writable TEMP state, then persist the sent keys and fresh quotes."""
     from pipeline import portfolio_alerts, postgres_live_tables, postgres_owner_overrides as overrides
@@ -986,7 +1000,8 @@ def run_portfolio_intraday():
             before = snapshot()
             quotes_before = {row['stock_code']: dict(row) for row in conn.execute('SELECT * FROM temp.portfolio_quotes')}
             try:
-                result = portfolio_alerts.run('intraday', conn=conn, send=send_telegram)
+                with portfolio_dart_connection(conn):
+                    result = portfolio_alerts.run('intraday', conn=conn, send=send_telegram)
             except (trial.Aborted, Exception) as exc:
                 failure = exc
                 conn.rollback()  # preserve only legacy steps that committed before the failure

@@ -830,6 +830,21 @@ class CollectionTargetTest(unittest.TestCase):
         with self.assertRaises(trial.HeldBack):
             job.validate_trade_skip('skipped', {'job_runs', 'trade_follow'})
 
+    def test_intraday_dart_lookup_uses_borrowed_projection_and_restores_binding(self):
+        from services import dart_service
+        conn = sqlite3.connect(':memory:')
+        conn.row_factory = sqlite3.Row
+        conn.execute('CREATE TABLE companies(stock_code TEXT,corp_code TEXT)')
+        conn.execute('INSERT INTO companies VALUES (?,?)', ('synthetic', 'fixture'))
+        original = dart_service.get_connection
+        with self.assertRaisesRegex(RuntimeError, 'test'):
+            with job.portfolio_dart_connection(conn):
+                self.assertEqual(dart_service._corp_code_for_stock('synthetic'), 'fixture')
+                self.assertEqual(conn.execute('SELECT count(*) FROM companies').fetchone()[0], 1)
+                raise RuntimeError('test')
+        self.assertIs(dart_service.get_connection, original)
+        conn.close()
+
     def test_closed_index_noop_requires_no_requests_or_other_writes(self):
         with patch('pipeline.index_intraday.due_markets', return_value=[]), \
              patch.object(trial, 'requests_by_host', {}), patch.object(trial, 'other_files', set()):
