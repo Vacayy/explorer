@@ -853,6 +853,28 @@ class CollectionTargetTest(unittest.TestCase):
         self.assertIn('ValueError', detail)
         self.assertNotIn('private-data-canary', detail)
 
+    def test_intraday_dart_cache_uses_disposable_directory_and_restores_state(self):
+        from services import dart_service
+        original_cwd = os.getcwd()
+        original_get = dart_service._get_dart
+        seen = []
+
+        def initialize():
+            seen.append(os.getcwd())
+            Path('docs_cache').mkdir()
+            raise OSError('synthetic failure')
+
+        with patch.object(dart_service, '_get_dart', initialize):
+            with job.portfolio_dart_connection(object()):
+                with self.assertRaises(OSError):
+                    dart_service._get_dart()
+                self.assertEqual(os.getcwd(), original_cwd)
+            self.assertIs(dart_service._get_dart, initialize)
+        self.assertIs(dart_service._get_dart, original_get)
+        self.assertEqual(len(seen), 1)
+        self.assertNotEqual(seen[0], original_cwd)
+        self.assertFalse(Path(seen[0]).exists())
+
     def test_closed_index_noop_requires_no_requests_or_other_writes(self):
         with patch('pipeline.index_intraday.due_markets', return_value=[]), \
              patch.object(trial, 'requests_by_host', {}), patch.object(trial, 'other_files', set()):
