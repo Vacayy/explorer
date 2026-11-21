@@ -377,21 +377,30 @@ def prices_sources(network):
     return [('naver_daily', naver_daily), ('yahoo_gaps', yahoo_gaps)]
 
 
-def mirror_window(pg, table, column, since):
-    """Make the shared collector file's rows of `table` from `since` equal PG's, so the jobs still on that file read
-    only published (validated) rows. Returns the row count written."""
+def mirror(pg, tables, since=None):
+    """Make the shared collector file's copy of the owned `tables` equal PG's (a WINDOWS table from `since`), in one
+    SQLite transaction, so the jobs still on that file read only published (validated) rows. {table: rows written}."""
     import refactor_collect_trial as trial
-    columns = pg.execute('SELECT columns FROM legacy_supplement_tables WHERE table_name=%s', (table,)).fetchone()[0]
-    rows = [[row.get(c) for c in columns] for (row,) in pg.execute(
-        f"SELECT row_data FROM legacy_supplement_rows WHERE table_name=%s AND row_data->>'{column}' >= %s", (table, since))]
+    from pipeline.postgres_isolated_collect import WINDOWS
     work = sqlite3.connect(trial.WORK, timeout=60)
+    written = {}
     try:
         with work:
-            work.execute(f'DELETE FROM "{table}" WHERE "{column}" >= ?', (since,))
-            work.executemany(f'INSERT INTO "{table}" ({",".join(columns)}) VALUES ({",".join("?" * len(columns))})', rows)
+            for table in tables:
+                columns = pg.execute('SELECT columns FROM legacy_supplement_tables WHERE table_name=%s', (table,)).fetchone()[0]
+                window = f" AND row_data->>'{WINDOWS[table]}' >= %s" if table in WINDOWS else ''
+                rows = [[row.get(c) for c in columns] for (row,) in pg.execute(
+                    'SELECT row_data FROM legacy_supplement_rows WHERE table_name=%s' + window,
+                    (table, since) if window else (table,))]
+                if window:
+                    work.execute(f'DELETE FROM "{table}" WHERE "{WINDOWS[table]}" >= ?', (since,))
+                else:
+                    work.execute(f'DELETE FROM "{table}"')
+                work.executemany(f'INSERT INTO "{table}" ({",".join(columns)}) VALUES ({",".join("?" * len(columns))})', rows)
+                written[table] = len(rows)
     finally:
         work.close()
-    return len(rows)
+    return written
 
 
 NOT_MOVED = {'sectorbench': {'us_follow_prices': 'us_prices is still replaced whole by the shared-file jobs'}}
@@ -492,9 +501,9 @@ def run(label):
         run_id, _ = iso.publish(pg, label, started, outcome, changes, states, token=token, requests=requests, result=result)
     except Exception as exc:  # noqa: BLE001 - whether the commit took effect is settled from the run record
         run_id, outcome = settle(trial._pg, label, token, started, outcome, exc, requests, result)
-    if label == 'prices' and run_id is not None and not outcome.startswith('held back'):
+    if run_id is not None and not outcome.startswith('held back'):
         try:
-            result['mirrored'] = mirror_window(pg, 'stock_prices', 'trade_date', since)
+            result['mirrored'] = mirror(pg, tables, since)
         except Exception as exc:  # noqa: BLE001 - the shared file's readers could see unpublished closes: hold all
             outcome = f'held back: published, but the shared file was not aligned ({type(exc).__name__})'
             from pipeline import postgres_collect_runs
