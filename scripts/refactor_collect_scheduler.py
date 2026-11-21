@@ -383,7 +383,8 @@ def run_loop(enabled, log=print):
         time.sleep(60)
     wait_ready(log)
     jobs, _catchup = load_jobs()
-    queue, next_interval, checked = [], {}, 0.0
+    # time.monotonic() starts near 0 in this process on macOS: start one interval back so catch-up is checked at once
+    queue, next_interval, checked = [], {}, -float(CATCHUP_SECONDS)
     last = datetime.now(SEOUL).replace(second=0, microsecond=0)
     while True:
         now = datetime.now(SEOUL)
