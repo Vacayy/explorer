@@ -840,6 +840,14 @@ def run_minimal_blog(pg, connector, refused=None, *, queue_path='/trial/feed-bac
                 batch = feed_enrichment.enrich_documents(documents)
             except trial.Aborted:
                 raise
+            except feed_enrichment.InvalidBatchResult as exc:
+                # the queue keeps the documents; the answer stays beside it so the failed document can be named
+                failed = Path(queue_path).parent / 'feed-batch-failed.json'
+                with os.fdopen(os.open(failed, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as out:
+                    json.dump({'reason': exc.reason, 'label': exc.label,
+                               'documents': [[seq, doc.source_type, doc.source_id] for seq, _, doc in selected],
+                               'raw': exc.raw}, out, ensure_ascii=False)
+                raise trial.HeldBack(f'feed batch model failed: {exc.reason}') from None
             except Exception as exc:
                 raise trial.HeldBack(f'feed batch model failed: {type(exc).__name__}') from None
             old_enrich = enrich.enrich

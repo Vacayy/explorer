@@ -26,3 +26,20 @@ class FeedEnrichmentTest(unittest.TestCase):
             result = llm.LLMResult(text=json.dumps({'results': records}), model='test', engine='codex-exec')
             with patch.object(llm, 'run', return_value=result), self.assertRaises(ValueError):
                 feed_enrichment.enrich_documents(docs, vocabulary=([], [], [], []))
+
+    def test_invalid_result_names_the_document_and_keeps_the_answer(self):
+        docs = [{'title': 'a', 'markdown': 'x'}, {'title': 'b', 'markdown': 'y'}]
+        cases = (([{'doc': 1, 'summary': 'one'}, {'doc': 2, 'summary': ' '}], 'doc 2: empty summary'),
+                 ([{'doc': 1, 'summary': 'one'}], '1 results for 2 documents'),
+                 ([{'doc': 2, 'summary': 'one'}, {'doc': 2, 'summary': 'two'}], 'doc 2: answered twice'),
+                 ([{'doc': 1, 'summary': 'one'}, {'doc': 3, 'summary': 'two'}], 'result 2: document number 3 out of range'))
+        for records, reason in cases:
+            text = json.dumps({'results': records})
+            with patch.object(llm, 'run', return_value=llm.LLMResult(text=text, model='test', engine='codex-exec')), \
+                    self.assertRaises(feed_enrichment.InvalidBatchResult) as caught:
+                feed_enrichment.enrich_documents(docs, vocabulary=([], [], [], []))
+            self.assertEqual((caught.exception.reason, caught.exception.raw), (reason, text))
+        with patch.object(llm, 'run', return_value=llm.LLMResult(text='no json', model='test', engine='codex-exec')), \
+                self.assertRaises(feed_enrichment.InvalidBatchResult) as caught:
+            feed_enrichment.enrich_documents(docs, vocabulary=([], [], [], []))
+        self.assertEqual(caught.exception.reason, 'not JSON')

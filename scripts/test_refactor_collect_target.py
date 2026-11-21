@@ -163,6 +163,38 @@ class CollectionTargetTest(unittest.TestCase):
             queue = FeedBacklog(path)
             self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending').fetchone()[0], 5)
             queue.close()
+    def test_invalid_batch_answer_is_kept_with_the_failed_document(self):
+        from pipeline import feed_enrichment, image_reading
+        from pipeline.base import RawDoc
+        from pipeline.feed_backlog import FeedBacklog
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            path, flag = root / 'queue.sqlite', root / 'enabled'
+            flag.write_text('feed-batch-enabled-v1\n')
+            flag.chmod(0o600)
+            queue = FeedBacklog(path)
+            for n in range(5):
+                queue.enqueue('blog', 'feed', RawDoc('blog', str(n), title='test', raw_content='body'))
+            queue.close()
+            invalid = feed_enrichment.InvalidBatchResult('doc 3: empty summary', '{"results": []}', 'codex-exec/test')
+            with patch.dict(os.environ, {'COLLECT_FEED_BATCH_MODEL': '0', 'COLLECT_FEED_STRICT_IMAGES': '1',
+                                         'COLLECT_FEED_KEYWORD_ONLY': '0'}), \
+                 patch.object(job, 'MAX_NEW_DOCS', 1), patch.object(job, 'MAX_MODEL_CALLS', 2), \
+                 patch.object(job, '_feed_document_known', return_value=False), \
+                 patch.object(image_reading, 'read_images'), \
+                 patch.object(feed_enrichment, 'enrich_documents', side_effect=invalid), \
+                 patch.object(trial, 'run_documents') as publish:
+                with self.assertRaisesRegex(trial.HeldBack, 'doc 3: empty summary'):
+                    job.run_minimal_blog(None, object(), queue_path=path, batch_enabled=flag)
+            publish.assert_not_called()
+            failed = root / 'feed-batch-failed.json'
+            self.assertEqual(failed.stat().st_mode & 0o777, 0o600)
+            record = json.loads(failed.read_text())
+            self.assertEqual((record['reason'], record['raw']), ('doc 3: empty summary', '{"results": []}'))
+            self.assertEqual([d[2] for d in record['documents']], ['0', '1', '2', '3', '4'])
+            queue = FeedBacklog(path)
+            self.assertEqual(queue.conn.execute('SELECT count(*) FROM pending').fetchone()[0], 5)
+            queue.close()
     def test_batch_flag_rejects_unrecognized_or_insecure_file(self):
         with TemporaryDirectory() as directory:
             flag = Path(directory) / 'enabled'
