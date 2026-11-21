@@ -28,7 +28,10 @@ LEGACY = {'credit': ('credit_bonds', 'credit_quotes', 'treasury_curve'),
           'retail': ('retail_flows', 'retail_snapshots'),
           'twrevenue': ('tw_monthly_revenue',),
           'kalshi': ('kalshi_candles', 'kalshi_events'),  # pins are read from the projection (the owner's ledger)
-          'indexintraday': ('index_intraday',)}
+          'indexintraday': ('index_intraday',),
+          # trade_follow is the owner's ledger (read from the projection); beneficiaries the screen computes go to the
+          # owner overrides, which stay on top of these rows as before
+          'trade': ('trade_stats', 'trade_beneficiaries')}
 JOBS = ('extseries', 'sectorbench', 'prices', 'pricefix', 'pricefactors', *LEGACY)
 # Requests per source host and run; a key starting with '.' covers every host under that domain.
 CAPS = {'extseries': {'': 30},
@@ -43,6 +46,7 @@ CAPS = {'extseries': {'': 30},
         'retail': {'': 20}, 'twrevenue': {'': 20}, 'indexintraday': {'': 20},
         # four categories, up to 18 trending events and pinned-event lookups/candles
         'kalshi': {'': 20, 'api.elections.kalshi.com': 60},
+        'trade': {'': 20, 'apis.data.go.kr': 60},  # followed HS codes, 24 months when the source moved on
         # 14 KR ETFs + KOSPI one by one, the US ETF batch, then sector info of followed tickers due for refresh
         'sectorbench': {'': 20, '.yahoo.com': 120}}
 TABLES = {**LEGACY, 'extseries': ('ext_series', 'expectation_claims'), 'prices': ('stock_prices',), 'pricefix': ('stock_prices',),
@@ -867,7 +871,20 @@ def legacy_sources(label):
         database.init_db = lambda: None  # the private file has the owned tables; the rest is read from the projection
         started = _now()
         os.chdir('/app')
-        trial._run_script(*argv)  # a non-zero exit raises HeldBack: the source fails and its writes are rolled back
+        refused = None
+        if label in job.TABLE_MODEL_CAPS:  # model calls: recorded in llm_calls and capped per run, as on the shared path
+            from pipeline import llm, postgres_llm_calls
+            postgres_llm_calls.install(llm, trial._pg)
+            refused = job._cap_table_model_calls(job.TABLE_MODEL_CAPS[label])
+        try:
+            trial._run_script(*argv)  # a non-zero exit raises HeldBack: the source fails and its writes are rolled back
+        except trial.Aborted as exc:  # the cap's refusal (a BaseException): this source fails, the job still records
+            raise RuntimeError(f'model call refused: {exc}') from None
+        finally:
+            if refused is not None:
+                refused.restore()
+        if refused:
+            raise RuntimeError(f'model call cap {job.TABLE_MODEL_CAPS[label]} reached (a later call was refused)')
         if not record:
             return 'ok', {}, []
         with run.connect() as conn:

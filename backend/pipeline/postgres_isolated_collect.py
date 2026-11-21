@@ -28,7 +28,8 @@ KEYS = {'ext_series': ('series', 'period'),
         'credit_bonds': ('ticker',), 'credit_quotes': ('symbol', 'date'), 'treasury_curve': ('date', 'tenor'),
         'retail_flows': ('date',), 'retail_snapshots': ('episode',), 'tw_monthly_revenue': ('code', 'ym'),
         'kalshi_candles': ('market_ticker', 'day'), 'kalshi_events': ('id',),
-        'index_intraday': ('key', 'trade_date', 'hhmm')}
+        'index_intraday': ('key', 'trade_date', 'hhmm'),
+        'trade_stats': ('hs_code', 'period'), 'trade_beneficiaries': ('hs_code', 'name')}
 # Job records of isolated runs take their own id band, apart from the shared collector file's (100,000,000 on), so
 # the two paths never hand out the same id.
 JOB_RUNS_BAND = 150_000_000

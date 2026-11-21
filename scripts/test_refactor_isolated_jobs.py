@@ -114,6 +114,24 @@ class OutcomeTest(unittest.TestCase):
         self.assertTrue(jobs.outcome_of({'a': err}, {}).startswith('failed: every source failed'))
 
 
+class LegacyModelCapTest(unittest.TestCase):
+    def test_a_refused_model_call_fails_the_source_not_the_job(self):
+        from unittest import mock
+        import refactor_collect_job as job
+        import refactor_collect_trial as trial
+        from pipeline import postgres_llm_calls
+        run = _Run([])
+
+        def script(*_argv):
+            raise trial.Aborted('model attempt cap 6 reached')
+        with mock.patch.object(trial, '_run_script', side_effect=script), \
+                mock.patch.object(postgres_llm_calls, 'install'), mock.patch('os.chdir'):
+            (name, call), = jobs.legacy_sources('trade')
+            states, details = jobs.run_sources(run, [(name, call)], {})
+        self.assertEqual(states['script']['status'], 'error')
+        self.assertIn('model call refused', states['script']['last_error'])
+
+
 class SettleTest(unittest.TestCase):
     """A publication whose commit raised: settled from the run record, or the whole collection is held."""
 
