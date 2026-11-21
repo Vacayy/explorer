@@ -34,6 +34,9 @@ HOLD = Path(os.environ.get('COLLECT_SCHEDULER_HOLD', Path.home() / 'server-data/
 FEED_HOLD = Path(os.environ.get('COLLECT_FEED_HOLD', Path.home() / 'server-data/review/refactor-single/collect-feed.hold'))
 JOB_SECONDS = int(os.environ.get('COLLECT_JOB_SECONDS', '3600'))  # one job's time limit (the MacBook chain step limit)
 TICK_SECONDS = 20
+# Jobs on the isolated path (refactor_isolated_jobs.py): a failed source publishes nothing and holds only itself.
+ISOLATED_JOBS = {'extseries', 'sectorbench'}
+FIRST = ('usbriefing',)
 # One heavy job at a time on the 7.7GiB VM: the scheduler runs one job at a time, and a heavy job also takes the PG
 # heavy lock the projection builder takes (refactor_collect_job.HEAVY, pipeline.postgres_heavy_lock).
 JOB_MEMORY = {'proposals': '3584m',  # measured peak 2.9GiB (weekly); every other job 2g
@@ -231,6 +234,8 @@ def _run_one(label, log=print):
     try:
         import json
         outcome = json.loads(lines[-1])['outcome'] if lines else ''
+        if label in ISOLATED_JOBS:  # nothing of a failed source was published: only 'held back' stops the others
+            return code == 0 and outcome.split(':', 1)[0] in ('applied', 'partial', 'failed', 'skipped')
         return code == 0 and (outcome.startswith('applied:') or outcome.startswith('skipped:') or
                               (label == 'usbriefing' and outcome.startswith('partial: US briefing headline failures; ')) or
                               (label == 'pfclose' and outcome in ('partial: portfolio close reported errors',
@@ -340,7 +345,9 @@ def run_loop(enabled, log=print):
     last = datetime.now(SEOUL).replace(second=0, microsecond=0)
     while True:
         now = datetime.now(SEOUL)
-        queue += [label for label in due_now(jobs, enabled, last, now, next_interval) if label not in queue]
+        due = [label for label in due_now(jobs, enabled, last, now, next_interval) if label not in queue]
+        # A job with a set time (the US briefing) goes ahead of anything waiting, catch-up runs included.
+        queue = [label for label in due if label in FIRST] + queue + [label for label in due if label not in FIRST]
         last = now
         if not queue and time.monotonic() - checked >= CATCHUP_SECONDS:  # only when idle: no duplicate of a queued run
             checked = time.monotonic()
