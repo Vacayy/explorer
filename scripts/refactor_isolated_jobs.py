@@ -32,7 +32,7 @@ JOBS = ('extseries', 'sectorbench', 'prices', *LEGACY)
 CAPS = {'extseries': {'': 30},
         # Naver realtime quotes in batches of 200 codes (about 15), then Yahoo for the gaps of the last 10 days
         # (+ Naver daily prices and DART disclosures for the few closes beyond the daily limit)
-        'prices': {'': 20, 'polling.finance.naver.com': 30, '.finance.yahoo.com': 300},
+        'prices': {'': 20, 'polling.finance.naver.com': 30, '.finance.yahoo.com': 300, 'data.krx.co.kr': 40},
         # credit (macbook-source #3 6942831447): 34 companies' issuer scan, symbol search fallback, 10 FRED series
         'credit': {'': 20, 'scanner.tradingview.com': 150, 'symbol-search.tradingview.com': 60,
                    'data.tradingview.com': 150, 'fred.stlouisfed.org': 12},
