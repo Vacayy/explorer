@@ -37,10 +37,11 @@ JOBS = ('extseries', 'sectorbench', 'prices', 'pricefix', 'pricefactors', *LEGAC
 CAPS = {'extseries': {'': 30},
         # Naver realtime quotes in batches of 200 codes (about 15), then Yahoo for the gaps of the last 10 days
         # (+ Naver daily prices and DART disclosures for the few closes beyond the daily limit)
-        # KRX (data.krx.co.kr) blocks an address for a day on automated bulk lookups (KDM notice, 2026-11-21): a few
-        # market-wide listings per run, paced, never a sweep
-        'prices': {'': 20, 'polling.finance.naver.com': 30, '.finance.yahoo.com': 300, 'data.krx.co.kr': 20},
-        'pricefix': {'': 20, 'data.krx.co.kr': 20},  # + the previous day's listing when a listing day is checked
+        # KRX (data.krx.co.kr) blocked the address for a day after about 240 rapid lookups of a past-day sweep (KDM
+        # notice, 2026-11-21). A run asks 3 listings a day for up to KRX_DAYS_PER_RUN days (+3 per listing-day check),
+        # paced: about 4 on an ordinary day, at most 30 when catching up
+        'prices': {'': 20, 'polling.finance.naver.com': 30, '.finance.yahoo.com': 300, 'data.krx.co.kr': 30},
+        'pricefix': {'': 20, 'data.krx.co.kr': 30},  # + the previous day's listing when a listing day is checked
         'pricefactors': {'': 20, 'data.krx.co.kr': 600},  # not run: see run()
         # credit (macbook-source #3 6942831447): 34 companies' issuer scan, symbol search fallback, 10 FRED series
         'credit': {'': 20, 'scanner.tradingview.com': 150, 'symbol-search.tradingview.com': 60,
@@ -532,7 +533,7 @@ PRICE_KRX_FROM = os.environ.get('PRICE_KRX_FROM', '2026-11-23')
 KRX_MARKETS = ('STK', 'KSQ', 'KNX')  # KOSPI, KOSDAQ, KONEX
 KRX_SOURCE = 'krx:전종목시세(MDCSTAT01501)'
 KRX_LOOKBACK_DAYS = 20     # missing days are tried again within this window
-KRX_DAYS_PER_RUN = 2       # oldest first; the rest wait for the next run
+KRX_DAYS_PER_RUN = 5       # oldest first; the rest wait for the next run (a full lookback clears in two days)
 KRX_PAUSE = float(os.environ.get('KRX_PAUSE', '3'))  # seconds between KRX requests
 KRX_EMPTY_IS_HOLIDAY = 3   # a weekday KRX still has no prices for after this many days was not a trading day
 
