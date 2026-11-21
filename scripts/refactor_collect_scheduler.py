@@ -162,6 +162,16 @@ def run_job(label, log=print):
             and os.environ.get('COLLECT_FEED_AUTO_SYNC') == '1'
         if sync_feed:
             import refactor_collect_engine as engine
+            # Graph rows the computation paths added to PG first (refactor_feed_graph.py): otherwise the refreshed
+            # file issues their IDs again and the publication stops (runs 365, 445).
+            try:
+                code, output = engine.run(['python', '/app/scripts/refactor_feed_graph.py'], internet=False, limit=600)
+            except Exception as exc:  # noqa: BLE001 - nothing changed: the feed stays held
+                code, output = 1, f'{type(exc).__name__}: {str(exc)[:200]}'
+            if code != 0:
+                log(f'feed graph catch-up failed: isolated feed remains held ({output.strip()[-300:]})')
+                return False
+            log(f'feed graph catch-up: {output.strip().splitlines()[-1] if output.strip() else ""}')
             try:
                 refreshed = engine.feed_maintenance('refresh')
             except Exception:  # a failed refresh never changes the shared work copy

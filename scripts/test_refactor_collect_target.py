@@ -698,6 +698,7 @@ class CollectionTargetTest(unittest.TestCase):
              patch.dict(os.environ, {'COLLECT_CHAIN_INTAKE_ONLY': '1', 'COLLECT_FEED_WORK_VOLUME': 'explorer-refactor-collect-feed-test',
                                      'COLLECT_FEED_AUTO_SYNC': '1'}), \
              patch.object(scheduler, '_run_one', return_value=True), \
+             patch.object(engine, 'run', return_value=(0, '{"feed_graph": {}}')), \
              patch.object(engine, 'feed_maintenance', side_effect=[False, True, False]):
             self.assertFalse(scheduler.run_job('chain', lambda *_: None))
             self.assertTrue(scheduler.FEED_HOLD.exists())
@@ -706,6 +707,22 @@ class CollectionTargetTest(unittest.TestCase):
             self.assertFalse(scheduler.run_job('chain', lambda *_: None))
             self.assertTrue(scheduler.FEED_HOLD.exists())
             self.assertTrue(scheduler.HOLD.exists())
+
+    def test_feed_graph_catch_up_failure_holds_the_feed_before_refresh(self):
+        with TemporaryDirectory() as directory, \
+             patch.object(scheduler, 'HOLD', Path(directory) / 'global'), \
+             patch.object(scheduler, 'FEED_HOLD', Path(directory) / 'feed'), \
+             patch.dict(os.environ, {'COLLECT_CHAIN_INTAKE_ONLY': '1', 'COLLECT_FEED_WORK_VOLUME': 'explorer-refactor-collect-feed-test',
+                                     'COLLECT_FEED_AUTO_SYNC': '1'}), \
+             patch.object(scheduler, '_run_one') as run_one, \
+             patch.object(engine, 'run', return_value=(1, 'ValueError: entities has unpublished rows')) as run, \
+             patch.object(engine, 'feed_maintenance') as maintenance:
+            self.assertFalse(scheduler.run_job('chain', lambda *_: None))
+            self.assertEqual(run.call_args.args[0], ['python', '/app/scripts/refactor_feed_graph.py'])
+            maintenance.assert_not_called()
+            run_one.assert_not_called()
+            self.assertTrue(scheduler.FEED_HOLD.exists())
+            self.assertFalse(scheduler.HOLD.exists())
 
     def test_zero_model_cap_is_scoped_to_keyword_feed(self):
         with patch.dict(os.environ, {'COLLECT_FEED_KEYWORD_ONLY': '1', 'COLLECT_MAX_MODEL_CALLS': '5'}), \
