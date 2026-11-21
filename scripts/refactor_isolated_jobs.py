@@ -34,7 +34,8 @@ LEGACY = {'credit': ('credit_bonds', 'credit_quotes', 'treasury_curve'),
           'trade': ('trade_stats', 'trade_beneficiaries'),
           # us_prices is the market job's; cache_meta and market_indicators are shared with jobs still on the shared
           # file (published by key here, the keys mirrored into that file)
-          'market': ('cache_meta', 'market_indicators', 'us_prices')}
+          'market': ('cache_meta', 'market_indicators', 'us_prices'),
+          'krmovers': ('cache_meta', 'kr_movers')}
 JOBS = ('extseries', 'sectorbench', 'prices', 'pricefix', 'pricefactors', *LEGACY)
 # Requests per source host and run; a key starting with '.' covers every host under that domain.
 CAPS = {'extseries': {'': 30},
@@ -55,6 +56,8 @@ CAPS = {'extseries': {'': 30},
         'trade': {'': 20, 'apis.data.go.kr': 60},  # followed HS codes, 24 months when the source moved on
         # indices, F&G, VKOSPI, the regime tickers (full history once) and FRED series for the market read
         'market': {'': 20, '.finance.yahoo.com': 60, 'fred.stlouisfed.org': 30, 'api.stock.naver.com': 10},
+        # FinanceDataReader's KRX listing (about 4 requests an attempt, up to 3 attempts) and its code tables
+        'krmovers': {'': 10, 'data.krx.co.kr': 12, 'raw.githubusercontent.com': 6},
         # 14 KR ETFs + KOSPI one by one, the US ETF batch, then sector info of followed tickers due for refresh
         'sectorbench': {'': 20, '.yahoo.com': 120}}
 TABLES = {**LEGACY, 'extseries': ('ext_series', 'expectation_claims'), 'prices': ('stock_prices',), 'pricefix': ('stock_prices',),
@@ -1030,7 +1033,10 @@ def run(label):
     pg = trial._pg()
     iso.initialize(pg)
     # ISOLATED_HOST_CAPS (JSON) narrows caps for a rehearsal of the stop rules; production uses CAPS.
-    network = Network({**CAPS[label], **json.loads(os.environ.get('ISOLATED_HOST_CAPS') or '{}')})
+    caps = {**CAPS[label], **json.loads(os.environ.get('ISOLATED_HOST_CAPS') or '{}')}
+    if KRX_COOLDOWN.exists() and 'data.krx.co.kr' in caps:  # while KRX is held nothing is asked of it, login or not
+        caps['data.krx.co.kr'] = 0
+    network = Network(caps)
     network.install()
     previous = iso.states(pg, label)
     tables = TABLES[label]
