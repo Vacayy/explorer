@@ -260,7 +260,7 @@ class PricesTest(unittest.TestCase):
                                            'pykrx.website.krx': types.ModuleType('k'),
                                            'pykrx.website.krx.market': types.SimpleNamespace(core=core),
                                            'pykrx.website.krx.market.core': core}):
-            rows, bases = jobs.krx_market_day('2026-11-23')
+            rows, bases, markets = jobs.krx_market_day('2026-11-23')
         self.assertEqual(rows, [{'stock_code': '005930', 'trade_date': '2026-11-23', 'open': 1000, 'high': 1200, 'low': 990,
                                  'close': 1100, 'volume': 10, 'market_cap': 5000, 'shares': 5}])
         self.assertEqual(bases, {'005930': 1000})
@@ -312,9 +312,13 @@ class PricesTest(unittest.TestCase):
         bases = {('NEW', '2026-11-17'): 12000, ('OLD', '2026-11-17'): 12000, ('BIG', '2026-11-17'): 12000}
         kept, rejected = jobs.validate_krx(rows, bases)
         self.assertEqual(kept, [])
-        with mock.patch.object(jobs, 'previous_listing', return_value=('2026-11-14', {'OLD'})):
-            confirmed, still, evidence = jobs.confirm_listing_days(rows, rejected, bases)
-        self.assertEqual([r['stock_code'] for r in confirmed], ['NEW'])
+        rows.append({'stock_code': 'MOVED', 'trade_date': '2026-11-17', 'open': 30000, 'high': 41000, 'low': 26000, 'close': 36000})
+        bases[('MOVED', '2026-11-17')] = 12000
+        rejected.append(('MOVED', '2026-11-17', 'outside the limits of base 12000'))
+        markets = {('NEW', '2026-11-17'): 'KSQ', ('OLD', '2026-11-17'): 'KSQ', ('BIG', '2026-11-17'): 'KSQ', ('MOVED', '2026-11-17'): 'KSQ'}
+        with mock.patch.object(jobs, 'previous_listing', return_value=('2026-11-14', {'OLD': 'KSQ', 'MOVED': 'KNX'})):
+            confirmed, still, evidence = jobs.confirm_listing_days(rows, rejected, bases, markets)
+        self.assertEqual([r['stock_code'] for r in confirmed], ['NEW', 'MOVED'])  # a KONEX-to-KOSDAQ transfer day too
         self.assertEqual(evidence['NEW 2026-11-17']['limits'], [7200, 48000])
         self.assertEqual({c: why.split('; ')[-1] for c, _d, why in still},
                          {'OLD': 'listed on 2026-11-14, not a listing day', 'BIG': 'listing day but outside 7200-48000'})

@@ -396,22 +396,23 @@ def krx_limits(base, listing=False):
 
 
 def previous_listing(day, lookback=7):
-    """(day, codes) of the latest earlier weekday KRX lists stocks for, or (None, None)."""
+    """(day, {code: market}) of the latest earlier weekday KRX lists stocks for, or (None, None)."""
     d = date.fromisoformat(day)
     for _ in range(lookback):
         d -= timedelta(days=1)
         if d.weekday() >= 5:
             continue
         listing = krx_listing(d.isoformat())
-        codes = {r['ISU_SRT_CD'] for records in listing.values() for r in records}
+        codes = {r['ISU_SRT_CD']: market for market, records in listing.items() for r in records}
         if codes:
             return d.isoformat(), codes
     return None, None
 
 
-def confirm_listing_days(rows, rejected, bases):
-    """Of the KRX bars rejected for the ±30% limits, the ones on the stock's first trading day (KRX did not list it on
-    the previous trading day) inside the listing-day range of 60%-400% of the base. (confirmed rows, still rejected,
+def confirm_listing_days(rows, rejected, bases, markets=None):
+    """Of the KRX bars rejected for the ±30% limits, the ones on the stock's first trading day in its market (KRX did not
+    list it on the previous trading day, or listed it in another market: a transfer such as KONEX to KOSDAQ) inside the
+    listing-day range of 60%-400% of the base. `markets` = {(code, day): market}. (confirmed rows, still rejected,
     evidence)."""
     by_key = {(r['stock_code'], r['trade_date']): r for r in rows}
     confirmed, still, evidence, before = [], [], {}, {}
@@ -427,14 +428,16 @@ def confirm_listing_days(rows, rejected, bases):
             continue
         previous_day, listed = before[day]
         row, base = by_key[(code, day)], bases.get((code, day))
-        if listed is None or code in listed:
+        market = (markets or {}).get((code, day))
+        if listed is None or (code in listed and (market is None or listed[code] == market)):
             still.append((code, day, reason + ('' if listed is None else f'; listed on {previous_day}, not a listing day')))
             continue
         lower, upper = krx_limits(base, listing=True)
         if lower <= row['close'] <= upper and lower <= row['high'] <= upper and lower <= row['low'] <= upper:
             confirmed.append(row)
-            evidence[f'{code} {day}'] = {'listing_day': True, 'not_listed_on': previous_day, 'offering_base': base,
-                                         'limits': [lower, upper]}
+            evidence[f'{code} {day}'] = {'listing_day': True, 'previous_day': previous_day,
+                                         'previous_market': listed.get(code), 'market': market,
+                                         'offering_base': base, 'limits': [lower, upper]}
         else:
             still.append((code, day, f'{reason}; listing day but outside {lower}-{upper}'))
     return confirmed, still, evidence
@@ -550,16 +553,17 @@ def krx_bar(r, day):
 
 
 def krx_market_day(day):
-    """KRX's regular-session bars of every listed stock on `day`: (rows, {stock: base price}). A stock that did not
-    trade (no volume) has no row, as before."""
-    rows, bases = [], {}
-    for records in krx_listing(day).values():
+    """KRX's regular-session bars of every listed stock on `day`: (rows, {stock: base price}, {stock: market}). A stock
+    that did not trade (no volume) has no row, as before."""
+    rows, bases, markets = [], {}, {}
+    for market, records in krx_listing(day).items():
         for r in records:
             bar, base = krx_bar(r, day)
             if bar:
                 rows.append(bar)
                 bases[bar['stock_code']] = base
-    return rows, bases
+                markets[bar['stock_code']] = market
+    return rows, bases, markets
 
 
 UPSERT_BAR = ('INSERT INTO main.stock_prices (stock_code, trade_date, open, high, low, close, volume, market_cap, shares, '
@@ -604,7 +608,7 @@ def validate_krx(rows, bases):
 
 
 def prices_sources(network):
-    bases = {}
+    bases, markets = {}, {}
 
     def krx_daily(run, prior):
         prior_days = {g['day']: g for g in prior.get('gaps') or [] if isinstance(g, dict) and 'day' in g}
@@ -615,7 +619,7 @@ def prices_sources(network):
         for day in todo:
             entry = {'day': day, 'tries': prior_days.get(day, {}).get('tries', 0) + 1}
             try:
-                rows, day_bases = krx_market_day(day)
+                rows, day_bases, day_markets = krx_market_day(day)
             except Exception as exc:  # noqa: BLE001 - recorded as missing; never filled from another source
                 state[day] = {**entry, 'status': 'missing', 'reason': f'{type(exc).__name__}: {str(exc)[:80]}'}
                 missing.append(day)
@@ -629,6 +633,7 @@ def prices_sources(network):
             with run.connect() as conn:
                 conn.executemany(UPSERT_BAR, rows)
             bases.update({(code, day): base for code, base in day_bases.items()})
+            markets.update({(code, day): market for code, market in day_markets.items()})
             state[day] = {**entry, 'status': 'done', 'rows': len(rows)}
             collected[day] = len(rows)
         keep = sorted(state, reverse=True)[:30]
@@ -637,7 +642,7 @@ def prices_sources(network):
         if todo and not collected and missing and len(missing) == len(todo):
             return 'error', {**detail, 'error': f'KRX prices missing for {", ".join(missing)}'}, gaps
         return ('partial' if missing else 'ok'), detail, gaps
-    krx_daily.bases = bases
+    krx_daily.bases, krx_daily.markets = bases, markets
     return [('krx_daily', krx_daily)]
 
 
@@ -653,7 +658,7 @@ def pricefix_sources(network):
     row removed (no trading bar, so it leaves the bar and indicator aggregates); a stored row KRX does not list at all
     cannot be told apart from a source gap and is held unchanged."""
     day = os.environ['PRICEFIX_DATE']
-    bases = {}
+    bases, markets = {}, {}
 
     def correct(run, _prior):
         listing = krx_listing(day)
@@ -662,12 +667,13 @@ def pricefix_sources(network):
         if short:
             return 'error', {'error': f'KRX listing incomplete {short}', 'coverage': coverage}, [{'day': day, 'status': 'coverage'}]
         traded, quiet = {}, set()
-        for records in listing.values():
+        for market, records in listing.items():
             for r in records:
                 bar, base = krx_bar(r, day)
                 if bar:
                     traded[bar['stock_code']] = bar
                     bases[(bar['stock_code'], day)] = base
+                    markets[(bar['stock_code'], day)] = market
                 else:
                     quiet.add(r['ISU_SRT_CD'])
         with run.connect() as conn:
@@ -680,7 +686,7 @@ def pricefix_sources(network):
                   'stored': len(stored), 'added': len(set(traded) - stored), 'no_trade_removed': len(removed),
                   'held_not_listed': held}
         return ('partial' if held else 'ok'), detail, ([{'day': day, 'held_not_listed': held}] if held else [])
-    correct.bases = bases
+    correct.bases, correct.markets = bases, markets
     return [('krx_correction', correct)]
 
 
@@ -824,7 +830,7 @@ def run(label):
         rows = changes['stock_prices'][0]
         kept, rejected = validate_krx(rows, day_bases)
         if rejected:
-            confirmed, rejected, evidence = confirm_listing_days(rows, rejected, day_bases)
+            confirmed, rejected, evidence = confirm_listing_days(rows, rejected, day_bases, sources[0][1].markets)
             kept += confirmed
         changes['stock_prices'] = (kept, changes['stock_prices'][1])
     shrunk = [t for t in tables if private.seeded[t] and private.count(t) < SHRINK_LIMIT * private.seeded[t]]
