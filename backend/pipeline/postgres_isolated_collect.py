@@ -50,6 +50,11 @@ def initialize(pg):
                    'table_name TEXT NOT NULL,row_key JSONB NOT NULL,previous JSONB,current JSONB,source TEXT NOT NULL,'
                    f'job TEXT NOT NULL,token TEXT NOT NULL,changed_at TEXT NOT NULL DEFAULT {NOW})')
         pg.execute('CREATE INDEX IF NOT EXISTS collected_row_history_key ON collected_row_history (table_name,row_key)')
+        # Daily bars are KRX raw (unadjusted) prices; a corporate action resets KRX's base price. factor = base /
+        # previous close: multiply prices before ex_date by the product of the later factors to compare across it.
+        pg.execute('CREATE TABLE IF NOT EXISTS price_adjustments (stock_code TEXT NOT NULL,ex_date TEXT NOT NULL,'
+                   'factor DOUBLE PRECISION NOT NULL,base BIGINT NOT NULL,previous_close BIGINT NOT NULL,source TEXT NOT NULL,'
+                   f'job TEXT NOT NULL,recorded_at TEXT NOT NULL DEFAULT {NOW},PRIMARY KEY (stock_code,ex_date))')
 
 
 def states(pg, job):
@@ -186,8 +191,18 @@ def apply_keyed(pg, table, key, rows, deleted=(), *, live=None, history=None):
     return len(rows), len(gone)
 
 
+def record_adjustments(pg, rows, source, job):
+    """In the caller's transaction: (stock_code, ex_date, factor, base, previous_close) rows, by key."""
+    for stock, ex_date, factor, base, previous in rows:
+        pg.execute('INSERT INTO price_adjustments (stock_code,ex_date,factor,base,previous_close,source,job) '
+                   'VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (stock_code,ex_date) DO UPDATE SET factor=excluded.factor,'
+                   'base=excluded.base,previous_close=excluded.previous_close,source=excluded.source,job=excluded.job,'
+                   f'recorded_at={NOW}', (stock, ex_date, factor, base, previous, source, job))
+    return len(rows)
+
+
 def publish(pg, label, started, outcome, changes, source_states, *, token, requests=None, result=None, records=(),
-            history=None):
+            history=None, adjustments=()):
     """One transaction: every table's upserts/deletes by key, the per-source state and the run record.
     `changes` = {table: (rows, deleted keys)}. Returns (run id, {table: (upserted, deleted)})."""
     applied = {}
@@ -197,6 +212,8 @@ def publish(pg, label, started, outcome, changes, source_states, *, token, reque
             if rows or deleted:
                 applied[table] = apply_keyed(pg, table, KEYS[table], rows, deleted, live=live,
                                              history=(history, label, token) if history else None)
+        if adjustments:
+            applied['price_adjustments'] = (record_adjustments(pg, adjustments, history or label, label), 0)
         if records:  # the run's own job records (the legacy script's), in the isolated id band
             applied['job_runs'] = apply_keyed(pg, 'job_runs', ('id',), list(records), live=live)
         for source, state in source_states.items():

@@ -29,13 +29,14 @@ LEGACY = {'credit': ('credit_bonds', 'credit_quotes', 'treasury_curve'),
           'twrevenue': ('tw_monthly_revenue',),
           'kalshi': ('kalshi_candles', 'kalshi_events'),  # pins are read from the projection (the owner's ledger)
           'indexintraday': ('index_intraday',)}
-JOBS = ('extseries', 'sectorbench', 'prices', 'pricefix', *LEGACY)
+JOBS = ('extseries', 'sectorbench', 'prices', 'pricefix', 'pricefactors', *LEGACY)
 # Requests per source host and run; a key starting with '.' covers every host under that domain.
 CAPS = {'extseries': {'': 30},
         # Naver realtime quotes in batches of 200 codes (about 15), then Yahoo for the gaps of the last 10 days
         # (+ Naver daily prices and DART disclosures for the few closes beyond the daily limit)
         'prices': {'': 20, 'polling.finance.naver.com': 30, '.finance.yahoo.com': 300, 'data.krx.co.kr': 60},
         'pricefix': {'': 20, 'data.krx.co.kr': 60},  # + the previous day's listing when a listing day is checked
+        'pricefactors': {'': 20, 'data.krx.co.kr': 600},  # about 200 days per run
         # credit (macbook-source #3 6942831447): 34 companies' issuer scan, symbol search fallback, 10 FRED series
         'credit': {'': 20, 'scanner.tradingview.com': 150, 'symbol-search.tradingview.com': 60,
                    'data.tradingview.com': 150, 'fred.stlouisfed.org': 12},
@@ -45,6 +46,7 @@ CAPS = {'extseries': {'': 30},
         # 14 KR ETFs + KOSPI one by one, the US ETF batch, then sector info of followed tickers due for refresh
         'sectorbench': {'': 20, '.yahoo.com': 120}}
 TABLES = {**LEGACY, 'extseries': ('ext_series', 'expectation_claims'), 'prices': ('stock_prices',), 'pricefix': ('stock_prices',),
+          'pricefactors': (),
           'sectorbench': ('sector_benchmark_prices', 'sector_index', 'us_ticker_sectors')}
 BACKFILL_AFTER_DAYS = 45  # a source failing longer than its daily window re-reads its whole history once it answers
 SHRINK_LIMIT = 0.5
@@ -532,7 +534,8 @@ def _krx_number(value):
 
 
 # Jobs whose every changed row is logged with its previous value and source (collected_row_history).
-HISTORY_SOURCE = {'prices': KRX_SOURCE, 'pricefix': 'krx-correction:전종목시세(MDCSTAT01501)'}
+HISTORY_SOURCE = {'prices': KRX_SOURCE, 'pricefix': 'krx-correction:전종목시세(MDCSTAT01501)',
+                  'pricefactors': 'krx:전종목시세 base vs previous close'}
 
 
 def krx_listing(day):
@@ -607,8 +610,82 @@ def validate_krx(rows, bases):
     return kept, rejected
 
 
+def adjustment(code, day, base, previous_close):
+    """(stock_code, ex_date, factor, base, previous_close) when KRX's base price is not the previous close (a corporate
+    action reset it), else None. factor = base / previous close."""
+    if not base or not previous_close or base == previous_close:
+        return None
+    return code, day, base / previous_close, base, previous_close
+
+
+# ---------- pricefactors: past adjustment factors and the raw-vs-stored comparison (run by hand, in batches) ----------
+
+PRICEFACTORS_FROM = '2021-07-12'   # the first stored daily bar
+PRICEFACTORS_SOURCE = 'krx:전종목시세 base vs previous close'
+
+
+def pricefactors_sources(network, pg):
+    """Walk KRX's market-wide prices day by day from where the last run stopped (or PRICEFACTORS_FROM) to
+    PRICEFACTORS_TO, recording a factor wherever KRX's base price is not its own previous close, and counting per day
+    how the stored bars differ from KRX's raw regular-session bars (nothing is changed). Stops at the request cap and
+    leaves where it stopped for the next run."""
+    adjustments = []
+
+    def sweep(_run, prior):
+        progress = next((g for g in prior.get('gaps') or [] if isinstance(g, dict) and 'next_day' in g), {})
+        day = date.fromisoformat(progress.get('next_day') or os.environ.get('PRICEFACTORS_FROM') or PRICEFACTORS_FROM)
+        last = date.fromisoformat(os.environ.get('PRICEFACTORS_TO') or '2026-11-20')
+        previous = progress.get('previous_closes')
+        stats = {}
+        if previous is None:  # the trading day before the first: its closes are the first day's previous closes
+            prev_day, _ = previous_listing(day.isoformat())
+            previous = ({r['ISU_SRT_CD']: _krx_number(r['TDD_CLSPRC']) for recs in krx_listing(prev_day).values() for r in recs}
+                        if prev_day else {})
+        while day <= last:
+            if day.weekday() >= 5:
+                day += timedelta(days=1)
+                continue
+            try:
+                listing = krx_listing(day.isoformat())
+            except Refused:
+                break
+            if any(host.endswith('krx.co.kr') for host in network.stopped):
+                break  # the library may swallow the refusal and return nothing: not a holiday, the same day next run
+            closes, traded = {}, {}
+            for records in listing.values():
+                for r in records:
+                    code, close = r['ISU_SRT_CD'], _krx_number(r['TDD_CLSPRC'])
+                    closes[code] = close
+                    bar, base = krx_bar(r, day.isoformat())
+                    if bar:
+                        traded[code] = bar
+                        found = adjustment(code, day.isoformat(), base, (previous or {}).get(code))
+                        if found:
+                            adjustments.append(found)
+            if closes:
+                stored = {row['stock_code']: row for (row,) in pg.execute(
+                    "SELECT row_data FROM legacy_supplement_rows WHERE table_name='stock_prices' AND row_data->>'trade_date'=%s",
+                    (day.isoformat(),))}
+                year = stats.setdefault(day.isoformat()[:7], Counter())
+                year['days'] += 1
+                year['stored'] += len(stored)
+                year['close_differs'] += sum(1 for c, row in stored.items() if c in traded and row.get('close') != traded[c]['close'])
+                year['not_traded'] += sum(1 for c in stored if c not in traded and c in closes)
+                year['not_listed'] += sum(1 for c in stored if c not in closes)
+                year['missing'] += sum(1 for c in traded if c not in stored)
+                previous = closes
+            day += timedelta(days=1)
+        done = day > last
+        detail = {'until': (day - timedelta(days=1)).isoformat(), 'done': done, 'factors': len(adjustments),
+                  'by_month': {m: dict(c) for m, c in stats.items()}}
+        gaps = [] if done else [{'next_day': day.isoformat(), 'previous_closes': previous}]
+        return ('ok' if done else 'partial'), detail, gaps
+    sweep.adjustments = adjustments
+    return [('krx_sweep', sweep)]
+
+
 def prices_sources(network):
-    bases, markets = {}, {}
+    bases, markets, adjustments = {}, {}, []
 
     def krx_daily(run, prior):
         prior_days = {g['day']: g for g in prior.get('gaps') or [] if isinstance(g, dict) and 'day' in g}
@@ -632,6 +709,13 @@ def prices_sources(network):
                 continue
             with run.connect() as conn:
                 conn.executemany(UPSERT_BAR, rows)
+            with run.connect() as conn:
+                for code, base in day_bases.items():
+                    prev = conn.execute('SELECT close FROM main.stock_prices WHERE stock_code=? AND trade_date<? '
+                                        'ORDER BY trade_date DESC LIMIT 1', (code, day)).fetchone()
+                    found = adjustment(code, day, base, prev[0] if prev else None)
+                    if found:
+                        adjustments.append(found)
             bases.update({(code, day): base for code, base in day_bases.items()})
             markets.update({(code, day): market for code, market in day_markets.items()})
             state[day] = {**entry, 'status': 'done', 'rows': len(rows)}
@@ -642,7 +726,7 @@ def prices_sources(network):
         if todo and not collected and missing and len(missing) == len(todo):
             return 'error', {**detail, 'error': f'KRX prices missing for {", ".join(missing)}'}, gaps
         return ('partial' if missing else 'ok'), detail, gaps
-    krx_daily.bases, krx_daily.markets = bases, markets
+    krx_daily.bases, krx_daily.markets, krx_daily.adjustments = bases, markets, adjustments
     return [('krx_daily', krx_daily)]
 
 
@@ -821,7 +905,7 @@ def run(label):
     private.point_legacy_here()
     sources = (legacy_sources(label) if label in LEGACY else
                {'extseries': extseries_sources, 'sectorbench': sectorbench_sources, 'prices': prices_sources,
-                'pricefix': pricefix_sources}[label](network))
+                'pricefix': pricefix_sources}[label](network)) if label != 'pricefactors' else pricefactors_sources(network, pg)
     states, details = run_sources(private, sources, previous, network)
     changes = private.changes()
     rejected, evidence = [], {}
@@ -849,7 +933,8 @@ def run(label):
     requests = dict(network.requests)
     try:
         run_id, _ = iso.publish(pg, label, started, outcome, changes, states, token=token, requests=requests, result=result,
-                                records=private.job_records(), history=HISTORY_SOURCE.get(label))
+                                records=private.job_records(), history=HISTORY_SOURCE.get(label),
+                                adjustments=getattr(sources[0][1], 'adjustments', ()))
     except Exception as exc:  # noqa: BLE001 - whether the commit took effect is settled from the run record
         run_id, outcome = settle(trial._pg, label, token, started, outcome, exc, requests, result)
     if run_id is not None and not outcome.startswith('held back'):

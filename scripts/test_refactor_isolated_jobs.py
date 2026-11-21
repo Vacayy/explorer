@@ -323,6 +323,35 @@ class PricesTest(unittest.TestCase):
         self.assertEqual({c: why.split('; ')[-1] for c, _d, why in still},
                          {'OLD': 'listed on 2026-11-14, not a listing day', 'BIG': 'listing day but outside 7200-48000'})
 
+    def test_adjustment_only_where_the_base_price_was_reset(self):
+        self.assertIsNone(jobs.adjustment('A', 'd', 1000, 1000))
+        self.assertIsNone(jobs.adjustment('A', 'd', 1000, None))
+        self.assertEqual(jobs.adjustment('304840', '2026-11-20', 1220, 561), ('304840', '2026-11-20', 1220 / 561, 1220, 561))
+
+    def test_sweep_records_factors_and_stops_at_the_cap_without_skipping(self):
+        import os
+        from unittest import mock
+        rec = lambda code, close, chg, vol='1': {'ISU_SRT_CD': code, 'TDD_CLSPRC': close, 'CMPPREVDD_PRC': chg, 'TDD_OPNPRC': close,  # noqa: E731
+                                                'TDD_HGPRC': close, 'TDD_LWPRC': close, 'ACC_TRDVOL': vol, 'MKTCAP': '1', 'LIST_SHRS': '1'}
+        days = {'2026-11-16': {'STK': [rec('A', '100', '0'), rec('B', '500', '0')]},
+                '2026-11-17': {'STK': [rec('A', '102', '2'), rec('B', '110', '10')]}}  # B: base 100 after a 1:5 split
+        net = jobs.Network({'': 10})
+        pg = mock.Mock()
+        pg.execute.return_value = []
+
+        def listing(day):
+            if day == '2026-11-18':
+                net.stopped['data.krx.co.kr'] = 'data.krx.co.kr reached the request cap 10'
+                return {}
+            return days.get(day, {})
+        with mock.patch.dict(os.environ, {'PRICEFACTORS_FROM': '2026-11-17', 'PRICEFACTORS_TO': '2026-11-20'}), \
+                mock.patch.object(jobs, 'krx_listing', side_effect=listing), \
+                mock.patch.object(jobs, 'previous_listing', return_value=('2026-11-16', {'A': 'STK', 'B': 'STK'})):
+            (name, sweep), = jobs.pricefactors_sources(net, pg)
+            status, detail, gaps = sweep(None, {})
+        self.assertEqual(sweep.adjustments, [('B', '2026-11-17', 0.2, 100, 500)])
+        self.assertEqual((status, gaps[0]['next_day']), ('partial', '2026-11-18'))  # the refused day is next, not skipped
+
     def test_closed_through(self):
         from datetime import datetime
         from zoneinfo import ZoneInfo
