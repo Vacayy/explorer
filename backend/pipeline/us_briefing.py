@@ -827,7 +827,8 @@ def _synthesize(conn, trade_date: str, clusters, idio, movers,
     if llm_engine() != "claude-code":
         return None
     try:
-        data = _parse_json(llm.run(prompt, task='briefing.synthesize').text)
+        res = llm.run(prompt, task='briefing.synthesize')
+        data = _parse_json(res.text)
     except Exception as e:  # noqa: BLE001 — 원인을 로그로 남긴다(구 silent-None 대비)
         print(f"[us_briefing] 종합 실패: {type(e).__name__}: {str(e)[:200]}", flush=True)
         return None
@@ -839,8 +840,8 @@ def _synthesize(conn, trade_date: str, clusters, idio, movers,
         return None
     conn.execute(
         "INSERT OR REPLACE INTO us_briefings (trade_date, signature, synthesis_json, model, created_at) "
-        "VALUES (?,?,?, 'sonnet', datetime('now'))",
-        (trade_date, signature, json.dumps(synthesis, ensure_ascii=False)))
+        "VALUES (?,?,?,?, datetime('now'))",
+        (trade_date, signature, json.dumps(synthesis, ensure_ascii=False), res.model))  # 대체 실행이면 그 모델
     conn.commit()
     return synthesis
 

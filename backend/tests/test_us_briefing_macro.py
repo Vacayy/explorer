@@ -122,3 +122,21 @@ class SessionDateTests(unittest.TestCase):
 
     def test_before_close_is_previous_day(self):
         self.assertEqual(self.at("2026-10-16 10:00"), "2026-10-15")
+
+
+class SynthesisModelRecordTest(unittest.TestCase):
+    """The stored model is the one that answered (a Codex fallback is not recorded as the requested tier)."""
+
+    def test_records_fallback_model(self):
+        from unittest import mock
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute("CREATE TABLE us_briefings (trade_date TEXT PRIMARY KEY, signature TEXT NOT NULL, "
+                     "synthesis_json TEXT NOT NULL, model TEXT, created_at TEXT)")
+        answer = ub.llm.LLMResult(text='{"drivers": "금리 하락", "issues": "", "key_points": []}',
+                                  model="gpt-6.1-terra", engine="codex-exec")
+        with mock.patch.object(ub, "_synthesis_prompt", return_value="p"), \
+                mock.patch.object(ub, "llm_engine", return_value="claude-code"), \
+                mock.patch.object(ub.llm, "run", return_value=answer):
+            self.assertIsNotNone(ub._synthesize(conn, "2026-11-20", [], [], [], [], [], [], {}, []))
+        self.assertEqual(conn.execute("SELECT model FROM us_briefings").fetchone()[0], "gpt-6.1-terra")
