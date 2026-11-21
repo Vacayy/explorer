@@ -27,6 +27,7 @@ JOBS = ('extseries', 'sectorbench', 'prices')
 # Requests per source host and run; a key starting with '.' covers every host under that domain.
 CAPS = {'extseries': {'': 30},
         # Naver realtime quotes in batches of 200 codes (about 15), then Yahoo for the gaps of the last 10 days
+        # (+ Naver daily prices and DART disclosures for the few closes beyond the daily limit)
         'prices': {'': 20, 'polling.finance.naver.com': 30, '.finance.yahoo.com': 300},
         # 14 KR ETFs + KOSPI one by one, the US ETF batch, then sector info of followed tickers due for refresh
         'sectorbench': {'': 20, '.yahoo.com': 120}}
@@ -336,6 +337,70 @@ def validate_prices(conn, rows, through=None):
     return kept, rejected
 
 
+CORPORATE_ACTION = re.compile('병합|분할|증자|감자|합병|변경상장|추가상장|재상장|매매거래정지해제|권리락|액면')
+CORPORATE_ACTION_DAYS = 45
+
+
+def naver_day(code, day):
+    """(close, change against the exchange's base price) of `code` on `day` from Naver's daily prices, or None."""
+    import requests
+    response = requests.get(f'https://m.stock.naver.com/api/stock/{code}/price', params={'pageSize': 20, 'page': 1},
+                            headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
+    response.raise_for_status()
+    number = lambda v: float(str(v).replace(',', '')) if v not in (None, '') else None  # noqa: E731
+    for item in response.json():
+        if (item.get('localTradedAt') or '')[:10] == day:
+            return number(item.get('closePrice')), number(item.get('compareToPreviousClosePrice'))
+    return None
+
+
+def corporate_actions(code, day, conn):
+    """DART disclosures of a corporate action that resets the base price, in the CORPORATE_ACTION_DAYS before `day`."""
+    import requests
+    found = conn.execute('SELECT corp_code FROM companies WHERE stock_code=?', (code,)).fetchone()
+    key = os.environ.get('DART_API_KEY')
+    if not found or not found[0] or not key:
+        return []
+    start = (date.fromisoformat(day) - timedelta(days=CORPORATE_ACTION_DAYS)).strftime('%Y%m%d')
+    response = requests.get('https://opendart.fss.or.kr/api/list.json', timeout=20, params={
+        'crtfc_key': key, 'corp_code': found[0], 'bgn_de': start, 'end_de': day.replace('-', ''), 'page_count': 100})
+    response.raise_for_status()
+    return [f"{x['rcept_dt']} {x['report_nm'].strip()}" for x in response.json().get('list') or []
+            if CORPORATE_ACTION.search(x['report_nm'])]
+
+
+def confirm_beyond_limit(conn, rejected, rows):
+    """Of the closes rejected only for the daily limit against the stored previous close, the ones the exchange's own
+    base price and a corporate action confirm: Naver has the same close within the limit of its base price, and DART
+    has a disclosure that resets the base price (a consolidation, split, capital change, relisting). Returns
+    (confirmed rows, still rejected, evidence)."""
+    by_key = {(r['stock_code'], r['trade_date']): r for r in rows}
+    confirmed, still, evidence = [], [], {}
+    for code, day, reason in rejected:
+        if 'vs previous close' not in reason:
+            still.append((code, day, reason))
+            continue
+        try:
+            quote = naver_day(code, day)
+            actions = corporate_actions(code, day, conn) if quote else []
+        except Exception as exc:  # noqa: BLE001 - not confirmed this run; tried again on the next
+            still.append((code, day, f'{reason}; not confirmed ({type(exc).__name__})'))
+            continue
+        row = by_key[(code, day)]
+        if quote and quote[0] == row['close'] and quote[1] is not None:
+            base = quote[0] - quote[1]
+            within = base > 0 and abs(quote[0] / base - 1) <= PRICE_LIMIT + 0.0005
+            if within and actions:
+                confirmed.append(row)
+                evidence[f'{code} {day}'] = {'base': base, 'actions': actions[:3]}
+                continue
+            reason = f'{reason}; base {base:g}' + ('' if within else ' beyond limit') + ('' if actions else ', no corporate action')
+        else:
+            reason = f'{reason}; Naver daily close differs or missing'
+        still.append((code, day, reason))
+    return confirmed, still, evidence
+
+
 def prices_sources(network):
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import ingest_prices as ip
@@ -479,15 +544,17 @@ def run(label):
     sources = {'extseries': extseries_sources, 'sectorbench': sectorbench_sources, 'prices': prices_sources}[label](network)
     states, details = run_sources(private, sources, previous, network)
     changes = private.changes()
-    rejected = []
+    rejected, evidence = [], {}
     if label == 'prices':  # only validated closes are published; a rejected stock and date stays as PG has it
-        with sqlite3.connect(private.path) as conn:
+        with private.connect() as conn:  # the projection's companies give DART corp codes
             kept, rejected = validate_prices(conn, changes['stock_prices'][0])
-        changes['stock_prices'] = (kept, changes['stock_prices'][1])
+            confirmed, rejected, evidence = confirm_beyond_limit(conn, rejected, changes['stock_prices'][0])
+        changes['stock_prices'] = (kept + confirmed, changes['stock_prices'][1])
     shrunk = [t for t in tables if private.seeded[t] and private.count(t) < SHRINK_LIMIT * private.seeded[t]]
     counts = {t: (len(rows), len(gone)) for t, (rows, gone) in changes.items()}
     result = {'sources': details, 'not_moved': NOT_MOVED.get(label, {}), 'stopped': network.stopped,
-              **({'rejected': len(rejected), 'rejected_sample': rejected[:20]} if rejected else {})}
+              **({'rejected': len(rejected), 'rejected_sample': rejected[:20]} if rejected else {}),
+              **({'confirmed_beyond_limit': evidence} if evidence else {})}
     token = uuid.uuid4().hex
     if shrunk:  # the private file lost most of a table: nothing is published and collection is held
         outcome = f'held back: {", ".join(shrunk)} shrank below half'

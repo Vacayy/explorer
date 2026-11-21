@@ -194,6 +194,21 @@ class PricesTest(unittest.TestCase):
                          [('index_kospi', d) for d in ('2026-11-18', '2026-11-19', '2026-11-20')])
         self.assertEqual(jobs.price_gaps(conn, date(2026, 11, 21)), {'A': ['2026-11-18', '2026-11-20']})
 
+    def test_beyond_limit_confirmed_only_by_base_price_and_corporate_action(self):
+        from unittest import mock
+        rows = [{'stock_code': '304840', 'trade_date': '2026-11-20', 'close': 1586},
+                {'stock_code': '041510', 'trade_date': '2026-11-18', 'close': 99900}]
+        rejected = [('304840', '2026-11-20', '+182.7% vs previous close'), ('041510', '2026-11-18', '+30.6% vs previous close')]
+        quotes = {'304840': (1586.0, 366.0), '041510': (99900.0, 23000.0)}
+        actions = {'304840': ['20261119 주권매매거래정지해제 (액면병합 주권 변경상장)'], '041510': []}
+        with mock.patch.object(jobs, 'naver_day', side_effect=lambda c, d: quotes[c]), \
+                mock.patch.object(jobs, 'corporate_actions', side_effect=lambda c, d, conn: actions[c]):
+            confirmed, still, evidence = jobs.confirm_beyond_limit(None, rejected, rows)
+        self.assertEqual([r['stock_code'] for r in confirmed], ['304840'])
+        self.assertEqual(evidence['304840 2026-11-20']['base'], 1220.0)
+        self.assertEqual(still[0][0], '041510')
+        self.assertIn('no corporate action', still[0][2])
+
     def test_closed_through(self):
         from datetime import datetime
         from zoneinfo import ZoneInfo
