@@ -59,10 +59,11 @@ CAPS = {'extseries': {'': 30},
         # FinanceDataReader's KRX listing (about 4 requests an attempt, up to 3 attempts) and its code tables
         'krmovers': {'': 10, 'data.krx.co.kr': 12, 'raw.githubusercontent.com': 6},
         # 14 KR ETFs + KOSPI one by one, the US ETF batch, then sector info of followed tickers due for refresh
-        'sectorbench': {'': 20, '.yahoo.com': 120}}
+        # + the followed US tickers' daily tail (143 active, about two requests each)
+        'sectorbench': {'': 20, '.yahoo.com': 450}}
 TABLES = {**LEGACY, 'extseries': ('ext_series', 'expectation_claims'), 'prices': ('stock_prices',), 'pricefix': ('stock_prices',),
           'pricefactors': (),
-          'sectorbench': ('sector_benchmark_prices', 'sector_index', 'us_ticker_sectors')}
+          'sectorbench': ('sector_benchmark_prices', 'sector_index', 'us_ticker_sectors', 'us_prices')}
 BACKFILL_AFTER_DAYS = 45  # a source failing longer than its daily window re-reads its whole history once it answers
 SHRINK_LIMIT = 0.5
 INDEX_KEEP = 0.9  # the computed sector index replaces the last good one only when it is about as complete
@@ -315,7 +316,18 @@ def sectorbench_sources(network):
             raise RuntimeError('no sector info: ' + ', '.join(result['failed'])[:200])
         return ('partial' if result['failed'] else 'ok'), {'due': result['due'], 'fetched': result['fetched']}, result['failed']
 
-    return [('kr_etfs', kr_etfs), ('kr_index', kr_index), ('us_etfs', us_etfs), ('us_sector_info', us_sector_info)]
+    def us_follow_prices(run, _previous):
+        conn = run.connect()
+        try:
+            result = us.collect_follow_prices(conn)
+        finally:
+            conn.close()
+        if result['missing'] and not result['tickers']:
+            raise RuntimeError('no followed ticker close: ' + ', '.join(result['missing'])[:200])
+        return ('partial' if result['missing'] else 'ok'), {'rows': result['rows'], 'tickers': result['tickers']}, result['missing']
+
+    return [('kr_etfs', kr_etfs), ('kr_index', kr_index), ('us_etfs', us_etfs), ('us_sector_info', us_sector_info),
+            ('us_follow_prices', us_follow_prices)]
 
 
 # Parts of the legacy job not moved: their table is published whole from the shared collector file by other jobs.
@@ -958,7 +970,7 @@ def legacy_sources(label):
     return [('script', script)]
 
 
-NOT_MOVED = {'sectorbench': {'us_follow_prices': 'us_prices is still replaced whole by the shared-file jobs'}}
+NOT_MOVED = {}
 
 
 def run_sources(run, sources, previous, network=None):
