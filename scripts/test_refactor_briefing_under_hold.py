@@ -17,11 +17,9 @@ def _found(**changed):
 class VerdictTest(unittest.TestCase):
     def test_verdicts(self):
         self.assertEqual(rescue.verdict(_found(), [])[0], 'safe')
-        failure = [{'id': 9, 'job': 'ext_series', 'status': 'error'}]
-        self.assertEqual(rescue.verdict(_found(job_runs={'work_only': 1}), failure)[0], 'review')
-        self.assertEqual(rescue.verdict(_found(job_runs={'work_only': 1}), [{'id': 9, 'job': 'x', 'status': 'ok'}])[0], 'stop')
+        self.assertNotIn('job_runs', rescue.BRIEFING_TABLES)  # published by id: other runs' records never go out
         self.assertEqual(rescue.verdict(_found(market_indicators={'work_only': 3}), [])[0], 'stop')
-        self.assertEqual(rescue.verdict(_found(job_runs={'pg_only': 1}), [])[0], 'stop')
+        self.assertEqual(rescue.verdict(_found(us_movers={'pg_only': 1}), [])[0], 'stop')
 
 
 class RunTest(unittest.TestCase):

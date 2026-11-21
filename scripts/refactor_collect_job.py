@@ -156,6 +156,38 @@ def _publish_documents(pg, label, started, before):
         origin.close()
 
 
+def job_runs_floor(work_path):
+    """The highest job record id in the shared collector file before a run: the run's own records come after it."""
+    import sqlite3
+    with sqlite3.connect(f'file:{work_path}?mode=ro', uri=True) as work:
+        return work.execute('SELECT COALESCE(max(id),0) FROM job_runs').fetchone()[0]
+
+
+def new_job_runs(work_path, floor):
+    """This run's job records (ids above `floor`), published by id. Records an earlier failed run left in the file
+    stay below the floor and never go out with a later run; publishing the same records again changes nothing."""
+    import sqlite3
+    with sqlite3.connect(f'file:{work_path}?mode=ro', uri=True) as work:
+        work.row_factory = sqlite3.Row
+        return [dict(r) for r in work.execute('SELECT * FROM job_runs WHERE id > ? ORDER BY id', (floor,))]
+
+
+def publish_job_runs(pg, runs):
+    """Add this run's job records by id, in the caller's transaction. An id PG already holds with the same record is
+    skipped (a repeated publication); with a different record it means the file and PG diverged: held back."""
+    from pipeline.postgres_isolated_collect import _ordinals, _text, apply_keyed
+    held = {_text((r['id'],)): r for r in runs}
+    present = _ordinals(pg, 'job_runs', [(r['id'],) for r in runs], ('id',))
+    if present:
+        stored = dict(pg.execute('SELECT row_ordinal,row_data FROM legacy_supplement_rows WHERE table_name=%s AND '
+                                 'row_ordinal=ANY(%s)', ('job_runs', list(present.values()))).fetchall())
+        clash = [k[0] for k, ordinal in present.items() if stored.get(ordinal) != held[k]]
+        if clash:
+            raise trial.HeldBack(f'job record ids already in PG with other records: {clash[:5]}')
+    fresh = [r for r in runs if _text((r['id'],)) not in present]
+    return apply_keyed(pg, 'job_runs', ('id',), fresh)[0] if fresh else 0
+
+
 def supplement_tables(pg, written):
     from pipeline.postgres_isolated_collect import KEYS
     if written & set(KEYS):
@@ -1281,6 +1313,7 @@ def _run(label, pg, waited):
                 argv, record = job_argv(label)
                 os.chdir('/app')
                 before = _capture_documents()
+                runs_floor = job_runs_floor(trial.WORK)
                 refused = _cap_table_model_calls(TABLE_MODEL_CAPS[label]) if label in TABLE_MODEL_CAPS else None
                 event = _defer_big_picture_event() if label == 'markettoday' else None
                 if label in NATIVE_STEPS_ELSEWHERE:
@@ -1327,7 +1360,12 @@ def _run(label, pg, waited):
                     entry['preserved_rows'] = preserve_briefing_rows(pg, trial.WORK, rest)
                 if label == 'usfund':
                     validate_usfund_keys(pg, trial.WORK, rest)
-                entry['applied'] = trial._apply_supplement(pg, supplement_tables(pg, rest)) if rest else {}
+                runs = new_job_runs(trial.WORK, runs_floor) if 'job_runs' in rest else []
+                rest = rest - {'job_runs'}  # never replaced whole: only this run's own records go out (below)
+                with pg.transaction():  # the data and this run's job records, together
+                    entry['applied'] = trial._apply_supplement(pg, supplement_tables(pg, rest)) if rest else {}
+                    if runs:
+                        entry['applied']['job_runs'] = publish_job_runs(pg, runs)
                 outcome = ('partial: US briefing headline failures; ' if record_status == 'partial' else 'applied: ') + \
                     ', '.join(f'{t} {n}' for t, n in (entry['applied'] or {}).items())
                 if event:  # the 16:00 wrap's big picture check, on the computation path after the slot is in PG

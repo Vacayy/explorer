@@ -130,6 +130,22 @@ class DeltaTest(unittest.TestCase):
         self.assertEqual(iso.delta(before, after), ([{'k': 'c', 'v': 2}], [('b',)]))
 
 
+class JobRunsTest(unittest.TestCase):
+    """Only a run's own job records are published, by id."""
+
+    def test_records_above_the_floor_only(self):
+        import refactor_collect_job as job
+        path = Path(tempfile.mkdtemp()) / 'work.db'
+        with sqlite3.connect(path) as work:
+            work.execute('CREATE TABLE job_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, job TEXT, status TEXT)')
+            work.execute("INSERT INTO job_runs (job, status) VALUES ('tw_revenue', 'ok')")
+            work.execute("INSERT INTO job_runs (job, status) VALUES ('prices', 'error')")  # a failed run's leftover
+        floor = job.job_runs_floor(path)
+        with sqlite3.connect(path) as work:
+            work.execute("INSERT INTO job_runs (job, status) VALUES ('retail', 'ok')")  # this run
+        self.assertEqual([r['job'] for r in job.new_job_runs(path, floor)], ['retail'])
+
+
 class SharedPathGuardTest(unittest.TestCase):
     def test_owned_tables_refused_on_shared_path(self):
         import refactor_collect_job as job

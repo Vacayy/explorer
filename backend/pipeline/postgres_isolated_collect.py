@@ -10,6 +10,7 @@ deleted. Rows a run did not touch are never rewritten, so a stale seed cannot ov
 collect_source_state keeps, per job and source, the last outcome, since when it fails and what is missing, so a
 later run (after a restart or on another day) knows where to fill from.
 """
+import itertools
 import json
 
 from psycopg.types.json import Jsonb
@@ -94,23 +95,54 @@ def delta(before, after):
     return [row for k, row in after.items() if before.get(k) != row], [k for k in before if k not in after]
 
 
+_KEY_TABLES = itertools.count()
+
+
 def _text(key):
     return tuple(None if v is None else str(v) for v in key)
 
 
-def _ordinals(pg, table, keys):
+def _ordinals(pg, table, keys, key_columns=None):
     """{key as text: row ordinal} of the PG rows with these keys (one pass over the table, not a full load)."""
     if not keys:
         return {}
-    name = f'isolated_keys_{abs(hash(table)) % 10**8}'
+    name = f'isolated_keys_{next(_KEY_TABLES)}'  # one per call: a transaction may look up the same table twice
     pg.execute(f'CREATE TEMP TABLE {name} (k TEXT[]) ON COMMIT DROP')
     with pg.cursor().copy(f'COPY {name} (k) FROM STDIN') as copy:
         for k in keys:
             copy.write_row((list(_text(k)),))
-    expr = 'ARRAY[' + ','.join(f"r.row_data->>'{c}'" for c in KEYS[table]) + ']'
+    expr = 'ARRAY[' + ','.join(f"r.row_data->>'{c}'" for c in (key_columns or KEYS[table])) + ']'
     return {tuple(k): ordinal for ordinal, k in pg.execute(
         f'SELECT r.row_ordinal, {expr} FROM legacy_supplement_rows r JOIN {name} i ON i.k = {expr} '
         'WHERE r.table_name=%s', (table,))}
+
+
+def apply_keyed(pg, table, key, rows, deleted=(), *, live=None):
+    """In the caller's transaction: upsert `rows` and delete `deleted` keys of a supplement table by `key`.
+    Returns (rows upserted, rows deleted)."""
+    if live is None:
+        live = postgres_live_tables.ready(pg)
+    pg.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))', ('supplement:' + table,))
+    if live:
+        postgres_live_tables.mark(pg, table)
+    ordinals = _ordinals(pg, table, [tuple(row[c] for c in key) for row in rows] + list(deleted), key)
+    last = pg.execute('SELECT COALESCE(max(row_ordinal),-1) FROM legacy_supplement_rows WHERE table_name=%s',
+                      (table,)).fetchone()[0]
+    for row in rows:
+        ordinal = ordinals.get(_text(tuple(row[c] for c in key)))
+        if ordinal is None:
+            last += 1
+            pg.execute('INSERT INTO legacy_supplement_rows (table_name,row_ordinal,row_data) VALUES (%s,%s,%s)',
+                       (table, last, Jsonb(row)))
+        else:
+            pg.execute('UPDATE legacy_supplement_rows SET row_data=%s WHERE table_name=%s AND row_ordinal=%s',
+                       (Jsonb(row), table, ordinal))
+    gone = [ordinals[_text(k)] for k in deleted if _text(k) in ordinals]
+    if gone:
+        pg.execute('DELETE FROM legacy_supplement_rows WHERE table_name=%s AND row_ordinal=ANY(%s)', (table, gone))
+    pg.execute('UPDATE legacy_supplement_tables SET row_count=(SELECT count(*) FROM legacy_supplement_rows '
+               'WHERE table_name=%s) WHERE table_name=%s', (table, table))
+    return len(rows), len(gone)
 
 
 def publish(pg, label, started, outcome, changes, source_states, *, token, requests=None, result=None):
@@ -120,30 +152,8 @@ def publish(pg, label, started, outcome, changes, source_states, *, token, reque
     with pg.transaction():
         live = postgres_live_tables.ready(pg)
         for table, (rows, deleted) in changes.items():
-            if not rows and not deleted:
-                continue
-            key = KEYS[table]
-            pg.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))', ('supplement:' + table,))
-            if live:
-                postgres_live_tables.mark(pg, table)
-            ordinals = _ordinals(pg, table, [tuple(row[c] for c in key) for row in rows] + list(deleted))
-            last = pg.execute('SELECT COALESCE(max(row_ordinal),-1) FROM legacy_supplement_rows WHERE table_name=%s',
-                              (table,)).fetchone()[0]
-            for row in rows:
-                ordinal = ordinals.get(_text(tuple(row[c] for c in key)))
-                if ordinal is None:
-                    last += 1
-                    pg.execute('INSERT INTO legacy_supplement_rows (table_name,row_ordinal,row_data) VALUES (%s,%s,%s)',
-                               (table, last, Jsonb(row)))
-                else:
-                    pg.execute('UPDATE legacy_supplement_rows SET row_data=%s WHERE table_name=%s AND row_ordinal=%s',
-                               (Jsonb(row), table, ordinal))
-            gone = [ordinals[_text(k)] for k in deleted if _text(k) in ordinals]
-            if gone:
-                pg.execute('DELETE FROM legacy_supplement_rows WHERE table_name=%s AND row_ordinal=ANY(%s)', (table, gone))
-            pg.execute('UPDATE legacy_supplement_tables SET row_count=(SELECT count(*) FROM legacy_supplement_rows '
-                       'WHERE table_name=%s) WHERE table_name=%s', (table, table))
-            applied[table] = (len(rows), len(gone))
+            if rows or deleted:
+                applied[table] = apply_keyed(pg, table, KEYS[table], rows, deleted, live=live)
         for source, state in source_states.items():
             pg.execute('INSERT INTO collect_source_state (job,source,status,last_ok_at,failing_since,last_error,attempts,'
                        f'gaps_json,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,{NOW}) ON CONFLICT (job,source) DO UPDATE SET '

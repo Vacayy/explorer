@@ -6,10 +6,8 @@
 check (in a one-shot container, no internet): the briefing replaces its tables in PG with the shared collector file's
 rows, so every difference between that file and PG in those tables goes out with it. Verdict:
   safe    no difference: only the briefing's own writes will be published
-  review  only job_runs rows the failed run left, all failure records: listed with the code that reads that job's
-          records, for the operator to decide (allowed only if they keep failure history and no reader turns them into
-          a success, a cooldown or a skipped retry)
-  stop    anything else (another table differs, PG has rows the file lacks, a success record would go out)
+  stop    anything else (a table differs, or PG has rows the file lacks: the briefing would delete them)
+(review, for job_runs failure records, no longer arises: job_runs is published by id, this run's records only.)
 
 run (on the host): stops the scheduler, moves the hold aside, runs the briefing once as the scheduler would, then
 puts the hold back whatever happened (a failed run's own hold marker is kept beside it as evidence) and restarts
@@ -24,7 +22,9 @@ import sys
 import time
 from pathlib import Path
 
-BRIEFING_TABLES = ('cache_meta', 'job_runs', 'macro_news', 'macro_signals', 'market_indicators', 'us_briefings',
+# job_runs is not among them: since the keyed publication only the briefing's own records go out (refactor_collect_job
+# .new_job_runs), so records a failed run left in the file cannot ride along.
+BRIEFING_TABLES = ('cache_meta', 'macro_news', 'macro_signals', 'market_indicators', 'us_briefings',
                    'us_macro_issues', 'us_movers', 'us_ticker_news')
 FAILURE = ('error', 'failed')
 ROOT = Path(__file__).resolve().parent.parent
