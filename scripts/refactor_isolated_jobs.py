@@ -29,12 +29,13 @@ LEGACY = {'credit': ('credit_bonds', 'credit_quotes', 'treasury_curve'),
           'twrevenue': ('tw_monthly_revenue',),
           'kalshi': ('kalshi_candles', 'kalshi_events'),  # pins are read from the projection (the owner's ledger)
           'indexintraday': ('index_intraday',)}
-JOBS = ('extseries', 'sectorbench', 'prices', *LEGACY)
+JOBS = ('extseries', 'sectorbench', 'prices', 'pricefix', *LEGACY)
 # Requests per source host and run; a key starting with '.' covers every host under that domain.
 CAPS = {'extseries': {'': 30},
         # Naver realtime quotes in batches of 200 codes (about 15), then Yahoo for the gaps of the last 10 days
         # (+ Naver daily prices and DART disclosures for the few closes beyond the daily limit)
         'prices': {'': 20, 'polling.finance.naver.com': 30, '.finance.yahoo.com': 300, 'data.krx.co.kr': 40},
+        'pricefix': {'': 20, 'data.krx.co.kr': 40},
         # credit (macbook-source #3 6942831447): 34 companies' issuer scan, symbol search fallback, 10 FRED series
         'credit': {'': 20, 'scanner.tradingview.com': 150, 'symbol-search.tradingview.com': 60,
                    'data.tradingview.com': 150, 'fred.stlouisfed.org': 12},
@@ -43,7 +44,7 @@ CAPS = {'extseries': {'': 30},
         'kalshi': {'': 20, 'api.elections.kalshi.com': 60},
         # 14 KR ETFs + KOSPI one by one, the US ETF batch, then sector info of followed tickers due for refresh
         'sectorbench': {'': 20, '.yahoo.com': 120}}
-TABLES = {**LEGACY, 'extseries': ('ext_series', 'expectation_claims'), 'prices': ('stock_prices',),
+TABLES = {**LEGACY, 'extseries': ('ext_series', 'expectation_claims'), 'prices': ('stock_prices',), 'pricefix': ('stock_prices',),
           'sectorbench': ('sector_benchmark_prices', 'sector_index', 'us_ticker_sectors')}
 BACKFILL_AFTER_DAYS = 45  # a source failing longer than its daily window re-reads its whole history once it answers
 SHRINK_LIMIT = 0.5
@@ -482,24 +483,47 @@ def _krx_number(value):
 
 
 # Jobs whose every changed row is logged with its previous value and source (collected_row_history).
-HISTORY_SOURCE = {'prices': KRX_SOURCE}
+HISTORY_SOURCE = {'prices': KRX_SOURCE, 'pricefix': 'krx-correction:전종목시세(MDCSTAT01501)'}
+
+
+def krx_listing(day):
+    """{market: KRX market-wide records of `day`} for KOSPI, KOSDAQ and KONEX, every listed stock (traded or not)."""
+    from pykrx.website.krx.market import core
+    return {market: core.전종목시세().fetch(day.replace('-', ''), market).to_dict('records') for market in KRX_MARKETS}
+
+
+def krx_bar(r, day):
+    """(regular-session bar, base price) of one KRX record, or (None, None) when the stock did not trade."""
+    close, volume = _krx_number(r['TDD_CLSPRC']), _krx_number(r['ACC_TRDVOL'])
+    if not close or not volume:
+        return None, None
+    return ({'stock_code': r['ISU_SRT_CD'], 'trade_date': day, 'open': _krx_number(r['TDD_OPNPRC']),
+             'high': _krx_number(r['TDD_HGPRC']), 'low': _krx_number(r['TDD_LWPRC']), 'close': close, 'volume': volume,
+             'market_cap': _krx_number(r['MKTCAP']), 'shares': _krx_number(r['LIST_SHRS'])},
+            close - (_krx_number(r['CMPPREVDD_PRC']) or 0))
 
 
 def krx_market_day(day):
     """KRX's regular-session bars of every listed stock on `day`: (rows, {stock: base price}). A stock that did not
     trade (no volume) has no row, as before."""
-    from pykrx.website.krx.market import core
     rows, bases = [], {}
-    for market in KRX_MARKETS:
-        for r in core.전종목시세().fetch(day.replace('-', ''), market).to_dict('records'):
-            close, volume = _krx_number(r['TDD_CLSPRC']), _krx_number(r['ACC_TRDVOL'])
-            if not close or not volume:
-                continue
-            rows.append({'stock_code': r['ISU_SRT_CD'], 'trade_date': day, 'open': _krx_number(r['TDD_OPNPRC']),
-                         'high': _krx_number(r['TDD_HGPRC']), 'low': _krx_number(r['TDD_LWPRC']), 'close': close,
-                         'volume': volume, 'market_cap': _krx_number(r['MKTCAP']), 'shares': _krx_number(r['LIST_SHRS'])})
-            bases[r['ISU_SRT_CD']] = close - (_krx_number(r['CMPPREVDD_PRC']) or 0)
+    for records in krx_listing(day).values():
+        for r in records:
+            bar, base = krx_bar(r, day)
+            if bar:
+                rows.append(bar)
+                bases[bar['stock_code']] = base
     return rows, bases
+
+
+UPSERT_BAR = ('INSERT INTO main.stock_prices (stock_code, trade_date, open, high, low, close, volume, market_cap, shares, '
+              "fetched_at) VALUES (:stock_code,:trade_date,:open,:high,:low,:close,:volume,:market_cap,:shares,datetime('now')) "
+              'ON CONFLICT(stock_code, trade_date) DO UPDATE SET open=excluded.open, high=excluded.high, low=excluded.low, '
+              'close=excluded.close, volume=excluded.volume, market_cap=excluded.market_cap, shares=excluded.shares, '
+              'fetched_at=excluded.fetched_at '
+              # only a bar whose values differ is rewritten: a repeat is no change (and leaves no history)
+              'WHERE (open, high, low, close, volume, market_cap, shares) IS NOT '
+              '(excluded.open, excluded.high, excluded.low, excluded.close, excluded.volume, excluded.market_cap, excluded.shares)')
 
 
 def krx_days(prior_days, through, today=None, start=PRICE_KRX_FROM):
@@ -557,12 +581,7 @@ def prices_sources(network):
                     missing.append(day)
                 continue
             with run.connect() as conn:
-                conn.executemany(
-                    'INSERT INTO main.stock_prices (stock_code, trade_date, open, high, low, close, volume, market_cap, shares, '
-                    "fetched_at) VALUES (:stock_code,:trade_date,:open,:high,:low,:close,:volume,:market_cap,:shares,datetime('now')) "
-                    'ON CONFLICT(stock_code, trade_date) DO UPDATE SET open=excluded.open, high=excluded.high, low=excluded.low, '
-                    'close=excluded.close, volume=excluded.volume, market_cap=excluded.market_cap, shares=excluded.shares, '
-                    'fetched_at=excluded.fetched_at', rows)
+                conn.executemany(UPSERT_BAR, rows)
             bases.update({(code, day): base for code, base in day_bases.items()})
             state[day] = {**entry, 'status': 'done', 'rows': len(rows)}
             collected[day] = len(rows)
@@ -574,6 +593,49 @@ def prices_sources(network):
         return ('partial' if missing else 'ok'), detail, gaps
     krx_daily.bases = bases
     return [('krx_daily', krx_daily)]
+
+
+# ---------- pricefix: one past day corrected to KRX's regular session (run by hand, one day per run) ----------
+
+PRICEFIX_SOURCE = 'krx-correction:전종목시세(MDCSTAT01501)'
+KRX_MIN_LISTED = {'STK': 800, 'KSQ': 1500, 'KNX': 50}  # a day KRX lists fewer is not complete enough to correct from
+
+
+def pricefix_sources(network):
+    """PRICEFIX_DATE corrected from KRX's market-wide prices, once KRX's listing of the day is complete:
+    a stock that traded gets KRX's regular-session bar (added when missing); a listed stock that did not trade has its
+    row removed (no trading bar, so it leaves the bar and indicator aggregates); a stored row KRX does not list at all
+    cannot be told apart from a source gap and is held unchanged."""
+    day = os.environ['PRICEFIX_DATE']
+    bases = {}
+
+    def correct(run, _prior):
+        listing = krx_listing(day)
+        coverage = {market: len(records) for market, records in listing.items()}
+        short = {m: n for m, n in coverage.items() if n < KRX_MIN_LISTED[m]}
+        if short:
+            return 'error', {'error': f'KRX listing incomplete {short}', 'coverage': coverage}, [{'day': day, 'status': 'coverage'}]
+        traded, quiet = {}, set()
+        for records in listing.values():
+            for r in records:
+                bar, base = krx_bar(r, day)
+                if bar:
+                    traded[bar['stock_code']] = bar
+                    bases[(bar['stock_code'], day)] = base
+                else:
+                    quiet.add(r['ISU_SRT_CD'])
+        with run.connect() as conn:
+            stored = {c for (c,) in conn.execute('SELECT stock_code FROM main.stock_prices WHERE trade_date=?', (day,))}
+            conn.executemany(UPSERT_BAR, list(traded.values()))
+            removed = sorted(stored & quiet)
+            conn.executemany('DELETE FROM main.stock_prices WHERE stock_code=? AND trade_date=?', [(c, day) for c in removed])
+        held = sorted(stored - set(traded) - quiet)
+        detail = {'day': day, 'coverage': coverage, 'krx_traded': len(traded), 'krx_no_trade': len(quiet),
+                  'stored': len(stored), 'added': len(set(traded) - stored), 'no_trade_removed': len(removed),
+                  'held_not_listed': held}
+        return ('partial' if held else 'ok'), detail, ([{'day': day, 'held_not_listed': held}] if held else [])
+    correct.bases = bases
+    return [('krx_correction', correct)]
 
 
 def mirror(pg, tables, since=None):
@@ -702,15 +764,16 @@ def run(label):
     network.install()
     previous = iso.states(pg, label)
     tables = TABLES[label]
-    since = price_window_start() if label == 'prices' else None
+    since = price_window_start() if label == 'prices' else os.environ['PRICEFIX_DATE'] if label == 'pricefix' else None
     private = Run(pg, tables, since)
     private.point_legacy_here()
     sources = (legacy_sources(label) if label in LEGACY else
-               {'extseries': extseries_sources, 'sectorbench': sectorbench_sources, 'prices': prices_sources}[label](network))
+               {'extseries': extseries_sources, 'sectorbench': sectorbench_sources, 'prices': prices_sources,
+                'pricefix': pricefix_sources}[label](network))
     states, details = run_sources(private, sources, previous, network)
     changes = private.changes()
     rejected, evidence = [], {}
-    if label == 'prices':  # only consistent KRX bars are published; a rejected stock and date stays as PG has it
+    if label in ('prices', 'pricefix'):  # only consistent KRX bars are published; a rejected one stays as PG has it
         day_bases = sources[0][1].bases
         rows = changes['stock_prices'][0]
         kept, rejected = validate_krx(rows, day_bases)

@@ -47,6 +47,22 @@ class _Run(jobs.Run):
             conn.execute('INSERT OR REPLACE INTO ext_series VALUES (?,?,?)', row)
 
 
+class _PriceRun(jobs.Run):
+    """A private file with a stock_prices table (no PG)."""
+
+    def __init__(self, rows):
+        self.tables = ('stock_prices',)
+        self.path = Path(tempfile.mkdtemp()) / 'run.db'
+        with sqlite3.connect(self.path) as conn:
+            conn.execute('CREATE TABLE stock_prices (id INTEGER PRIMARY KEY AUTOINCREMENT, stock_code TEXT, trade_date TEXT, '
+                         'open INT, high INT, low INT, close INT, volume INT, market_cap INT, shares INT, fetched_at TEXT, '
+                         'UNIQUE(stock_code, trade_date))')
+            conn.executemany('INSERT INTO stock_prices (stock_code, trade_date, open, high, low, close, volume) VALUES (?,?,?,?,?,?,?)', rows)
+
+    def connect(self):
+        return sqlite3.connect(self.path)
+
+
 class RunSourcesTest(unittest.TestCase):
     def test_failed_source_rolled_back_and_its_gap_kept(self):
         run = _Run([('wsts', '2026-08', 1.0), ('tw', '2026-08', 5.0)])
@@ -248,6 +264,45 @@ class PricesTest(unittest.TestCase):
         self.assertEqual(rows, [{'stock_code': '005930', 'trade_date': '2026-11-23', 'open': 1000, 'high': 1200, 'low': 990,
                                  'close': 1100, 'volume': 10, 'market_cap': 5000, 'shares': 5}])
         self.assertEqual(bases, {'005930': 1000})
+
+    def test_pricefix_corrects_traded_removes_no_trade_holds_unlisted(self):
+        import os
+        from unittest import mock
+        run = _PriceRun([('A', '2026-11-20', 1, 1, 1, 99, 5), ('Q', '2026-11-20', 1, 1, 1, 50, 0),
+                         ('U', '2026-11-20', 1, 1, 1, 70, 3), ('A', '2026-11-19', 1, 1, 1, 98, 5)])
+        rec = lambda code, close, vol: {'ISU_SRT_CD': code, 'TDD_CLSPRC': close, 'CMPPREVDD_PRC': '0', 'TDD_OPNPRC': close,  # noqa: E731
+                                        'TDD_HGPRC': close, 'TDD_LWPRC': close, 'ACC_TRDVOL': vol, 'MKTCAP': '1', 'LIST_SHRS': '1'}
+        listing = {'STK': [rec('A', '100', '7')] * 1 + [rec('S%03d' % i, '10', '1') for i in range(900)],
+                   'KSQ': [rec('Q', '50', '0'), rec('N', '20', '3')] + [rec('K%04d' % i, '10', '1') for i in range(1600)],
+                   'KNX': [rec('X%02d' % i, '10', '1') for i in range(60)]}
+        with mock.patch.dict(os.environ, {'PRICEFIX_DATE': '2026-11-20'}), \
+                mock.patch.object(jobs, 'krx_listing', return_value=listing):
+            (name, correct), = jobs.pricefix_sources(None)
+            status, detail, gaps = correct(run, {})
+        self.assertEqual((status, detail['no_trade_removed'], detail['held_not_listed']), ('partial', 1, ['U']))
+        with sqlite3.connect(run.path) as conn:
+            rows = dict(conn.execute("SELECT stock_code, close FROM stock_prices WHERE trade_date='2026-11-20'"))
+        self.assertEqual((rows['A'], rows.get('Q'), rows['U'], rows['N']), (100, None, 70, 20))  # U held unchanged
+        with sqlite3.connect(run.path) as conn:
+            stamp = conn.execute("SELECT fetched_at FROM stock_prices WHERE stock_code='A' AND trade_date='2026-11-20'").fetchone()
+            conn.execute("UPDATE stock_prices SET fetched_at='before' WHERE trade_date='2026-11-20'")
+        with mock.patch.dict(os.environ, {'PRICEFIX_DATE': '2026-11-20'}), \
+                mock.patch.object(jobs, 'krx_listing', return_value=listing):
+            (name, correct), = jobs.pricefix_sources(None)
+            correct(run, {})
+        with sqlite3.connect(run.path) as conn:  # the same KRX values again: nothing rewritten
+            self.assertEqual({r[0] for r in conn.execute("SELECT fetched_at FROM stock_prices WHERE trade_date='2026-11-20'")}, {'before'})
+
+    def test_pricefix_refuses_an_incomplete_listing(self):
+        import os
+        from unittest import mock
+        run = _PriceRun([('A', '2026-11-20', 1, 1, 1, 99, 5)])
+        with mock.patch.dict(os.environ, {'PRICEFIX_DATE': '2026-11-20'}), \
+                mock.patch.object(jobs, 'krx_listing', return_value={'STK': [], 'KSQ': [], 'KNX': []}):
+            (name, correct), = jobs.pricefix_sources(None)
+            status, detail, _ = correct(run, {})
+        self.assertEqual(status, 'error')
+        self.assertIn('incomplete', detail['error'])
 
     def test_closed_through(self):
         from datetime import datetime
