@@ -352,6 +352,18 @@ class PricesTest(unittest.TestCase):
         self.assertEqual(sweep.adjustments, [('B', '2026-11-17', 0.2, 100, 500)])
         self.assertEqual((status, gaps[0]['next_day']), ('partial', '2026-11-18'))  # the refused day is next, not skipped
 
+        def expired(day):
+            if day == '2026-11-18':
+                raise ValueError('Expecting value: line 13 column 1')  # KRX answered its login page
+            return days.get(day, {})
+        net.stopped.clear()
+        with mock.patch.dict(os.environ, {'PRICEFACTORS_FROM': '2026-11-17', 'PRICEFACTORS_TO': '2026-11-20'}), \
+                mock.patch.object(jobs, 'krx_listing', side_effect=expired), \
+                mock.patch.object(jobs, 'previous_listing', return_value=('2026-11-16', {'A': 'STK', 'B': 'STK'})):
+            (name, sweep), = jobs.pricefactors_sources(net, pg)
+            status, detail, gaps = sweep(None, {})
+        self.assertEqual((status, gaps[0]['next_day'], detail['stopped'][:10]), ('partial', '2026-11-18', 'ValueError'))
+
     def test_closed_through(self):
         from datetime import datetime
         from zoneinfo import ZoneInfo

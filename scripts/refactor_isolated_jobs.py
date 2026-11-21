@@ -636,7 +636,7 @@ def pricefactors_sources(network, pg):
         day = date.fromisoformat(progress.get('next_day') or os.environ.get('PRICEFACTORS_FROM') or PRICEFACTORS_FROM)
         last = date.fromisoformat(os.environ.get('PRICEFACTORS_TO') or '2026-11-20')
         previous = progress.get('previous_closes')
-        stats = {}
+        stats, stop_reason = {}, None
         if previous is None:  # the trading day before the first: its closes are the first day's previous closes
             prev_day, _ = previous_listing(day.isoformat())
             previous = ({r['ISU_SRT_CD']: _krx_number(r['TDD_CLSPRC']) for recs in krx_listing(prev_day).values() for r in recs}
@@ -647,7 +647,8 @@ def pricefactors_sources(network, pg):
                 continue
             try:
                 listing = krx_listing(day.isoformat())
-            except Refused:
+            except Exception as exc:  # noqa: BLE001 - a refusal or an expired KRX session (a login page, not JSON):
+                stop_reason = f'{type(exc).__name__}: {str(exc)[:120]}'  # stop here; the next run logs in again
                 break
             if any(host.endswith('krx.co.kr') for host in network.stopped):
                 break  # the library may swallow the refusal and return nothing: not a holiday, the same day next run
@@ -677,7 +678,7 @@ def pricefactors_sources(network, pg):
             day += timedelta(days=1)
         done = day > last
         detail = {'until': (day - timedelta(days=1)).isoformat(), 'done': done, 'factors': len(adjustments),
-                  'by_month': {m: dict(c) for m, c in stats.items()}}
+                  'by_month': {m: dict(c) for m, c in stats.items()}, **({'stopped': stop_reason} if stop_reason else {})}
         gaps = [] if done else [{'next_day': day.isoformat(), 'previous_closes': previous}]
         return ('ok' if done else 'partial'), detail, gaps
     sweep.adjustments = adjustments
