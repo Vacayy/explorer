@@ -26,7 +26,9 @@ from pathlib import Path
 # Jobs that only write their own tables run their unchanged legacy script on the private file (one source).
 LEGACY = {'credit': ('credit_bonds', 'credit_quotes', 'treasury_curve'),
           'retail': ('retail_flows', 'retail_snapshots'),
-          'twrevenue': ('tw_monthly_revenue',)}
+          'twrevenue': ('tw_monthly_revenue',),
+          'kalshi': ('kalshi_candles', 'kalshi_events'),  # pins are read from the projection (the owner's ledger)
+          'indexintraday': ('index_intraday',)}
 JOBS = ('extseries', 'sectorbench', 'prices', *LEGACY)
 # Requests per source host and run; a key starting with '.' covers every host under that domain.
 CAPS = {'extseries': {'': 30},
@@ -36,7 +38,9 @@ CAPS = {'extseries': {'': 30},
         # credit (macbook-source #3 6942831447): 34 companies' issuer scan, symbol search fallback, 10 FRED series
         'credit': {'': 20, 'scanner.tradingview.com': 150, 'symbol-search.tradingview.com': 60,
                    'data.tradingview.com': 150, 'fred.stlouisfed.org': 12},
-        'retail': {'': 20}, 'twrevenue': {'': 20},
+        'retail': {'': 20}, 'twrevenue': {'': 20}, 'indexintraday': {'': 20},
+        # four categories, up to 18 trending events and pinned-event lookups/candles
+        'kalshi': {'': 20, 'api.elections.kalshi.com': 60},
         # 14 KR ETFs + KOSPI one by one, the US ETF batch, then sector info of followed tickers due for refresh
         'sectorbench': {'': 20, '.yahoo.com': 120}}
 TABLES = {**LEGACY, 'extseries': ('ext_series', 'expectation_claims'), 'prices': ('stock_prices',),
