@@ -256,7 +256,8 @@ class PricesTest(unittest.TestCase):
         fetch = mock.Mock(side_effect=lambda day, market: Frame([record('005930', '1,100', '10')] if market == 'STK'
                                                                  else [record('123450', '0', '0')] if market == 'KSQ' else []))
         core = types.SimpleNamespace(**{'전종목시세': lambda: types.SimpleNamespace(fetch=fetch)})
-        with mock.patch.dict(sys.modules, {'pykrx': types.ModuleType('pykrx'), 'pykrx.website': types.ModuleType('w'),
+        with mock.patch.object(jobs, 'krx_login'), \
+                mock.patch.dict(sys.modules, {'pykrx': types.ModuleType('pykrx'), 'pykrx.website': types.ModuleType('w'),
                                            'pykrx.website.krx': types.ModuleType('k'),
                                            'pykrx.website.krx.market': types.SimpleNamespace(core=core),
                                            'pykrx.website.krx.market.core': core}):
@@ -344,7 +345,7 @@ class PricesTest(unittest.TestCase):
                 net.stopped['data.krx.co.kr'] = 'data.krx.co.kr reached the request cap 10'
                 return {}
             return days.get(day, {})
-        with mock.patch.dict(os.environ, {'PRICEFACTORS_FROM': '2026-11-17', 'PRICEFACTORS_TO': '2026-11-20'}), \
+        with mock.patch.dict(os.environ, {'PRICEFACTORS_FROM': '2026-11-17', 'PRICEFACTORS_TO': '2026-11-20', 'PRICEFACTORS_PAUSE': '0'}), \
                 mock.patch.object(jobs, 'krx_listing', side_effect=listing), \
                 mock.patch.object(jobs, 'previous_listing', return_value=('2026-11-16', {'A': 'STK', 'B': 'STK'})):
             (name, sweep), = jobs.pricefactors_sources(net, pg)
@@ -357,12 +358,45 @@ class PricesTest(unittest.TestCase):
                 raise ValueError('Expecting value: line 13 column 1')  # KRX answered its login page
             return days.get(day, {})
         net.stopped.clear()
-        with mock.patch.dict(os.environ, {'PRICEFACTORS_FROM': '2026-11-17', 'PRICEFACTORS_TO': '2026-11-20'}), \
+        with mock.patch.dict(os.environ, {'PRICEFACTORS_FROM': '2026-11-17', 'PRICEFACTORS_TO': '2026-11-20', 'PRICEFACTORS_PAUSE': '0'}), \
                 mock.patch.object(jobs, 'krx_listing', side_effect=expired), \
                 mock.patch.object(jobs, 'previous_listing', return_value=('2026-11-16', {'A': 'STK', 'B': 'STK'})):
             (name, sweep), = jobs.pricefactors_sources(net, pg)
             status, detail, gaps = sweep(None, {})
         self.assertEqual((status, gaps[0]['next_day'], detail['stopped'][:10]), ('partial', '2026-11-18', 'ValueError'))
+        self.assertEqual(gaps[0]['last_done'], '2026-11-17')
+        # the next run continues from the stored place (no PRICEFACTORS_FROM), and finishes
+        with mock.patch.dict(os.environ, {'PRICEFACTORS_TO': '2026-11-18', 'PRICEFACTORS_PAUSE': '0'}), \
+                mock.patch.object(jobs, 'krx_listing', side_effect=lambda d: {'STK': [rec('A', '104', '2'), rec('B', '111', '1')]}):
+            (name, sweep), = jobs.pricefactors_sources(net, pg)
+            status, detail, gaps = sweep(None, {'gaps': gaps})
+        self.assertEqual((status, detail['until'], gaps), ('ok', '2026-11-18', [{'last_done': '2026-11-18', 'done': True}]))
+
+    def test_sweep_keeps_its_place_when_the_first_lookup_fails(self):
+        import os
+        from unittest import mock
+        prior = {'gaps': [{'last_done': '2021-10-22', 'next_day': '2021-10-25', 'previous_closes': {'A': 1}}]}
+        with mock.patch.dict(os.environ, {'PRICEFACTORS_FROM': '2021-10-23', 'PRICEFACTORS_PAUSE': '0'}), \
+                mock.patch.object(jobs, 'previous_listing', side_effect=jobs.KrxUnavailable('KRX login failed')):
+            (name, sweep), = jobs.pricefactors_sources(jobs.Network({'': 5}), None)
+            status, detail, gaps = sweep(None, prior)
+        self.assertEqual((status, gaps[0]['next_day']), ('error', '2021-10-23'))  # nothing walked: the place is kept
+
+    def test_krx_login_cooldown_makes_no_request(self):
+        import os
+        from unittest import mock
+        mark = Path(tempfile.mkdtemp()) / 'cooldown'
+        mark.write_text('2026-11-21 07:41:51 UTC (JSONDecodeError)')
+        with mock.patch.object(jobs, 'KRX_COOLDOWN', mark):
+            os.utime(mark, (0, 0))  # however old: held until an operator removes the mark
+            with self.assertRaises(jobs.KrxUnavailable):
+                jobs.krx_listing('2026-11-23')
+            with mock.patch.dict(os.environ, {'KRX_ID': 'x', 'KRX_PW': 'y'}):
+                try:
+                    jobs.legacy_sources('retail')
+                except Exception:  # noqa: BLE001 - only the account removal matters here
+                    pass
+                self.assertNotIn('KRX_ID', os.environ)  # retail runs without the KRX account while held
 
     def test_closed_through(self):
         from datetime import datetime

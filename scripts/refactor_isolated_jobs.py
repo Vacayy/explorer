@@ -538,8 +538,39 @@ HISTORY_SOURCE = {'prices': KRX_SOURCE, 'pricefix': 'krx-correction:전종목시
                   'pricefactors': 'krx:전종목시세 base vs previous close'}
 
 
+# A failed KRX login is remembered on the shared volume (/trial, every job's) and no job logs in again until an operator
+# removes the mark: repeated failed logins can lock the account or get the address blocked (retail and prices share it).
+KRX_COOLDOWN = Path(os.environ.get('KRX_LOGIN_COOLDOWN', '/trial/krx-login-hold'))
+
+
+class KrxUnavailable(RuntimeError):
+    """KRX's data system refused the login: no job logs in or requests anything until the hold is removed."""
+
+
+def krx_login():
+    """The KRX session, or KrxUnavailable (a failed login leaves the hold mark)."""
+    if KRX_COOLDOWN.exists():
+        raise KrxUnavailable(f'KRX login held since {KRX_COOLDOWN.read_text().strip()}; an operator removes {KRX_COOLDOWN}')
+    if not os.environ.get('KRX_ID') or not os.environ.get('KRX_PW'):  # the scheduler withholds it while held
+        raise KrxUnavailable('no KRX account in this run (held by the operator)')
+    try:
+        from pykrx.website.comm import auth  # importing pykrx logs in with KRX_ID/KRX_PW
+        logged_in = auth._auth_session is not None
+    except Exception as exc:  # noqa: BLE001 - a login page instead of JSON, a network error
+        logged_in, reason = False, f'{type(exc).__name__}: {str(exc)[:80]}'
+    else:
+        reason = 'no session'
+    if not logged_in:
+        try:
+            KRX_COOLDOWN.write_text(f'{_now()} UTC ({reason})')
+        except OSError:
+            pass
+        raise KrxUnavailable(f'KRX login failed ({reason})')
+
+
 def krx_listing(day):
     """{market: KRX market-wide records of `day`} for KOSPI, KOSDAQ and KONEX, every listed stock (traded or not)."""
+    krx_login()
     from pykrx.website.krx.market import core
     return {market: core.전종목시세().fetch(day.replace('-', ''), market).to_dict('records') for market in KRX_MARKETS}
 
@@ -632,15 +663,31 @@ def pricefactors_sources(network, pg):
     adjustments = []
 
     def sweep(_run, prior):
+        # Progress lives in collect_source_state (job pricefactors, source krx_sweep), gaps_json:
+        # [{'last_done': the last day walked, 'next_day': where the next run starts, 'previous_closes': its closes}].
+        # PRICEFACTORS_FROM overrides where to start (the first run, or a deliberate restart).
         progress = next((g for g in prior.get('gaps') or [] if isinstance(g, dict) and 'next_day' in g), {})
-        day = date.fromisoformat(progress.get('next_day') or os.environ.get('PRICEFACTORS_FROM') or PRICEFACTORS_FROM)
+        finished = next((g for g in prior.get('gaps') or [] if isinstance(g, dict) and g.get('done')), None)
+        if finished and not os.environ.get('PRICEFACTORS_FROM'):
+            return 'ok', {'done': True, 'until': finished.get('last_done')}, [finished]
+        start = os.environ.get('PRICEFACTORS_FROM') or progress.get('next_day') or PRICEFACTORS_FROM
+        day = date.fromisoformat(start)
         last = date.fromisoformat(os.environ.get('PRICEFACTORS_TO') or '2026-11-20')
-        previous = progress.get('previous_closes')
+        pause = float(os.environ.get('PRICEFACTORS_PAUSE', '2'))
+        previous = progress.get('previous_closes') if start == progress.get('next_day') else None
+        last_done = progress.get('last_done') if start == progress.get('next_day') else None
         stats, stop_reason = {}, None
+
+        def kept(reason):  # stop without losing the place
+            return 'error', {'error': reason, 'until': last_done}, [{'last_done': last_done, 'next_day': day.isoformat(),
+                                                                       'previous_closes': previous}]
         if previous is None:  # the trading day before the first: its closes are the first day's previous closes
-            prev_day, _ = previous_listing(day.isoformat())
-            previous = ({r['ISU_SRT_CD']: _krx_number(r['TDD_CLSPRC']) for recs in krx_listing(prev_day).values() for r in recs}
-                        if prev_day else {})
+            try:
+                prev_day, _ = previous_listing(day.isoformat())
+                previous = ({r['ISU_SRT_CD']: _krx_number(r['TDD_CLSPRC']) for recs in krx_listing(prev_day).values()
+                             for r in recs} if prev_day else {})
+            except Exception as exc:  # noqa: BLE001
+                return kept(f'{type(exc).__name__}: {str(exc)[:120]}')
         while day <= last:
             if day.weekday() >= 5:
                 day += timedelta(days=1)
@@ -675,11 +722,16 @@ def pricefactors_sources(network, pg):
                 year['not_listed'] += sum(1 for c in stored if c not in closes)
                 year['missing'] += sum(1 for c in traded if c not in stored)
                 previous = closes
+                last_done = day.isoformat()
+                time.sleep(pause)
             day += timedelta(days=1)
         done = day > last
-        detail = {'until': (day - timedelta(days=1)).isoformat(), 'done': done, 'factors': len(adjustments),
+        if not last_done and stop_reason:
+            return kept(stop_reason)
+        detail = {'until': last_done, 'next_day': day.isoformat(), 'done': done, 'factors': len(adjustments),
                   'by_month': {m: dict(c) for m, c in stats.items()}, **({'stopped': stop_reason} if stop_reason else {})}
-        gaps = [] if done else [{'next_day': day.isoformat(), 'previous_closes': previous}]
+        gaps = [{'last_done': last_done, 'done': True}] if done else [
+            {'last_done': last_done, 'next_day': day.isoformat(), 'previous_closes': previous}]
         return ('ok' if done else 'partial'), detail, gaps
     sweep.adjustments = adjustments
     return [('krx_sweep', sweep)]
@@ -803,6 +855,9 @@ def mirror(pg, tables, since=None):
 
 def legacy_sources(label):
     """The job's unchanged script as one source, on the private file; its own job record decides the outcome."""
+    if KRX_COOLDOWN.exists():  # the retail job logs in to KRX on its own (pykrx): without the account it skips that part
+        os.environ.pop('KRX_ID', None)
+        os.environ.pop('KRX_PW', None)
     import database
     import refactor_collect_job as job
     import refactor_collect_trial as trial

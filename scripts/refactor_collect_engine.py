@@ -102,6 +102,8 @@ SECRETS_FILE = HOME / 'server-data/review/refactor-single/collect-secrets.env'
 SECRET_KEYS = ('DART_API_KEY', 'DATA_GO_KR_KEY', 'FRED_API_KEY', 'ALPHAVANTAGE_API_KEY', 'FMP_API_KEY', 'SEC_USER_AGENT',
                'KRX_ID', 'KRX_PW')
 SEND_KEYS = ('TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID')
+# Held after a failed KRX login (a possible account lock or address block); only an operator removes it.
+KRX_HOLD = HOME / 'server-data/review/refactor-single/krx-login-hold'
 
 
 def secrets(keys=SECRET_KEYS):
@@ -200,6 +202,8 @@ def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=No
     env += [f'{key}={os.environ[key]}' for key in FORWARDED if os.environ.get(key)]
     env += [f'{key}={value}' for key, value in (extra_env or {}).items()]  # this job's own caps
     keys = SECRET_KEYS + SEND_KEYS if job in {'briefing', 'observeweekly', 'observealerts', 'pfintraday', 'pfclose'} else SECRET_KEYS
+    if KRX_HOLD.exists():  # a failed KRX login is held by the operator: no container gets the account, so none logs in
+        keys = tuple(k for k in keys if k not in ('KRX_ID', 'KRX_PW'))
     found = secrets(keys)
     if job in {'briefing', 'observeweekly', 'observealerts', 'pfintraday', 'pfclose'} and any(not found.get(key) for key in SEND_KEYS):
         raise ValueError('Telegram send credentials are missing')
