@@ -185,6 +185,16 @@ def extseries_sources(network):
             if status == 'error':
                 raise RuntimeError(result.get('error') or 'source reported an error')
             return ('partial' if status == 'partial' else 'ok'), detail, list(result.get('missing') or [])
+
+        def pending(run):
+            """What a failed source leaves unfilled: each of its series after its last stored month."""
+            label = getattr(importlib.import_module(f'pipeline.{name}'), 'SOURCE', None)
+            if not label:
+                return []
+            with sqlite3.connect(run.path) as conn:
+                return [f'{series} after {last}' for series, last in conn.execute(
+                    'SELECT series, max(period) FROM ext_series WHERE source LIKE ? GROUP BY series', (label + '%',))]
+        call.pending = pending
         return call
     return [(name, source(name)) for name in SOURCES]
 
@@ -271,7 +281,8 @@ def run_sources(run, sources, previous, network=None):
             error = '; '.join([f'{type(exc).__name__}: {exc}', *stops])
             states[name] = {'status': 'error', 'last_ok_at': prior.get('last_ok_at'),
                             'failing_since': prior.get('failing_since') or now, 'last_error': error,
-                            'attempts': prior.get('attempts', 0) + 1, 'gaps': prior.get('gaps') or ['all']}
+                            'attempts': prior.get('attempts', 0) + 1,
+                            'gaps': (getattr(call, 'pending', None) or (lambda _r: []))(run) or prior.get('gaps') or ['all']}
             details[name] = {'error': error[:200]}
             continue
         states[name] = {'status': status, 'last_ok_at': now,

@@ -68,6 +68,15 @@ class RunSourcesTest(unittest.TestCase):
         self.assertEqual((states['tw']['status'], states['tw']['failing_since'], states['tw']['attempts']),
                          ('error', '2026-11-17 01:00:00', 4))  # the gap keeps its start across runs and days
 
+    def test_failed_source_names_what_it_leaves_unfilled(self):
+        run = _Run([('tw', '2026-09', 5.0)])
+
+        def tw(_r, _prior):
+            raise jobs.Refused('service.moea.gov.tw answered 403')
+        tw.pending = lambda r: ['tw after 2026-09']
+        states, _ = jobs.run_sources(run, [('tw', tw)], {})
+        self.assertEqual(states['tw']['gaps'], ['tw after 2026-09'])
+
     def test_rerun_after_recovery_publishes_the_gap_once(self):
         run = _Run([('tw', '2026-08', 5.0), ('tw', '2026-09', 6.0)])  # the earlier run's success is already seeded
 
