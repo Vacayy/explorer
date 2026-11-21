@@ -37,6 +37,9 @@ TICK_SECONDS = 20
 # Jobs on the isolated path (refactor_isolated_jobs.py): a failed source publishes nothing and holds only itself.
 ISOLATED_JOBS = {'extseries', 'sectorbench'}
 FIRST = ('usbriefing',)
+# A hold still on at 06:20 means the 06:30 US briefing will not run: the operator is told once that day (never acted on).
+BRIEFING_ALERT = ((6, 20), (6, 30))
+BRIEFING_ALERT_MARK = Path(os.environ.get('COLLECT_BRIEFING_ALERT_MARK', Path.home() / 'server-data/review/refactor-single/collect-scheduler.briefing-alert'))
 # One heavy job at a time on the 7.7GiB VM: the scheduler runs one job at a time, and a heavy job also takes the PG
 # heavy lock the projection builder takes (refactor_collect_job.HEAVY, pipeline.postgres_heavy_lock).
 JOB_MEMORY = {'proposals': '3584m',  # measured peak 2.9GiB (weekly); every other job 2g
@@ -335,9 +338,48 @@ def wait_ready(log=print, every=30):
         log(f'removed left-over job container {name}')
 
 
+def _send_operator(text):
+    """One Telegram message to the operator with the collection send credentials; True when Telegram accepted it."""
+    import json
+    import urllib.request
+    import refactor_collect_engine as engine
+    found = engine.secrets(engine.SEND_KEYS)
+    token, chat = found.get('TELEGRAM_BOT_TOKEN'), found.get('TELEGRAM_CHAT_ID')
+    if not token or not chat:
+        return False
+    request = urllib.request.Request(f'https://api.telegram.org/bot{token}/sendMessage',
+                                     data=json.dumps({'chat_id': chat, 'text': text}).encode(),
+                                     headers={'Content-Type': 'application/json'})
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return response.status == 200
+    except OSError:
+        return False
+
+
+def alert_held_briefing(now=None, log=print, send=_send_operator):
+    """While collection stays held after a failure: once a day between 06:20 and the US briefing's 06:30 slot, tell
+    the operator that the briefing will not run. It only tells; the hold and the briefing are left to the operator
+    (runbook-usbriefing-under-hold.md). A failed send is tried again on the next minute of the window."""
+    now = now or datetime.now(SEOUL)
+    if not HOLD.exists() or not BRIEFING_ALERT[0] <= (now.hour, now.minute) < BRIEFING_ALERT[1]:
+        return False
+    day = now.date().isoformat()
+    if BRIEFING_ALERT_MARK.exists() and BRIEFING_ALERT_MARK.read_text().strip() == day:
+        return False
+    held = HOLD.read_text().strip()[:120]
+    sent = send(f'[수집 보류] {held}\n06:30 미국장 브리핑이 이대로는 실행되지 않습니다. 보류를 자동으로 풀거나 브리핑을 '
+                f'실행하지 않았습니다.\n절차: ~/server-data/review/refactor-single/runbook-usbriefing-under-hold.md')
+    if sent:
+        BRIEFING_ALERT_MARK.write_text(day)
+    log(f'briefing hold alert {"sent" if sent else "not sent"} ({held})')
+    return sent
+
+
 def run_loop(enabled, log=print):
     while HOLD.exists():
         log('collection held: inspect the previous work copy and run before clearing the hold')
+        alert_held_briefing(log=log)
         time.sleep(60)
     wait_ready(log)
     jobs, _catchup = load_jobs()
@@ -355,6 +397,7 @@ def run_loop(enabled, log=print):
         if queue:
             if not run_job(queue.pop(0), log):
                 while HOLD.exists():
+                    alert_held_briefing(log=log)
                     time.sleep(60)  # no later job can publish a failed run's partial work
         else:
             time.sleep(TICK_SECONDS)

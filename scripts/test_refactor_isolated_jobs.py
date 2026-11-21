@@ -149,5 +149,42 @@ class SchedulerTest(unittest.TestCase):
                 self.assertEqual(scheduler._run_one('extseries', log=lambda *_: None), expected, outcome)
 
 
+class BriefingHoldAlertTest(unittest.TestCase):
+    def test_once_a_day_in_the_window_and_only_while_held(self):
+        from datetime import datetime
+        from unittest import mock
+        import refactor_collect_scheduler as scheduler
+        directory = Path(tempfile.mkdtemp())
+        hold, mark = directory / 'hold', directory / 'mark'
+        sent = []
+
+        def send(text):
+            sent.append(text)
+            return True
+        at = lambda hm: datetime(2026, 11, 22, *hm, tzinfo=scheduler.SEOUL)  # noqa: E731
+        with mock.patch.object(scheduler, 'HOLD', hold), mock.patch.object(scheduler, 'BRIEFING_ALERT_MARK', mark):
+            self.assertFalse(scheduler.alert_held_briefing(at((6, 20)), log=lambda *_: None, send=send))  # not held
+            hold.write_text('extseries 2026-11-21 21:00:00 UTC')
+            self.assertFalse(scheduler.alert_held_briefing(at((6, 19)), log=lambda *_: None, send=send))
+            self.assertTrue(scheduler.alert_held_briefing(at((6, 20)), log=lambda *_: None, send=send))
+            self.assertFalse(scheduler.alert_held_briefing(at((6, 25)), log=lambda *_: None, send=send))  # once
+            self.assertFalse(scheduler.alert_held_briefing(at((6, 30)), log=lambda *_: None, send=send))
+            self.assertTrue(hold.exists())  # the hold is never touched
+        self.assertEqual(len(sent), 1)
+        self.assertIn('extseries', sent[0])
+
+    def test_failed_send_is_tried_again(self):
+        from datetime import datetime
+        from unittest import mock
+        import refactor_collect_scheduler as scheduler
+        directory = Path(tempfile.mkdtemp())
+        (directory / 'hold').write_text('prices')
+        at = datetime(2026, 11, 22, 6, 21, tzinfo=scheduler.SEOUL)
+        with mock.patch.object(scheduler, 'HOLD', directory / 'hold'), \
+                mock.patch.object(scheduler, 'BRIEFING_ALERT_MARK', directory / 'mark'):
+            self.assertFalse(scheduler.alert_held_briefing(at, log=lambda *_: None, send=lambda _t: False))
+            self.assertTrue(scheduler.alert_held_briefing(at, log=lambda *_: None, send=lambda _t: True))
+
+
 if __name__ == '__main__':
     unittest.main()
