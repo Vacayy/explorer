@@ -37,7 +37,8 @@ LEGACY = {'credit': ('credit_bonds', 'credit_quotes', 'treasury_curve'),
           'market': ('cache_meta', 'market_indicators', 'us_prices'),
           'krmovers': ('cache_meta', 'kr_movers'),
           'usbriefing': ('cache_meta', 'macro_news', 'macro_signals', 'market_indicators', 'us_briefings',
-                         'us_macro_issues', 'us_movers', 'us_ticker_news')}
+                         'us_macro_issues', 'us_movers', 'us_ticker_news'),
+          'markettoday': ('market_today', 'market_today_links', 'narrative_candidates')}
 JOBS = ('extseries', 'sectorbench', 'prices', 'pricefix', 'pricefactors', *LEGACY)
 # Requests per source host and run; a key starting with '.' covers every host under that domain.
 CAPS = {'extseries': {'': 30},
@@ -62,6 +63,8 @@ CAPS = {'extseries': {'': 30},
         'krmovers': {'': 10, 'data.krx.co.kr': 12, 'raw.githubusercontent.com': 6},
         # movers and their headlines (Yahoo), FRED for the macro light, a dozen news and official feeds
         'usbriefing': {'': 20, '.yahoo.com': 120, 'api.stlouisfed.org': 20, 'fred.stlouisfed.org': 20},
+        # the slot's index values (its documents are read from the projection)
+        'markettoday': {'': 20, '.yahoo.com': 40},
         # 14 KR ETFs + KOSPI one by one, the US ETF batch, then sector info of followed tickers due for refresh
         # + the followed US tickers' daily tail (143 active, about two requests each)
         'sectorbench': {'': 20, '.yahoo.com': 450}}
@@ -951,6 +954,8 @@ def legacy_sources(label):
         os.chdir('/app')
         if label == 'usbriefing':  # the pricing ledger extraction runs afterwards on the computation path
             script.pricing = job._defer_pricing()
+        if label == 'markettoday':  # so does the 16:00 wrap's big picture event check
+            script.event = job._defer_big_picture_event()
         refused = None
         if label in job.TABLE_MODEL_CAPS:  # model calls: recorded in llm_calls and capped per run, as on the shared path
             from pipeline import llm, postgres_llm_calls
@@ -973,6 +978,10 @@ def legacy_sources(label):
         if found is None or found[0] == 'error':
             raise RuntimeError(f"job record {record}: {found[1][:150] if found else 'missing'}")
         detail = {'record': found[0], 'summary': (found[1] or '')[:200]}
+        if found[0] == 'skipped':  # an expected no-op (no slot due) may not have changed anything
+            if any(rows or gone for rows, gone in run.changes().values()):
+                raise RuntimeError(f'{record} skipped after writing its tables')
+            return 'ok', detail, []
         if label == 'usbriefing':  # as on the shared path: a briefing without synthesis, or an unexplained partial, fails
             with run.connect() as conn:
                 if found[0] == 'partial':
@@ -980,7 +989,7 @@ def legacy_sources(label):
                 else:
                     job.require_us_briefing_synthesis(conn, started)
         return ('partial' if found[0] == 'partial' else 'ok'), detail, []
-    script.pricing = None
+    script.pricing = script.event = None
     return [('script', script)]
 
 
@@ -1149,6 +1158,9 @@ def run(label):
     if getattr(sources[0][1], 'pricing', None) and run_id is not None and outcome.startswith(('applied', 'partial')):
         import refactor_collect_job as job
         after['pricing'] = job._run_pricing()  # its failure never changes the briefing
+    if getattr(sources[0][1], 'event', None) and run_id is not None and outcome.startswith(('applied', 'partial')):
+        import refactor_collect_job as job
+        after['big_picture_event'] = job._run_big_picture_event()  # nor does this change the slot
     calls = pg.execute('SELECT count(*) FROM llm_calls WHERE created_at>=%s', (started,)).fetchone()[0]
     print(json.dumps({'run': run_id, 'label': label, 'outcome': outcome, 'requests_by_host': requests,
                       'statuses': dict(network.statuses), 'model_calls': calls, **after}, ensure_ascii=False, default=str))

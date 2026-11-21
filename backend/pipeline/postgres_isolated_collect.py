@@ -31,7 +31,8 @@ KEYS = {'ext_series': ('series', 'period'),
         'index_intraday': ('key', 'trade_date', 'hhmm'),
         'trade_stats': ('hs_code', 'period'), 'trade_beneficiaries': ('hs_code', 'name'),
         'us_prices': ('stock_code', 'trade_date'), 'kr_movers': ('trade_date', 'rank'),
-        'us_briefings': ('trade_date',), 'us_macro_issues': ('trade_date',), 'us_movers': ('trade_date', 'rank')}
+        'us_briefings': ('trade_date',), 'us_macro_issues': ('trade_date',), 'us_movers': ('trade_date', 'rank'),
+        'market_today': ('trade_date', 'slot'), 'market_today_links': ('id',), 'narrative_candidates': ('tag',)}
 # Tables an isolated job writes by key that the shared collector file's jobs also write (signals: call momentum on
 # that path, the 52-week highs of the days the prices job publishes; cache_meta and market_indicators: the market job
 # and the US briefing here; macro news, macro signals and ticker news: the US briefing here, the chain's macro news

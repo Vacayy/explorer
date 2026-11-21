@@ -962,7 +962,7 @@ class CollectionTargetTest(unittest.TestCase):
     def test_close_partial_does_not_release_other_jobs_failures(self):
         with patch.object(engine, 'run', return_value=(0, '{"outcome":"partial: portfolio close reported errors"}')):
             self.assertTrue(scheduler._run_one('pfclose', lambda *_: None))
-            self.assertFalse(scheduler._run_one('markettoday', lambda *_: None))
+            self.assertFalse(scheduler._run_one('usfund', lambda *_: None))
         with patch.object(engine, 'run', return_value=(0, '{"outcome":"partial: portfolio close model cap reached"}')):
             self.assertTrue(scheduler._run_one('pfclose', lambda *_: None))
         with patch.object(engine, 'run', return_value=(0, '{"outcome":"partial: unknown"}')):
@@ -994,7 +994,7 @@ class CollectionTargetTest(unittest.TestCase):
                     patch.object(engine, 'run', return_value=(0, json.dumps({'outcome': outcome}))):
                 self.assertEqual(scheduler._run_one('usbriefing', lambda *_: None), accepted)
         with patch.object(engine, 'run', return_value=(0, '{"outcome":"partial: unknown"}')):
-            self.assertFalse(scheduler._run_one('markettoday', lambda *_: None))
+            self.assertFalse(scheduler._run_one('usfund', lambda *_: None))
 
     def test_send_secrets_require_explicit_key_selection(self):
         with TemporaryDirectory() as directory:

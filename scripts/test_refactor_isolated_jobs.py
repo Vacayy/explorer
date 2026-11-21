@@ -219,6 +219,33 @@ class SharedPathGuardTest(unittest.TestCase):
         self.assertEqual(n, 3)
 
 
+class LegacySkipTest(unittest.TestCase):
+    def test_a_skipped_slot_that_wrote_its_tables_fails(self):
+        import os
+        from unittest import mock
+        import refactor_collect_job as job
+        run = _PriceRun([])
+        run.before = {'stock_prices': {}}
+        with sqlite3.connect(run.path) as conn:
+            conn.execute('CREATE TABLE job_runs (id INTEGER PRIMARY KEY, job TEXT, status TEXT, summary TEXT, ran_at TEXT)')
+
+        def script(*_argv, wrote):
+            with sqlite3.connect(run.path) as conn:
+                conn.execute("INSERT INTO job_runs (job, status, summary, ran_at) VALUES ('market_today','skipped','',datetime('now','+1 minute'))")
+                if wrote:
+                    conn.execute("INSERT INTO stock_prices (stock_code, trade_date, close) VALUES ('A','2026-11-23',1)")
+        for wrote in (False, True):
+            with self.subTest(wrote=wrote), mock.patch.object(job.trial, '_run_script', lambda *a, w=wrote: script(*a, wrote=w)), \
+                    mock.patch.object(job, '_defer_big_picture_event', return_value=[]), mock.patch.object(os, 'chdir'), \
+                    mock.patch.object(job, 'TABLE_MODEL_CAPS', {}):
+                (name, call), = jobs.legacy_sources('markettoday')
+                if wrote:
+                    with self.assertRaises(RuntimeError):
+                        call(run, {})
+                else:
+                    self.assertEqual(call(run, {})[0], 'ok')
+
+
 class SchedulerTest(unittest.TestCase):
     def test_isolated_outcomes_do_not_hold(self):
         import refactor_collect_scheduler as scheduler

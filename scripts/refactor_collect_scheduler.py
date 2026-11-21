@@ -36,7 +36,7 @@ JOB_SECONDS = int(os.environ.get('COLLECT_JOB_SECONDS', '3600'))  # one job's ti
 TICK_SECONDS = 20
 # Jobs on the isolated path (refactor_isolated_jobs.py): a failed source publishes nothing and holds only itself.
 ISOLATED_JOBS = {'extseries', 'sectorbench', 'prices', 'credit', 'retail', 'twrevenue', 'kalshi', 'indexintraday', 'trade',
-                 'market', 'krmovers', 'usbriefing'}
+                 'market', 'krmovers', 'usbriefing', 'markettoday'}
 FIRST = ('usbriefing',)
 # A hold still on at 06:20 means the 06:30 US briefing will not run: the operator is told once that day (never acted on).
 BRIEFING_ALERT = ((6, 20), (6, 30))
