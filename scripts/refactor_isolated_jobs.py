@@ -23,12 +23,14 @@ from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-JOBS = ('extseries', 'sectorbench')
+JOBS = ('extseries', 'sectorbench', 'prices')
 # Requests per source host and run; a key starting with '.' covers every host under that domain.
 CAPS = {'extseries': {'': 30},
+        # Naver realtime quotes in batches of 200 codes (about 15), then Yahoo for the gaps of the last 10 days
+        'prices': {'': 20, 'polling.finance.naver.com': 30, '.finance.yahoo.com': 300},
         # 14 KR ETFs + KOSPI one by one, the US ETF batch, then sector info of followed tickers due for refresh
         'sectorbench': {'': 20, '.yahoo.com': 120}}
-TABLES = {'extseries': ('ext_series', 'expectation_claims'),
+TABLES = {'extseries': ('ext_series', 'expectation_claims'), 'prices': ('stock_prices',),
           'sectorbench': ('sector_benchmark_prices', 'sector_index', 'us_ticker_sectors')}
 BACKFILL_AFTER_DAYS = 45  # a source failing longer than its daily window re-reads its whole history once it answers
 SHRINK_LIMIT = 0.5
@@ -111,13 +113,13 @@ class Network:
 class Run:
     """The private SQLite file of one run, with per-source checkpoints."""
 
-    def __init__(self, pg, tables):
+    def __init__(self, pg, tables, since=None):
         from pipeline import postgres_isolated_collect as iso
         from pipeline.postgres_id_bands import band
         self.tables = tables
         self.path = Path(tempfile.mkdtemp(prefix='isolated-')) / 'run.db'
         with sqlite3.connect(self.path) as conn:
-            self.seeded = iso.seed(pg, conn, tables)
+            self.seeded = iso.seed(pg, conn, tables, since)
             band(conn)  # new rows of an id table take the candidate's band (pipeline.postgres_id_bands)
             self.before = {t: iso.rows_by_key(conn, t) for t in tables}
 
@@ -261,6 +263,137 @@ def sectorbench_sources(network):
 
 
 # Parts of the legacy job not moved: their table is published whole from the shared collector file by other jobs.
+# ---------- prices: KRX daily closes by stock and date ----------
+
+PRICE_WINDOW_DAYS = 45   # rows seeded, compared and mirrored (the gap window and the previous close fit in it)
+PRICE_GAP_DAYS = 10      # the legacy daily repair window
+PRICE_GIVE_UP = 5        # a stock and date Yahoo never has after this many tries no longer makes the run partial
+PRICE_LIMIT = 0.30       # KRX daily price limit (a listing day has no previous close and is not checked)
+
+
+def _kst_now():
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo('Asia/Seoul'))
+
+
+def price_window_start():
+    return (_kst_now().date() - timedelta(days=PRICE_WINDOW_DAYS)).isoformat()
+
+
+def closed_through(now=None):
+    """The last KST day whose regular-session close is final (15:30 close, 10 minutes' margin)."""
+    now = now or _kst_now()
+    return (now.date() if (now.hour, now.minute) >= (15, 40) else now.date() - timedelta(days=1)).isoformat()
+
+
+def price_gaps(conn, today=None):
+    """{stock: [missing dates]} over the last PRICE_GAP_DAYS trading days (KOSPI calendar) for stocks quoted in the last
+    30 days: the legacy daily repair's own selection."""
+    today = today or _kst_now().date()
+    since = (today - timedelta(days=PRICE_GAP_DAYS)).isoformat()
+    days = [r[0] for r in conn.execute("SELECT DISTINCT snapshot_date FROM market_indicators WHERE indicator='index_kospi' "
+                                       'AND snapshot_date >= ? AND snapshot_date < ?', (since, today.isoformat()))]
+    have = {(c, d) for c, d in conn.execute('SELECT stock_code, trade_date FROM stock_prices WHERE trade_date >= ?', (since,))}
+    active = {r[0] for r in conn.execute('SELECT DISTINCT stock_code FROM stock_prices WHERE trade_date >= ?',
+                                         ((today - timedelta(days=30)).isoformat(),))}
+    out = {}
+    for code in sorted(active):
+        missing = [d for d in sorted(days) if (code, d) not in have]
+        if missing:
+            out[code] = missing
+    return out
+
+
+def validate_prices(conn, rows, through=None):
+    """(rows to publish, rejected [(stock, date, reason)]): a close is published only when it is final, positive,
+    inside its own day's range and within the daily limit of the previous stored close."""
+    through = through or closed_through()
+    previous = {}
+    for code, day, close in conn.execute('SELECT stock_code, trade_date, close FROM stock_prices ORDER BY stock_code, trade_date'):
+        previous.setdefault(code, []).append((day, close))
+    kept, rejected = [], []
+    for row in rows:
+        code, day, close = row['stock_code'], row['trade_date'], row['close']
+        o, h, low = row.get('open'), row.get('high'), row.get('low')
+        prior = [c for d, c in previous.get(code, []) if d < day and c]
+        reason = None
+        if day > through:
+            reason = 'not closed yet'
+        elif date.fromisoformat(day).weekday() >= 5:
+            reason = 'weekend'
+        elif not close or close <= 0:
+            reason = 'no close'
+        elif h is not None and low is not None and not (low <= close <= h and (o is None or low <= o <= h)):
+            reason = 'outside its day range'
+        elif prior and abs(close / prior[-1] - 1) > PRICE_LIMIT + 0.005:
+            reason = f'{close / prior[-1] - 1:+.1%} vs previous close'
+        elif row.get('volume') is not None and row['volume'] < 0:
+            reason = 'negative volume'
+        if reason:
+            rejected.append((code, day, reason))
+        else:
+            kept.append(row)
+    return kept, rejected
+
+
+def prices_sources(network):
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import ingest_prices as ip
+    legacy_batch = ip._yf_batch
+    attempted = set()
+
+    def batch(yf, tickers, start, end, tries=4):
+        # once a Yahoo host is stopped, the rest of the batches are not tried (and not waited for): they stay gaps
+        if any(host.endswith('yahoo.com') for host in network.stopped):
+            return None, set()
+        attempted.update(t.split('.')[0] for t in tickers)
+        return legacy_batch(yf, tickers, start, end, tries=1)  # a 429 stops the host here instead of a backoff
+    ip._yf_batch = batch
+
+    def naver_daily(run, _prior):
+        ip.get_connection = run.connect
+        result = ip.ingest_daily(repair_days=0)
+        if result['status'] == 'error':
+            raise RuntimeError(f"every Naver batch failed ({result['failed']} stocks)")
+        return ('partial' if result['failed'] else 'ok'), {k: result[k] for k in ('upsert', 'days', 'changed', 'failed')}, []
+
+    def yahoo_gaps(run, prior):
+        ip.get_connection = run.connect
+        tries = {g['code']: g.get('tries', 0) for g in prior.get('gaps') or [] if isinstance(g, dict)}
+        with run.connect() as conn:
+            gaps = price_gaps(conn)
+        if not gaps:
+            return 'ok', {'gaps': 0}, []
+        order = sorted(gaps, key=lambda c: (tries.get(c, 0), c))  # least tried first: a dead code cannot starve the rest
+        ip.repair(PRICE_GAP_DAYS, only_missing=True, codes=order)
+        with run.connect() as conn:
+            left = price_gaps(conn)
+        state = [{'code': c, 'dates': d, 'tries': tries.get(c, 0) + (c in attempted)} for c, d in left.items()]
+        open_gaps = [g for g in state if g['tries'] < PRICE_GIVE_UP]
+        detail = {'gaps': len(gaps), 'filled': len(gaps) - len(left), 'left': len(left),
+                  'given_up': len(state) - len(open_gaps)}
+        return ('partial' if open_gaps else 'ok'), detail, state
+
+    return [('naver_daily', naver_daily), ('yahoo_gaps', yahoo_gaps)]
+
+
+def mirror_window(pg, table, column, since):
+    """Make the shared collector file's rows of `table` from `since` equal PG's, so the jobs still on that file read
+    only published (validated) rows. Returns the row count written."""
+    import refactor_collect_trial as trial
+    columns = pg.execute('SELECT columns FROM legacy_supplement_tables WHERE table_name=%s', (table,)).fetchone()[0]
+    rows = [[row.get(c) for c in columns] for (row,) in pg.execute(
+        f"SELECT row_data FROM legacy_supplement_rows WHERE table_name=%s AND row_data->>'{column}' >= %s", (table, since))]
+    work = sqlite3.connect(trial.WORK, timeout=60)
+    try:
+        with work:
+            work.execute(f'DELETE FROM "{table}" WHERE "{column}" >= ?', (since,))
+            work.executemany(f'INSERT INTO "{table}" ({",".join(columns)}) VALUES ({",".join("?" * len(columns))})', rows)
+    finally:
+        work.close()
+    return len(rows)
+
+
 NOT_MOVED = {'sectorbench': {'us_follow_prices': 'us_prices is still replaced whole by the shared-file jobs'}}
 
 
@@ -288,7 +421,7 @@ def run_sources(run, sources, previous, network=None):
         states[name] = {'status': status, 'last_ok_at': now,
                         'failing_since': (prior.get('failing_since') or now) if status == 'partial' else None,
                         'last_error': None, 'attempts': prior.get('attempts', 0) + 1 if status == 'partial' else 0,
-                        'gaps': [str(g) for g in gaps][:100]}
+                        'gaps': [g if isinstance(g, dict) else str(g) for g in gaps][:2000]}
         details[name] = detail
     return states, details
 
@@ -331,25 +464,41 @@ def run(label):
     network.install()
     previous = iso.states(pg, label)
     tables = TABLES[label]
-    private = Run(pg, tables)
+    since = price_window_start() if label == 'prices' else None
+    private = Run(pg, tables, since)
     private.point_legacy_here()
-    sources = extseries_sources(network) if label == 'extseries' else sectorbench_sources(network)
+    sources = {'extseries': extseries_sources, 'sectorbench': sectorbench_sources, 'prices': prices_sources}[label](network)
     states, details = run_sources(private, sources, previous, network)
     changes = private.changes()
+    rejected = []
+    if label == 'prices':  # only validated closes are published; a rejected stock and date stays as PG has it
+        with sqlite3.connect(private.path) as conn:
+            kept, rejected = validate_prices(conn, changes['stock_prices'][0])
+        changes['stock_prices'] = (kept, changes['stock_prices'][1])
     shrunk = [t for t in tables if private.seeded[t] and private.count(t) < SHRINK_LIMIT * private.seeded[t]]
     counts = {t: (len(rows), len(gone)) for t, (rows, gone) in changes.items()}
-    result = {'sources': details, 'not_moved': NOT_MOVED.get(label, {}), 'stopped': network.stopped}
+    result = {'sources': details, 'not_moved': NOT_MOVED.get(label, {}), 'stopped': network.stopped,
+              **({'rejected': len(rejected), 'rejected_sample': rejected[:20]} if rejected else {})}
     token = uuid.uuid4().hex
     if shrunk:  # the private file lost most of a table: nothing is published and collection is held
         outcome = f'held back: {", ".join(shrunk)} shrank below half'
         changes = {}
     else:
         outcome = outcome_of(states, counts)
+        if rejected and outcome.startswith('applied'):
+            outcome = 'partial' + outcome[len('applied'):] + f'; rejected {len(rejected)} closes'
     requests = dict(network.requests)
     try:
         run_id, _ = iso.publish(pg, label, started, outcome, changes, states, token=token, requests=requests, result=result)
     except Exception as exc:  # noqa: BLE001 - whether the commit took effect is settled from the run record
         run_id, outcome = settle(trial._pg, label, token, started, outcome, exc, requests, result)
+    if label == 'prices' and run_id is not None and not outcome.startswith('held back'):
+        try:
+            result['mirrored'] = mirror_window(pg, 'stock_prices', 'trade_date', since)
+        except Exception as exc:  # noqa: BLE001 - the shared file's readers could see unpublished closes: hold all
+            outcome = f'held back: published, but the shared file was not aligned ({type(exc).__name__})'
+            from pipeline import postgres_collect_runs
+            postgres_collect_runs.record(pg, label, started, outcome, requests=requests, result=result)
     print(json.dumps({'run': run_id, 'label': label, 'outcome': outcome, 'requests_by_host': requests,
                       'statuses': dict(network.statuses), 'model_calls': 0}, ensure_ascii=False))
     return outcome

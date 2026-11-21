@@ -22,7 +22,10 @@ KEYS = {'ext_series': ('series', 'period'),
         'expectation_claims': ('source', 'url', 'node_key', 'subject', 'metric', 'target_period'),
         'sector_benchmark_prices': ('ticker', 'trade_date'),
         'sector_index': ('sector', 'trade_date'),
-        'us_ticker_sectors': ('ticker',)}
+        'us_ticker_sectors': ('ticker',),
+        'stock_prices': ('stock_code', 'trade_date')}
+# A large table is seeded and compared only from a start date on this column (the run passes the date).
+WINDOWS = {'stock_prices': 'trade_date'}
 NOW = postgres_collect_runs.NOW
 
 
@@ -44,8 +47,9 @@ def states(pg, job):
                 'WHERE job=%s', (job,))}
 
 
-def seed(pg, conn, tables):
-    """Create `tables` in the private SQLite `conn` with their PG supplement rows; returns {table: row count}."""
+def seed(pg, conn, tables, since=None):
+    """Create `tables` in the private SQLite `conn` with their PG supplement rows (a WINDOWS table from `since`);
+    returns {table: row count}. An id table continues after the highest id in all of PG, not only in the window."""
     counts = {}
     for table in tables:
         if table not in KEYS:
@@ -56,9 +60,18 @@ def seed(pg, conn, tables):
         columns, schema_sql = found
         conn.execute(schema_sql)
         marks = ','.join('?' * len(columns))
-        rows = pg.execute('SELECT row_data FROM legacy_supplement_rows WHERE table_name=%s ORDER BY row_ordinal', (table,))
+        window = f" AND row_data->>'{WINDOWS[table]}' >= %s" if table in WINDOWS else ''
+        if window and not since:
+            raise ValueError(f'{table} is seeded from a start date')
+        rows = pg.execute('SELECT row_data FROM legacy_supplement_rows WHERE table_name=%s' + window + ' ORDER BY row_ordinal',
+                          (table, since) if window else (table,))
         conn.executemany(f'INSERT INTO "{table}" ({",".join(columns)}) VALUES ({marks})',
                          ([row.get(column) for column in columns] for (row,) in rows))
+        if window and 'id' in columns:
+            top = pg.execute("SELECT COALESCE(max((row_data->>'id')::bigint),0) FROM legacy_supplement_rows WHERE table_name=%s",
+                             (table,)).fetchone()[0]
+            conn.execute('DELETE FROM sqlite_sequence WHERE name=?', (table,))
+            conn.execute('INSERT INTO sqlite_sequence (name, seq) VALUES (?,?)', (table, top))
         counts[table] = conn.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
     conn.commit()
     return counts
@@ -81,6 +94,25 @@ def delta(before, after):
     return [row for k, row in after.items() if before.get(k) != row], [k for k in before if k not in after]
 
 
+def _text(key):
+    return tuple(None if v is None else str(v) for v in key)
+
+
+def _ordinals(pg, table, keys):
+    """{key as text: row ordinal} of the PG rows with these keys (one pass over the table, not a full load)."""
+    if not keys:
+        return {}
+    name = f'isolated_keys_{abs(hash(table)) % 10**8}'
+    pg.execute(f'CREATE TEMP TABLE {name} (k TEXT[]) ON COMMIT DROP')
+    with pg.cursor().copy(f'COPY {name} (k) FROM STDIN') as copy:
+        for k in keys:
+            copy.write_row((list(_text(k)),))
+    expr = 'ARRAY[' + ','.join(f"r.row_data->>'{c}'" for c in KEYS[table]) + ']'
+    return {tuple(k): ordinal for ordinal, k in pg.execute(
+        f'SELECT r.row_ordinal, {expr} FROM legacy_supplement_rows r JOIN {name} i ON i.k = {expr} '
+        'WHERE r.table_name=%s', (table,))}
+
+
 def publish(pg, label, started, outcome, changes, source_states, *, token, requests=None, result=None):
     """One transaction: every table's upserts/deletes by key, the per-source state and the run record.
     `changes` = {table: (rows, deleted keys)}. Returns (run id, {table: (upserted, deleted)})."""
@@ -94,13 +126,11 @@ def publish(pg, label, started, outcome, changes, source_states, *, token, reque
             pg.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))', ('supplement:' + table,))
             if live:
                 postgres_live_tables.mark(pg, table)
-            ordinals, last = {}, -1
-            for ordinal, row in pg.execute('SELECT row_ordinal,row_data FROM legacy_supplement_rows WHERE table_name=%s',
-                                           (table,)):
-                ordinals[tuple(row.get(c) for c in key)] = ordinal
-                last = max(last, ordinal)
+            ordinals = _ordinals(pg, table, [tuple(row[c] for c in key) for row in rows] + list(deleted))
+            last = pg.execute('SELECT COALESCE(max(row_ordinal),-1) FROM legacy_supplement_rows WHERE table_name=%s',
+                              (table,)).fetchone()[0]
             for row in rows:
-                ordinal = ordinals.get(tuple(row[c] for c in key))
+                ordinal = ordinals.get(_text(tuple(row[c] for c in key)))
                 if ordinal is None:
                     last += 1
                     pg.execute('INSERT INTO legacy_supplement_rows (table_name,row_ordinal,row_data) VALUES (%s,%s,%s)',
@@ -108,7 +138,7 @@ def publish(pg, label, started, outcome, changes, source_states, *, token, reque
                 else:
                     pg.execute('UPDATE legacy_supplement_rows SET row_data=%s WHERE table_name=%s AND row_ordinal=%s',
                                (Jsonb(row), table, ordinal))
-            gone = [ordinals[k] for k in deleted if k in ordinals]
+            gone = [ordinals[_text(k)] for k in deleted if _text(k) in ordinals]
             if gone:
                 pg.execute('DELETE FROM legacy_supplement_rows WHERE table_name=%s AND row_ordinal=ANY(%s)', (table, gone))
             pg.execute('UPDATE legacy_supplement_tables SET row_count=(SELECT count(*) FROM legacy_supplement_rows '

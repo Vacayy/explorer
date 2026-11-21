@@ -149,6 +149,43 @@ class SchedulerTest(unittest.TestCase):
                 self.assertEqual(scheduler._run_one('extseries', log=lambda *_: None), expected, outcome)
 
 
+class PricesTest(unittest.TestCase):
+    def _conn(self, rows):
+        conn = sqlite3.connect(':memory:')
+        conn.execute('CREATE TABLE stock_prices (stock_code TEXT, trade_date TEXT, open INT, high INT, low INT, close INT, '
+                     'volume INT, PRIMARY KEY (stock_code, trade_date))')
+        conn.execute('CREATE TABLE market_indicators (indicator TEXT, snapshot_date TEXT)')
+        conn.executemany('INSERT INTO stock_prices VALUES (?,?,?,?,?,?,?)', rows)
+        return conn
+
+    def test_only_final_in_range_within_limit_closes_are_kept(self):
+        conn = self._conn([('A', '2026-11-19', 100, 110, 95, 100, 10), ('A', '2026-11-20', 100, 104, 98, 102, 9),
+                           ('B', '2026-11-19', 100, 100, 100, 100, 1), ('B', '2026-11-20', 140, 140, 140, 140, 1),
+                           ('C', '2026-11-20', 50, 60, 55, 52, 1)])
+        rows = [dict(zip(('stock_code', 'trade_date', 'open', 'high', 'low', 'close', 'volume'), r)) for r in (
+            ('A', '2026-11-20', 100, 104, 98, 102, 9), ('B', '2026-11-20', 140, 140, 140, 140, 1),
+            ('C', '2026-11-20', 50, 60, 55, 52, 1), ('A', '2026-11-21', 100, 104, 98, 102, 9))]
+        kept, rejected = jobs.validate_prices(conn, rows, through='2026-11-20')
+        self.assertEqual([r['stock_code'] for r in kept], ['A'])
+        self.assertEqual({(c, why.split(' ')[0]) for c, _d, why in rejected},
+                         {('B', '+40.0%'), ('C', 'outside'), ('A', 'not')})
+
+    def test_gaps_follow_the_kospi_calendar_for_recently_quoted_stocks(self):
+        from datetime import date
+        conn = self._conn([('A', '2026-11-19', 1, 1, 1, 1, 1), ('B', '2026-11-18', 1, 1, 1, 1, 1),
+                           ('B', '2026-11-19', 1, 1, 1, 1, 1), ('B', '2026-11-20', 1, 1, 1, 1, 1)])
+        conn.executemany('INSERT INTO market_indicators VALUES (?,?)',
+                         [('index_kospi', d) for d in ('2026-11-18', '2026-11-19', '2026-11-20')])
+        self.assertEqual(jobs.price_gaps(conn, date(2026, 11, 21)), {'A': ['2026-11-18', '2026-11-20']})
+
+    def test_closed_through(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        seoul = ZoneInfo('Asia/Seoul')
+        self.assertEqual(jobs.closed_through(datetime(2026, 11, 20, 15, 39, tzinfo=seoul)), '2026-11-19')
+        self.assertEqual(jobs.closed_through(datetime(2026, 11, 20, 15, 40, tzinfo=seoul)), '2026-11-20')
+
+
 class BriefingHoldAlertTest(unittest.TestCase):
     def test_once_a_day_in_the_window_and_only_while_held(self):
         from datetime import datetime
