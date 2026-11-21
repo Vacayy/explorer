@@ -30,13 +30,16 @@ KEYS = {'ext_series': ('series', 'period'),
         'kalshi_candles': ('market_ticker', 'day'), 'kalshi_events': ('id',),
         'index_intraday': ('key', 'trade_date', 'hhmm'),
         'trade_stats': ('hs_code', 'period'), 'trade_beneficiaries': ('hs_code', 'name'),
-        'us_prices': ('stock_code', 'trade_date'), 'kr_movers': ('trade_date', 'rank')}
+        'us_prices': ('stock_code', 'trade_date'), 'kr_movers': ('trade_date', 'rank'),
+        'us_briefings': ('trade_date',), 'us_macro_issues': ('trade_date',), 'us_movers': ('trade_date', 'rank')}
 # Tables an isolated job writes by key that the shared collector file's jobs also write (signals: call momentum on
 # that path, the 52-week highs of the days the prices job publishes; cache_meta and market_indicators: the market job
-# here, the Korean movers and the US briefing there); the shared path keeps publishing them, and an isolated run puts
-# the keys it published into the shared file as well.
+# and the US briefing here; macro news, macro signals and ticker news: the US briefing here, the chain's macro news
+# and the call reactions there); the shared path keeps publishing them, and an isolated run puts the keys it
+# published into the shared file as well.
 SHARED_KEYS = {'signals': ('signal_type', 'entity_id', 'date'), 'cache_meta': ('cache_key',),
-               'market_indicators': ('snapshot_date', 'indicator')}
+               'market_indicators': ('snapshot_date', 'indicator'), 'macro_news': ('url',), 'macro_signals': ('as_of',),
+               'us_ticker_news': ('ticker', 'url')}
 
 
 def key_of(table):

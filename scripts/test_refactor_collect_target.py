@@ -1,4 +1,5 @@
 """Collection target guard: live requires explicit opt-in and exact API schema."""
+import json
 import os
 import sqlite3
 import sys
@@ -984,12 +985,16 @@ class CollectionTargetTest(unittest.TestCase):
                     trial._job_record('compute_briefing', '2026-11-18 00:00:00', ('ok', 'partial'))
             conn.close()
 
-    def test_scheduler_accepts_only_verified_briefing_partial(self):
-        with patch.object(engine, 'run', return_value=(0, '{"outcome":"partial: US briefing headline failures; job_runs 1"}')):
-            self.assertTrue(scheduler._run_one('usbriefing', lambda *_: None))
-            self.assertFalse(scheduler._run_one('markettoday', lambda *_: None))
+    def test_scheduler_takes_isolated_briefing_outcomes_and_holds_only_held_back(self):
+        # the briefing's own checks (synthesis, a partial only from headline failures) run inside the isolated job: a
+        # briefing that fails them publishes nothing and is 'failed'
+        for outcome, accepted in (('partial: us_briefings +1/-0; failed -; incomplete script', True),
+                                  ('failed: every source failed (script)', True), ('held back: x', False)):
+            with self.subTest(outcome=outcome), \
+                    patch.object(engine, 'run', return_value=(0, json.dumps({'outcome': outcome}))):
+                self.assertEqual(scheduler._run_one('usbriefing', lambda *_: None), accepted)
         with patch.object(engine, 'run', return_value=(0, '{"outcome":"partial: unknown"}')):
-            self.assertFalse(scheduler._run_one('usbriefing', lambda *_: None))
+            self.assertFalse(scheduler._run_one('markettoday', lambda *_: None))
 
     def test_send_secrets_require_explicit_key_selection(self):
         with TemporaryDirectory() as directory:

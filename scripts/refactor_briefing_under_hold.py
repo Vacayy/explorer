@@ -3,8 +3,10 @@
   python3 scripts/refactor_briefing_under_hold.py check    # read only: what the briefing would publish besides its own rows
   python3 scripts/refactor_briefing_under_hold.py run      # after a 'safe' check, or a 'review' an operator accepted
 
-check (in a one-shot container, no internet): the briefing replaces its tables in PG with the shared collector file's
-rows, so every difference between that file and PG in those tables goes out with it. Verdict:
+check: since the briefing moved to the isolated path (refactor_isolated_jobs.py) it publishes only what its own run
+changed, by key, from a private file seeded from PG: nothing of the shared collector file goes out with it, so the
+verdict is 'safe' without comparing. Before that (the shared-file path) it replaced its tables in PG with the shared
+file's rows, and every difference in those tables went out with it (in a one-shot container, no internet). Verdict:
   safe    no difference: only the briefing's own writes will be published
   stop    anything else (a table differs, or PG has rows the file lacks: the briefing would delete them)
 (review, for job_runs failure records, no longer arises: job_runs is published by id, this run's records only.)
@@ -87,6 +89,10 @@ def verdict(found, extra_runs):
 def check():
     import sqlite3
     sys.path.insert(0, str(ROOT / 'scripts'))
+    import refactor_collect_scheduler as scheduler
+    if 'usbriefing' in scheduler.ISOLATED_JOBS:
+        print(json.dumps({'verdict': 'safe', 'why': 'isolated path: only this run\'s own changes are published, by key'}))
+        return 'safe'
     import refactor_collect_trial as trial
     work = sqlite3.connect(f'file:{trial.WORK}?mode=ro', uri=True)
     found, extra_runs = compare(trial._pg(), work)
