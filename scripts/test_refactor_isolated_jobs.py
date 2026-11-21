@@ -7,6 +7,8 @@ from pathlib import Path
 import refactor_isolated_jobs as jobs
 from pipeline import postgres_isolated_collect as iso
 
+jobs.KRX_PAUSE = 0
+
 
 class NetworkTest(unittest.TestCase):
     def test_a_block_refuses_only_that_host(self):
@@ -399,6 +401,49 @@ class PricesTest(unittest.TestCase):
             (name, sweep), = jobs.pricefactors_sources(jobs.Network({'': 5}), None)
             status, detail, gaps = sweep(None, prior)
         self.assertEqual((status, gaps[0]['next_day']), ('error', '2021-10-23'))  # nothing walked: the place is kept
+
+    def test_krx_daily_asks_a_few_days_and_stops_at_the_first_failure(self):
+        from unittest import mock
+        bar = {'stock_code': 'A', 'open': 100, 'high': 100, 'low': 100, 'close': 100, 'volume': 1, 'market_cap': 1, 'shares': 1}
+        asked = []
+
+        def day(d):
+            asked.append(d)
+            if d == '2026-11-25':
+                raise jobs.KrxUnavailable('KRX login failed')
+            return [{**bar, 'trade_date': d}], {'A': 100}, {'A': 'STK'}
+        todo = ['2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26']
+        with mock.patch.object(jobs, 'krx_days', return_value=todo), mock.patch.object(jobs, 'krx_market_day', side_effect=day), \
+                mock.patch.object(jobs, 'KRX_DAYS_PER_RUN', 3):
+            (name, daily), = jobs.prices_sources(jobs.Network({'': 5}))
+            status, detail, gaps = daily(_PriceRun([]), {})
+        self.assertEqual(asked, todo[:3])  # nothing asked after the failure, the fourth day waits anyway
+        self.assertEqual((status, sorted(detail['collected']), detail['missing']), ('partial', todo[:2], todo[2:]))
+        self.assertEqual({g['day']: g['status'] for g in gaps},
+                         {'2026-11-23': 'done', '2026-11-24': 'done', '2026-11-25': 'missing', '2026-11-26': 'missing'})
+
+    def test_high52w_of_published_days_with_the_run_bars_on_top(self):
+        import refactor_recompute_high52w as high52w
+
+        class PG:
+            def execute(self, sql, args=()):
+                if "table_name='entities'" in sql:
+                    return [({'aliases': 'A', 'id': 1},), ({'aliases': 'B', 'id': 2},)]
+                if "table_name='stock_prices'" in sql:
+                    return [(c, f'2026-{m:02d}-01', 100.0, 100.0) for c in 'AB' for m in range(1, 12)]
+                if 'max(' in sql:
+                    return type('R', (), {'fetchone': lambda self: (50,)})()
+                return [({'id': 9, 'signal_type': 'high_52w', 'entity_id': 2, 'date': '2026-11-23',
+                          'payload_json': '{}', 'created_at': 'x', 'interpretation': None, 'interpretation_model': None},)]
+        overlay = [{'stock_code': 'A', 'trade_date': '2026-11-23', 'high': 120, 'close': 118},
+                   {'stock_code': 'B', 'trade_date': '2026-11-23', 'high': 90, 'close': 90}]
+        from unittest import mock
+        with mock.patch('pipeline.signals.MIN_HISTORY_ROWS', 5):
+            upserts, deletes, report = high52w.reconcile(PG(), '2026-11-23', '2026-11-23', ['2026-11-23'], overlay=overlay)
+        self.assertEqual([(u['id'], u['entity_id'], u['payload_json']) for u in upserts],
+                         [(51, 1, '{"close": 118, "high": 120, "prior_high_52w": 100, "breakout_pct": 20.0}')])
+        self.assertEqual(deletes, [('high_52w', 2, '2026-11-23')])  # B's stored signal no longer holds
+        self.assertEqual(report['2026-11-23']['recomputed'], 1)
 
     def test_krx_login_cooldown_makes_no_request(self):
         import os

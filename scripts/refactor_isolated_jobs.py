@@ -37,9 +37,11 @@ JOBS = ('extseries', 'sectorbench', 'prices', 'pricefix', 'pricefactors', *LEGAC
 CAPS = {'extseries': {'': 30},
         # Naver realtime quotes in batches of 200 codes (about 15), then Yahoo for the gaps of the last 10 days
         # (+ Naver daily prices and DART disclosures for the few closes beyond the daily limit)
-        'prices': {'': 20, 'polling.finance.naver.com': 30, '.finance.yahoo.com': 300, 'data.krx.co.kr': 60},
-        'pricefix': {'': 20, 'data.krx.co.kr': 60},  # + the previous day's listing when a listing day is checked
-        'pricefactors': {'': 20, 'data.krx.co.kr': 600},  # about 200 days per run
+        # KRX (data.krx.co.kr) blocks an address for a day on automated bulk lookups (KDM notice, 2026-11-21): a few
+        # market-wide listings per run, paced, never a sweep
+        'prices': {'': 20, 'polling.finance.naver.com': 30, '.finance.yahoo.com': 300, 'data.krx.co.kr': 20},
+        'pricefix': {'': 20, 'data.krx.co.kr': 20},  # + the previous day's listing when a listing day is checked
+        'pricefactors': {'': 20, 'data.krx.co.kr': 600},  # not run: see run()
         # credit (macbook-source #3 6942831447): 34 companies' issuer scan, symbol search fallback, 10 FRED series
         'credit': {'': 20, 'scanner.tradingview.com': 150, 'symbol-search.tradingview.com': 60,
                    'data.tradingview.com': 150, 'fred.stlouisfed.org': 12},
@@ -408,6 +410,7 @@ def previous_listing(day, lookback=7):
         d -= timedelta(days=1)
         if d.weekday() >= 5:
             continue
+        time.sleep(KRX_PAUSE)
         listing = krx_listing(d.isoformat())
         codes = {r['ISU_SRT_CD']: market for market, records in listing.items() for r in records}
         if codes:
@@ -529,6 +532,8 @@ PRICE_KRX_FROM = os.environ.get('PRICE_KRX_FROM', '2026-11-23')
 KRX_MARKETS = ('STK', 'KSQ', 'KNX')  # KOSPI, KOSDAQ, KONEX
 KRX_SOURCE = 'krx:전종목시세(MDCSTAT01501)'
 KRX_LOOKBACK_DAYS = 20     # missing days are tried again within this window
+KRX_DAYS_PER_RUN = 2       # oldest first; the rest wait for the next run
+KRX_PAUSE = float(os.environ.get('KRX_PAUSE', '3'))  # seconds between KRX requests
 KRX_EMPTY_IS_HOLIDAY = 3   # a weekday KRX still has no prices for after this many days was not a trading day
 
 
@@ -576,7 +581,12 @@ def krx_listing(day):
     """{market: KRX market-wide records of `day`} for KOSPI, KOSDAQ and KONEX, every listed stock (traded or not)."""
     krx_login()
     from pykrx.website.krx.market import core
-    return {market: core.전종목시세().fetch(day.replace('-', ''), market).to_dict('records') for market in KRX_MARKETS}
+    listing = {}
+    for market in KRX_MARKETS:
+        if listing:
+            time.sleep(KRX_PAUSE)
+        listing[market] = core.전종목시세().fetch(day.replace('-', ''), market).to_dict('records')
+    return listing
 
 
 def krx_bar(r, day):
@@ -748,16 +758,21 @@ def prices_sources(network):
         prior_days = {g['day']: g for g in prior.get('gaps') or [] if isinstance(g, dict) and 'day' in g}
         today = _kst_now().date()
         todo = krx_days(prior_days, closed_through())
+        # a few days per run; after the first failed lookup nothing more is asked of KRX this run
+        todo, deferred = todo[:KRX_DAYS_PER_RUN], todo[KRX_DAYS_PER_RUN:]
         state = dict(prior_days)
         collected, missing = {}, []
-        for day in todo:
+        for i, day in enumerate(todo):
             entry = {'day': day, 'tries': prior_days.get(day, {}).get('tries', 0) + 1}
+            if i:
+                time.sleep(KRX_PAUSE)
             try:
                 rows, day_bases, day_markets = krx_market_day(day)
             except Exception as exc:  # noqa: BLE001 - recorded as missing; never filled from another source
                 state[day] = {**entry, 'status': 'missing', 'reason': f'{type(exc).__name__}: {str(exc)[:80]}'}
                 missing.append(day)
-                continue
+                deferred = todo[i + 1:] + deferred
+                break
             if not rows:
                 old = (today - date.fromisoformat(day)).days > KRX_EMPTY_IS_HOLIDAY
                 state[day] = {**entry, 'status': 'closed' if old else 'missing', 'reason': 'KRX has no prices'}
@@ -777,10 +792,13 @@ def prices_sources(network):
             markets.update({(code, day): market for code, market in day_markets.items()})
             state[day] = {**entry, 'status': 'done', 'rows': len(rows)}
             collected[day] = len(rows)
+        for day in deferred:  # not asked this run: still missing
+            state.setdefault(day, {'day': day, 'tries': 0, 'status': 'missing', 'reason': 'deferred to a later run'})
+        missing += deferred
         keep = sorted(state, reverse=True)[:30]
         gaps = [state[d] for d in sorted(keep)]
         detail = {'from': PRICE_KRX_FROM, 'collected': collected, 'missing': missing}
-        if todo and not collected and missing and len(missing) == len(todo):
+        if todo and not collected and missing:
             return 'error', {**detail, 'error': f'KRX prices missing for {", ".join(missing)}'}, gaps
         return ('partial' if missing else 'ok'), detail, gaps
     krx_daily.bases, krx_daily.markets, krx_daily.adjustments = bases, markets, adjustments
@@ -855,6 +873,23 @@ def mirror(pg, tables, since=None):
     finally:
         work.close()
     return written
+
+
+def mirror_high52w(pg, days):
+    """The shared collector file's high_52w signals of `days` made equal to PG's (its other signals are its own jobs')."""
+    import refactor_collect_trial as trial
+    columns = pg.execute("SELECT columns FROM legacy_supplement_tables WHERE table_name='signals'").fetchone()[0]
+    rows = [[row.get(c) for c in columns] for (row,) in pg.execute(
+        "SELECT row_data FROM legacy_supplement_rows WHERE table_name='signals' AND row_data->>'signal_type'='high_52w' "
+        "AND row_data->>'date' = ANY(%s)", (list(days),))]
+    work = sqlite3.connect(trial.WORK, timeout=60)
+    try:
+        with work:
+            work.executemany("DELETE FROM signals WHERE signal_type='high_52w' AND date=?", [(d,) for d in days])
+            work.executemany(f'INSERT INTO signals ({",".join(columns)}) VALUES ({",".join("?" * len(columns))})', rows)
+    finally:
+        work.close()
+    return len(rows)
 
 
 def legacy_sources(label):
@@ -963,6 +998,8 @@ def settle(connect, label, token, started, outcome, exc, requests, result):
 
 
 def run(label):
+    if label == 'pricefactors':  # a sweep of past days is the bulk lookup KRX's terms forbid (KDM notice, 2026-11-21)
+        raise SystemExit('pricefactors is not run over data.krx.co.kr: past factors need an official route (KRX Open API)')
     import refactor_collect_trial as trial
     from pipeline import postgres_isolated_collect as iso
     started = _now()
@@ -990,11 +1027,24 @@ def run(label):
             confirmed, rejected, evidence = confirm_listing_days(rows, rejected, day_bases, sources[0][1].markets)
             kept += confirmed
         changes['stock_prices'] = (kept, changes['stock_prices'][1])
+    signal_days = sorted({r['trade_date'] for r in changes['stock_prices'][0]}) if label == 'prices' else []
+    high_52w = None
+    if signal_days:  # the 52-week highs of the days published, published with them
+        try:
+            import refactor_recompute_high52w as high52w
+            upserts, deletes, report = high52w.reconcile(pg, signal_days[0], signal_days[-1], signal_days,
+                                                         overlay=changes['stock_prices'][0],
+                                                         removed=changes['stock_prices'][1])
+            changes['signals'] = (upserts, deletes)
+            high_52w = {day: {k: len(v) if isinstance(v, list) else v for k, v in r.items()} for day, r in report.items()}
+        except Exception as exc:  # noqa: BLE001 - the bars still go out; the run is partial
+            signal_days, high_52w = [], {'error': f'{type(exc).__name__}: {str(exc)[:120]}'}
     shrunk = [t for t in tables if private.seeded[t] and private.count(t) < SHRINK_LIMIT * private.seeded[t]]
     counts = {t: (len(rows), len(gone)) for t, (rows, gone) in changes.items()}
     result = {'sources': details, 'not_moved': NOT_MOVED.get(label, {}), 'stopped': network.stopped,
               **({'rejected': len(rejected), 'rejected_sample': rejected[:20]} if rejected else {}),
-              **({'confirmed_beyond_limit': evidence} if evidence else {})}
+              **({'confirmed_beyond_limit': evidence} if evidence else {}),
+              **({'high_52w': high_52w} if high_52w else {})}
     token = uuid.uuid4().hex
     if shrunk:  # the private file lost most of a table: nothing is published and collection is held
         outcome = f'held back: {", ".join(shrunk)} shrank below half'
@@ -1003,6 +1053,9 @@ def run(label):
         outcome = outcome_of(states, counts)
         if rejected and outcome.startswith('applied'):
             outcome = 'partial' + outcome[len('applied'):] + f'; rejected {len(rejected)} closes'
+        if high_52w and 'error' in high_52w:
+            outcome = ('partial' + outcome[len('applied'):] if outcome.startswith('applied') else outcome) + \
+                '; 52-week highs not computed'
     requests = dict(network.requests)
     try:
         run_id, _ = iso.publish(pg, label, started, outcome, changes, states, token=token, requests=requests, result=result,
@@ -1013,6 +1066,8 @@ def run(label):
     if run_id is not None and not outcome.startswith('held back'):
         try:
             result['mirrored'] = mirror(pg, tables, since)
+            if signal_days:
+                result['mirrored']['signals'] = mirror_high52w(pg, signal_days)
         except Exception as exc:  # noqa: BLE001 - the shared file's readers could see unpublished closes: hold all
             outcome = f'held back: published, but the shared file was not aligned ({type(exc).__name__})'
             from pipeline import postgres_collect_runs

@@ -8,6 +8,8 @@ days before, with at least MIN_HISTORY_ROWS bars up to that day (the original co
 because it only ever runs on the latest day). Only days that already have high_52w signals are reconciled: a signal
 the corrected prices no longer support is removed, one they newly support is added, a kept one gets the corrected
 payload. Run in a job container (PG and the projection); collected_row_history keeps the value before each change.
+
+The prices job reconciles the days it publishes the same way (reconcile with every day, the run's bars overlaid).
 """
 import json
 import sqlite3
@@ -23,13 +25,16 @@ SOURCE = 'recompute:high_52w after pricefix (KRX regular session)'
 KEY = ('signal_type', 'entity_id', 'date')
 
 
-def prices(pg, start):
+def prices(pg, start, overlay=(), removed=()):
+    """Daily highs and closes from `start`, PG's with `overlay` bars (not yet published) on top and `removed` keys out."""
     conn = sqlite3.connect(':memory:')
-    conn.execute('CREATE TABLE p (code TEXT, day TEXT, high REAL, close REAL)')
+    conn.execute('CREATE TABLE p (code TEXT, day TEXT, high REAL, close REAL, PRIMARY KEY (code, day))')
     conn.executemany('INSERT INTO p VALUES (?,?,?,?)', pg.execute(
         "SELECT row_data->>'stock_code', row_data->>'trade_date', (row_data->>'high')::float, (row_data->>'close')::float "
         "FROM legacy_supplement_rows WHERE table_name='stock_prices' AND row_data->>'trade_date' >= %s", (start,)))
-    conn.execute('CREATE INDEX p_code_day ON p (code, day)')
+    conn.executemany('INSERT OR REPLACE INTO p VALUES (?,?,?,?)',
+                     [(r['stock_code'], r['trade_date'], r['high'], r['close']) for r in overlay])
+    conn.executemany('DELETE FROM p WHERE code=? AND day=?', list(removed))
     return conn
 
 
@@ -49,30 +54,31 @@ def compute(conn, day, entities, min_rows):
     return found
 
 
-def main(first, last, apply):
-    from pipeline import postgres_isolated_collect as iso
+def reconcile(pg, first, last, days=None, overlay=(), removed=()):
+    """(upserts, deletes, report) bringing the high_52w signals of the days with stored signals between `first` and
+    `last` (or of every one of `days`) to what the prices support."""
     from pipeline.signals import MIN_HISTORY_ROWS
-    pg = trial._pg()
     entities = {row['aliases']: row['id'] for (row,) in pg.execute(
         "SELECT row_data FROM legacy_snapshot_rows WHERE table_name='entities' AND row_data->>'type'='company' "
         "AND row_data->>'aliases' IS NOT NULL")}
-    stored = {}
+    stored = {day: {} for day in days or ()}
     for (row,) in pg.execute("SELECT row_data FROM legacy_supplement_rows WHERE table_name='signals' AND "
                              "row_data->>'signal_type'='high_52w' AND row_data->>'date' BETWEEN %s AND %s", (first, last)):
-        stored.setdefault(row['date'], {})[row['entity_id']] = row
+        if days is None or row['date'] in stored:
+            stored.setdefault(row['date'], {})[row['entity_id']] = row
     start = time.strftime('%Y-%m-%d', time.gmtime(time.mktime(time.strptime(first, '%Y-%m-%d')) - 400 * 86400))
-    conn = prices(pg, start)
+    conn = prices(pg, start, overlay, removed)
     top = pg.execute("SELECT COALESCE(max((row_data->>'id')::bigint),0) FROM legacy_supplement_rows WHERE table_name='signals'").fetchone()[0]
     upserts, deletes, report = [], [], {}
     now = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())
     for day in sorted(stored):
         new = compute(conn, day, entities, MIN_HISTORY_ROWS)
         old = stored[day]
-        removed = sorted(set(old) - set(new))
+        gone = sorted(set(old) - set(new))
         added = sorted(set(new) - set(old))
         changed = [e for e in set(old) & set(new) if json.loads(old[e]['payload_json']) != new[e]]
-        report[day] = {'stored': len(old), 'recomputed': len(new), 'removed': removed, 'added': added, 'payload_changed': len(changed)}
-        for e in removed:
+        report[day] = {'stored': len(old), 'recomputed': len(new), 'removed': gone, 'added': added, 'payload_changed': len(changed)}
+        for e in gone:
             deletes.append(('high_52w', e, day))
         for e in changed:
             upserts.append({**old[e], 'payload_json': json.dumps(new[e], ensure_ascii=False)})
@@ -81,6 +87,13 @@ def main(first, last, apply):
             upserts.append({'id': top, 'date': day, 'entity_id': e, 'created_at': now, 'signal_type': 'high_52w',
                             'payload_json': json.dumps(new[e], ensure_ascii=False), 'interpretation': None,
                             'interpretation_model': None})
+    return upserts, deletes, report
+
+
+def main(first, last, apply):
+    from pipeline import postgres_isolated_collect as iso
+    pg = trial._pg()
+    upserts, deletes, report = reconcile(pg, first, last)
     print(json.dumps({'days': report, 'upserts': len(upserts), 'deletes': len(deletes)}, ensure_ascii=False))
     if apply and (upserts or deletes):
         token = uuid.uuid4().hex

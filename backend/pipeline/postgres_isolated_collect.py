@@ -30,6 +30,9 @@ KEYS = {'ext_series': ('series', 'period'),
         'kalshi_candles': ('market_ticker', 'day'), 'kalshi_events': ('id',),
         'index_intraday': ('key', 'trade_date', 'hhmm'),
         'trade_stats': ('hs_code', 'period'), 'trade_beneficiaries': ('hs_code', 'name')}
+# Tables an isolated job writes by key that the shared collector file's jobs also write (signals: call momentum on
+# that path, the 52-week highs of the days the prices job publishes); the shared path keeps publishing them.
+SHARED_KEYS = {'signals': ('signal_type', 'entity_id', 'date')}
 # Job records of isolated runs take their own id band, apart from the shared collector file's (100,000,000 on), so
 # the two paths never hand out the same id.
 JOB_RUNS_BAND = 150_000_000
@@ -211,7 +214,7 @@ def publish(pg, label, started, outcome, changes, source_states, *, token, reque
         live = postgres_live_tables.ready(pg)
         for table, (rows, deleted) in changes.items():
             if rows or deleted:
-                applied[table] = apply_keyed(pg, table, KEYS[table], rows, deleted, live=live,
+                applied[table] = apply_keyed(pg, table, KEYS.get(table) or SHARED_KEYS[table], rows, deleted, live=live,
                                              history=(history, label, token) if history else None)
         if adjustments:
             applied['price_adjustments'] = (record_adjustments(pg, adjustments, history or label, label), 0)
