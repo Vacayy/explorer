@@ -304,6 +304,21 @@ class PricesTest(unittest.TestCase):
         self.assertEqual(status, 'error')
         self.assertIn('incomplete', detail['error'])
 
+    def test_listing_day_judged_on_60_to_400_percent_of_the_offering_price(self):
+        from unittest import mock
+        rows = [{'stock_code': 'NEW', 'trade_date': '2026-11-17', 'open': 30000, 'high': 41000, 'low': 26000, 'close': 36000},
+                {'stock_code': 'OLD', 'trade_date': '2026-11-17', 'open': 30000, 'high': 41000, 'low': 26000, 'close': 36000},
+                {'stock_code': 'BIG', 'trade_date': '2026-11-17', 'open': 30000, 'high': 52000, 'low': 26000, 'close': 50000}]
+        bases = {('NEW', '2026-11-17'): 12000, ('OLD', '2026-11-17'): 12000, ('BIG', '2026-11-17'): 12000}
+        kept, rejected = jobs.validate_krx(rows, bases)
+        self.assertEqual(kept, [])
+        with mock.patch.object(jobs, 'previous_listing', return_value=('2026-11-14', {'OLD'})):
+            confirmed, still, evidence = jobs.confirm_listing_days(rows, rejected, bases)
+        self.assertEqual([r['stock_code'] for r in confirmed], ['NEW'])
+        self.assertEqual(evidence['NEW 2026-11-17']['limits'], [7200, 48000])
+        self.assertEqual({c: why.split('; ')[-1] for c, _d, why in still},
+                         {'OLD': 'listed on 2026-11-14, not a listing day', 'BIG': 'listing day but outside 7200-48000'})
+
     def test_closed_through(self):
         from datetime import datetime
         from zoneinfo import ZoneInfo

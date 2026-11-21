@@ -34,8 +34,8 @@ JOBS = ('extseries', 'sectorbench', 'prices', 'pricefix', *LEGACY)
 CAPS = {'extseries': {'': 30},
         # Naver realtime quotes in batches of 200 codes (about 15), then Yahoo for the gaps of the last 10 days
         # (+ Naver daily prices and DART disclosures for the few closes beyond the daily limit)
-        'prices': {'': 20, 'polling.finance.naver.com': 30, '.finance.yahoo.com': 300, 'data.krx.co.kr': 40},
-        'pricefix': {'': 20, 'data.krx.co.kr': 40},
+        'prices': {'': 20, 'polling.finance.naver.com': 30, '.finance.yahoo.com': 300, 'data.krx.co.kr': 60},
+        'pricefix': {'': 20, 'data.krx.co.kr': 60},  # + the previous day's listing when a listing day is checked
         # credit (macbook-source #3 6942831447): 34 companies' issuer scan, symbol search fallback, 10 FRED series
         'credit': {'': 20, 'scanner.tradingview.com': 150, 'symbol-search.tradingview.com': 60,
                    'data.tradingview.com': 150, 'fred.stlouisfed.org': 12},
@@ -387,11 +387,57 @@ def krx_tick(price):
     return 1_000
 
 
-def krx_limits(base):
-    """(lower, upper) daily price limits from the base price: ±30%, rounded inward to the quotation unit."""
+def krx_limits(base, listing=False):
+    """(lower, upper) daily price limits from the base price: ±30%, rounded inward to the quotation unit. On a
+    stock's first trading day the base is the offering price and the range is 60%-400% of it."""
     import math
-    high, low = base * (1 + PRICE_LIMIT), base * (1 - PRICE_LIMIT)
+    high, low = (base * 4, base * 0.6) if listing else (base * (1 + PRICE_LIMIT), base * (1 - PRICE_LIMIT))
     return math.ceil(low / krx_tick(low)) * krx_tick(low), math.floor(high / krx_tick(high)) * krx_tick(high)
+
+
+def previous_listing(day, lookback=7):
+    """(day, codes) of the latest earlier weekday KRX lists stocks for, or (None, None)."""
+    d = date.fromisoformat(day)
+    for _ in range(lookback):
+        d -= timedelta(days=1)
+        if d.weekday() >= 5:
+            continue
+        listing = krx_listing(d.isoformat())
+        codes = {r['ISU_SRT_CD'] for records in listing.values() for r in records}
+        if codes:
+            return d.isoformat(), codes
+    return None, None
+
+
+def confirm_listing_days(rows, rejected, bases):
+    """Of the KRX bars rejected for the ±30% limits, the ones on the stock's first trading day (KRX did not list it on
+    the previous trading day) inside the listing-day range of 60%-400% of the base. (confirmed rows, still rejected,
+    evidence)."""
+    by_key = {(r['stock_code'], r['trade_date']): r for r in rows}
+    confirmed, still, evidence, before = [], [], {}, {}
+    for code, day, reason in rejected:
+        if not reason.startswith('outside the limits'):
+            still.append((code, day, reason))
+            continue
+        try:
+            if day not in before:
+                before[day] = previous_listing(day)
+        except Exception as exc:  # noqa: BLE001 - not confirmed this run
+            still.append((code, day, f'{reason}; previous listing unavailable ({type(exc).__name__})'))
+            continue
+        previous_day, listed = before[day]
+        row, base = by_key[(code, day)], bases.get((code, day))
+        if listed is None or code in listed:
+            still.append((code, day, reason + ('' if listed is None else f'; listed on {previous_day}, not a listing day')))
+            continue
+        lower, upper = krx_limits(base, listing=True)
+        if lower <= row['close'] <= upper and lower <= row['high'] <= upper and lower <= row['low'] <= upper:
+            confirmed.append(row)
+            evidence[f'{code} {day}'] = {'listing_day': True, 'not_listed_on': previous_day, 'offering_base': base,
+                                         'limits': [lower, upper]}
+        else:
+            still.append((code, day, f'{reason}; listing day but outside {lower}-{upper}'))
+    return confirmed, still, evidence
 
 
 def krx_day(code, day):
@@ -777,6 +823,9 @@ def run(label):
         day_bases = sources[0][1].bases
         rows = changes['stock_prices'][0]
         kept, rejected = validate_krx(rows, day_bases)
+        if rejected:
+            confirmed, rejected, evidence = confirm_listing_days(rows, rejected, day_bases)
+            kept += confirmed
         changes['stock_prices'] = (kept, changes['stock_prices'][1])
     shrunk = [t for t in tables if private.seeded[t] and private.count(t) < SHRINK_LIMIT * private.seeded[t]]
     counts = {t: (len(rows), len(gone)) for t, (rows, gone) in changes.items()}
