@@ -374,17 +374,37 @@ CORPORATE_ACTION = re.compile('병합|분할|증자|감자|합병|변경상장|�
 CORPORATE_ACTION_DAYS = 45
 
 
-def naver_day(code, day):
-    """(close, change against the exchange's base price) of `code` on `day` from Naver's daily prices, or None."""
-    import requests
-    response = requests.get(f'https://m.stock.naver.com/api/stock/{code}/price', params={'pageSize': 20, 'page': 1},
-                            headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
-    response.raise_for_status()
-    number = lambda v: float(str(v).replace(',', '')) if v not in (None, '') else None  # noqa: E731
-    for item in response.json():
-        if (item.get('localTradedAt') or '')[:10] == day:
-            return number(item.get('closePrice')), number(item.get('compareToPreviousClosePrice'))
-    return None
+def krx_tick(price):
+    """KRX quotation unit (KOSPI and KOSDAQ alike since 2023-01-25)."""
+    for upper, tick in ((2_000, 1), (5_000, 5), (20_000, 10), (50_000, 50), (200_000, 100), (500_000, 500)):
+        if price < upper:
+            return tick
+    return 1_000
+
+
+def krx_limits(base):
+    """(lower, upper) daily price limits from the base price: ±30%, rounded inward to the quotation unit."""
+    import math
+    high, low = base * (1 + PRICE_LIMIT), base * (1 - PRICE_LIMIT)
+    return math.ceil(low / krx_tick(low)) * krx_tick(low), math.floor(high / krx_tick(high)) * krx_tick(high)
+
+
+def krx_day(code, day):
+    """KRX's own regular-session row of `code` on `day` and the day before: {close, change, base, kind, previous} or
+    None. Needs the KRX data system login (KRX_ID/KRX_PW, as the retail job)."""
+    from pykrx.website.krx.market import core
+    from pykrx.website.krx.market.ticker import get_stock_ticker_isin
+    start = (date.fromisoformat(day) - timedelta(days=10)).strftime('%Y%m%d')
+    rows = core.개별종목시세().fetch(start, day.replace('-', ''), get_stock_ticker_isin(code), 1).to_dict('records')
+    number = lambda v: int(str(v).replace(',', ''))  # noqa: E731
+    by_day = {r['TRD_DD'].replace('/', '-'): r for r in rows}
+    row = by_day.get(day)
+    if not row:
+        return None
+    earlier = sorted(d for d in by_day if d < day)
+    close, change = number(row['TDD_CLSPRC']), number(row['CMPPREVDD_PRC'])
+    return {'close': close, 'change': change, 'base': close - change, 'kind': row['FLUC_TP_CD'],
+            'previous': number(by_day[earlier[-1]]['TDD_CLSPRC']) if earlier else None}
 
 
 def corporate_actions(code, day, conn):
@@ -403,34 +423,43 @@ def corporate_actions(code, day, conn):
 
 
 def confirm_beyond_limit(conn, rejected, rows):
-    """Of the closes rejected only for the daily limit against the stored previous close, the ones the exchange's own
-    base price and a corporate action confirm: Naver has the same close within the limit of its base price, and DART
-    has a disclosure that resets the base price (a consolidation, split, capital change, relisting). Returns
-    (confirmed rows, still rejected, evidence)."""
+    """Of the closes rejected only for the daily limit against the stored previous close: the ones KRX confirms are
+    published. The collected close must equal KRX's regular-session close and lie within that day's limits from KRX's
+    base price; a DART corporate action is kept as supporting evidence for a base price that moved, not required.
+    A close that differs from KRX (another session's price), or that KRX cannot confirm, stays for review.
+    Returns (confirmed rows, still rejected, evidence)."""
     by_key = {(r['stock_code'], r['trade_date']): r for r in rows}
     confirmed, still, evidence = [], [], {}
     for code, day, reason in rejected:
         if 'vs previous close' not in reason:
             still.append((code, day, reason))
             continue
-        try:
-            quote = naver_day(code, day)
-            actions = corporate_actions(code, day, conn) if quote else []
-        except Exception as exc:  # noqa: BLE001 - not confirmed this run; tried again on the next
-            still.append((code, day, f'{reason}; not confirmed ({type(exc).__name__})'))
-            continue
         row = by_key[(code, day)]
-        if quote and quote[0] == row['close'] and quote[1] is not None:
-            base = quote[0] - quote[1]
-            within = base > 0 and abs(quote[0] / base - 1) <= PRICE_LIMIT + 0.0005
-            if within and actions:
-                confirmed.append(row)
-                evidence[f'{code} {day}'] = {'base': base, 'actions': actions[:3]}
-                continue
-            reason = f'{reason}; base {base:g}' + ('' if within else ' beyond limit') + ('' if actions else ', no corporate action')
-        else:
-            reason = f'{reason}; Naver daily close differs or missing'
-        still.append((code, day, reason))
+        try:
+            krx = krx_day(code, day)
+        except Exception as exc:  # noqa: BLE001 - not confirmed this run; tried again on the next
+            still.append((code, day, f'{reason}; KRX value unavailable ({type(exc).__name__})'))
+            continue
+        if krx is None:
+            still.append((code, day, f'{reason}; KRX has no row for the day'))
+            continue
+        if krx['close'] != row['close']:
+            still.append((code, day, f"{reason}; collected {row['close']:g} ≠ KRX regular close {krx['close']:g}"))
+            continue
+        lower, upper = krx_limits(krx['base'])
+        if not lower <= row['close'] <= upper:
+            still.append((code, day, f"{reason}; outside KRX limits {lower}–{upper} (base {krx['base']})"))
+            continue
+        stored = conn.execute('SELECT close FROM stock_prices WHERE stock_code=? AND trade_date<? ORDER BY trade_date DESC LIMIT 1',
+                              (code, day)).fetchone()
+        try:
+            actions = corporate_actions(code, day, conn) if krx['previous'] != krx['base'] else []
+        except Exception:  # noqa: BLE001 - supporting evidence only
+            actions = []
+        confirmed.append(row)
+        evidence[f'{code} {day}'] = {'krx_close': krx['close'], 'base': krx['base'], 'limits': [lower, upper],
+                                     'krx_previous_close': krx['previous'], 'stored_previous_close': stored[0] if stored else None,
+                                     **({'corporate_actions': actions[:3]} if actions else {})}
     return confirmed, still, evidence
 
 

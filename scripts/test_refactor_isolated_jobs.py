@@ -194,20 +194,25 @@ class PricesTest(unittest.TestCase):
                          [('index_kospi', d) for d in ('2026-11-18', '2026-11-19', '2026-11-20')])
         self.assertEqual(jobs.price_gaps(conn, date(2026, 11, 21)), {'A': ['2026-11-18', '2026-11-20']})
 
-    def test_beyond_limit_confirmed_only_by_base_price_and_corporate_action(self):
+    def test_beyond_limit_confirmed_by_krx_close_and_limits(self):
         from unittest import mock
-        rows = [{'stock_code': '304840', 'trade_date': '2026-11-20', 'close': 1586},
+        conn = self._conn([('0035S0', '2026-11-17', 1, 1, 1, 12950, 1), ('041510', '2026-11-17', 1, 1, 1, 76500, 1)])
+        rows = [{'stock_code': '0035S0', 'trade_date': '2026-11-18', 'close': 17090},
                 {'stock_code': '041510', 'trade_date': '2026-11-18', 'close': 99900}]
-        rejected = [('304840', '2026-11-20', '+182.7% vs previous close'), ('041510', '2026-11-18', '+30.6% vs previous close')]
-        quotes = {'304840': (1586.0, 366.0), '041510': (99900.0, 23000.0)}
-        actions = {'304840': ['20261119 주권매매거래정지해제 (액면병합 주권 변경상장)'], '041510': []}
-        with mock.patch.object(jobs, 'naver_day', side_effect=lambda c, d: quotes[c]), \
-                mock.patch.object(jobs, 'corporate_actions', side_effect=lambda c, d, conn: actions[c]):
-            confirmed, still, evidence = jobs.confirm_beyond_limit(None, rejected, rows)
-        self.assertEqual([r['stock_code'] for r in confirmed], ['304840'])
-        self.assertEqual(evidence['304840 2026-11-20']['base'], 1220.0)
-        self.assertEqual(still[0][0], '041510')
-        self.assertIn('no corporate action', still[0][2])
+        rejected = [('0035S0', '2026-11-18', '+32.0% vs previous close'), ('041510', '2026-11-18', '+30.6% vs previous close')]
+        krx = {'0035S0': {'close': 17090, 'change': 3940, 'base': 13150, 'kind': '4', 'previous': 13150},
+               '041510': {'close': 87900, 'change': 11000, 'base': 76900, 'kind': '1', 'previous': 76900}}
+        with mock.patch.object(jobs, 'krx_day', side_effect=lambda c, d: krx[c]), \
+                mock.patch.object(jobs, 'corporate_actions', return_value=[]):
+            confirmed, still, evidence = jobs.confirm_beyond_limit(conn, rejected, rows)
+        self.assertEqual([r['stock_code'] for r in confirmed], ['0035S0'])
+        self.assertEqual(evidence['0035S0 2026-11-18']['limits'], [9210, 17090])
+        self.assertEqual(evidence['0035S0 2026-11-18']['stored_previous_close'], 12950)
+        self.assertIn('≠ KRX regular close 87900', still[0][2])
+
+    def test_krx_limits_round_inward_to_the_tick(self):
+        self.assertEqual(jobs.krx_limits(5460), (3825, 7090))
+        self.assertEqual(jobs.krx_limits(1220), (854, 1586))
 
     def test_closed_through(self):
         from datetime import datetime
