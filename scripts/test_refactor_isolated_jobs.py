@@ -188,6 +188,35 @@ class SharedPathGuardTest(unittest.TestCase):
         with self.assertRaises(job.trial.HeldBack):
             job.supplement_tables(None, {'job_runs', 'ext_series'})
         self.assertFalse(job.ISOLATED_JOBS & job.TABLE_JOBS)
+        with self.assertRaises(job.trial.HeldBack):  # the market job's own table
+            job.supplement_tables(None, {'us_prices'})
+
+    def test_shared_tables_stay_on_the_shared_path_and_get_the_published_keys(self):
+        import refactor_collect_job as job
+        from unittest import mock
+
+        class PG:
+            def execute(self, sql, args):
+                if 'legacy_supplement_tables WHERE table_name=ANY' in sql:
+                    return [(t,) for t in args[0]]
+                return type('R', (), {'fetchone': lambda self: (['snapshot_date', 'indicator', 'value', 'extra_json', 'fetched_at'],)})()
+        self.assertEqual(job.supplement_tables(PG(), {'cache_meta', 'market_indicators'}), ['cache_meta', 'market_indicators'])
+        work = Path(tempfile.mkdtemp()) / 'work.db'
+        with sqlite3.connect(work) as conn:
+            conn.execute('CREATE TABLE market_indicators (snapshot_date TEXT, indicator TEXT, value REAL, extra_json TEXT, '
+                         'fetched_at TEXT, PRIMARY KEY (snapshot_date, indicator))')
+            conn.executemany('INSERT INTO market_indicators VALUES (?,?,?,?,?)', [
+                ('2026-11-20', 'vix', 15.0, None, None), ('2026-11-20', 'kospi', 2500.0, None, None),
+                ('2026-11-20', 'us_brief', 1.0, 'briefing', None)])  # a row the briefing wrote there: kept
+        with mock.patch('refactor_collect_trial.WORK', work):
+            n = jobs.mirror_keys(PG(), 'market_indicators',
+                                 [{'snapshot_date': '2026-11-20', 'indicator': 'vix', 'value': 16.0},
+                                  {'snapshot_date': '2026-11-21', 'indicator': 'vix', 'value': 17.0}],
+                                 [('2026-11-20', 'kospi')])
+        with sqlite3.connect(work) as conn:
+            self.assertEqual(sorted(conn.execute('SELECT snapshot_date, indicator, value FROM market_indicators')),
+                             [('2026-11-20', 'us_brief', 1.0), ('2026-11-20', 'vix', 16.0), ('2026-11-21', 'vix', 17.0)])
+        self.assertEqual(n, 3)
 
 
 class SchedulerTest(unittest.TestCase):

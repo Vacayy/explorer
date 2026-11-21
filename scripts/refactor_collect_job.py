@@ -32,12 +32,13 @@ CONNECTED_SENDS = {'briefing', 'observeweekly', 'observealerts', 'pfintraday', '
 NEVER = {'backfill'}  # uncapped model calls; never scheduled automatically
 # Table-collecting jobs: the unchanged script, then the supplement tables it actually wrote are replaced in PG
 # (recorded by a sqlite authorizer; writing any table that is not a supplement table holds the run back).
-TABLE_JOBS = {'market', 'krmovers',
+TABLE_JOBS = {'krmovers',
               'usfund', 'krcompany', 'markettoday', 'usbriefing', 'expfeed',
               'callmomentum', 'callfresh'}
 # Jobs moved to the isolated path (scripts/refactor_isolated_jobs.py): a private file per run, publication by key.
 # The tables they own are refused on this shared-file path, so the two paths never write the same table.
-ISOLATED_JOBS = {'extseries', 'sectorbench', 'prices', 'pricefix', 'pricefactors', 'credit', 'retail', 'twrevenue', 'kalshi', 'indexintraday', 'trade'}
+ISOLATED_JOBS = {'extseries', 'sectorbench', 'prices', 'pricefix', 'pricefactors', 'credit', 'retail', 'twrevenue', 'kalshi', 'indexintraday', 'trade',
+                 'market'}
 # Home jobs on the table path whose model calls are capped per run (each llm._execute is one call, its fallback
 # included): a Market Today slot is one call; the US briefing is the macro light (macro.interpret), the macro issues
 # (briefing.macro) and the synthesis (briefing.synthesize), one each (cached ones make none). Their network reads are optional (index values, macro series): the legacy job still

@@ -31,7 +31,10 @@ LEGACY = {'credit': ('credit_bonds', 'credit_quotes', 'treasury_curve'),
           'indexintraday': ('index_intraday',),
           # trade_follow is the owner's ledger (read from the projection); beneficiaries the screen computes go to the
           # owner overrides, which stay on top of these rows as before
-          'trade': ('trade_stats', 'trade_beneficiaries')}
+          'trade': ('trade_stats', 'trade_beneficiaries'),
+          # us_prices is the market job's; cache_meta and market_indicators are shared with jobs still on the shared
+          # file (published by key here, the keys mirrored into that file)
+          'market': ('cache_meta', 'market_indicators', 'us_prices')}
 JOBS = ('extseries', 'sectorbench', 'prices', 'pricefix', 'pricefactors', *LEGACY)
 # Requests per source host and run; a key starting with '.' covers every host under that domain.
 CAPS = {'extseries': {'': 30},
@@ -50,6 +53,8 @@ CAPS = {'extseries': {'': 30},
         # four categories, up to 18 trending events and pinned-event lookups/candles
         'kalshi': {'': 20, 'api.elections.kalshi.com': 60},
         'trade': {'': 20, 'apis.data.go.kr': 60},  # followed HS codes, 24 months when the source moved on
+        # indices, F&G, VKOSPI, the regime tickers (full history once) and FRED series for the market read
+        'market': {'': 20, '.finance.yahoo.com': 60, 'fred.stlouisfed.org': 30, 'api.stock.naver.com': 10},
         # 14 KR ETFs + KOSPI one by one, the US ETF batch, then sector info of followed tickers due for refresh
         'sectorbench': {'': 20, '.yahoo.com': 120}}
 TABLES = {**LEGACY, 'extseries': ('ext_series', 'expectation_claims'), 'prices': ('stock_prices',), 'pricefix': ('stock_prices',),
@@ -876,6 +881,24 @@ def mirror(pg, tables, since=None):
     return written
 
 
+def mirror_keys(pg, table, rows, deleted):
+    """The rows of a shared table this run published (and the keys it deleted) put into the shared collector file, so
+    that file's jobs, which still replace the table whole, keep them."""
+    import refactor_collect_trial as trial
+    from pipeline.postgres_isolated_collect import key_of
+    columns = pg.execute('SELECT columns FROM legacy_supplement_tables WHERE table_name=%s', (table,)).fetchone()[0]
+    where = ' AND '.join(f'"{c}"=?' for c in key_of(table))
+    work = sqlite3.connect(trial.WORK, timeout=60)
+    try:
+        with work:
+            work.executemany(f'DELETE FROM "{table}" WHERE {where}', [tuple(k) for k in deleted])
+            work.executemany(f'INSERT OR REPLACE INTO "{table}" ({",".join(columns)}) VALUES ({",".join("?" * len(columns))})',
+                             [[row.get(c) for c in columns] for row in rows])
+    finally:
+        work.close()
+    return len(rows) + len(deleted)
+
+
 def mirror_high52w(pg, days):
     """The shared collector file's high_52w signals of `days` made equal to PG's (its other signals are its own jobs')."""
     import refactor_collect_trial as trial
@@ -1019,6 +1042,12 @@ def run(label):
                 'pricefix': pricefix_sources}[label](network)) if label != 'pricefactors' else pricefactors_sources(network, pg)
     states, details = run_sources(private, sources, previous, network)
     changes = private.changes()
+    if os.environ.get('ISOLATED_DRY_RUN') == '1':  # a rehearsal: what would be published, nothing published
+        print(json.dumps({'label': label, 'dry_run': True, 'states': states, 'details': details,
+                          'changes': {t: (len(r), len(d)) for t, (r, d) in changes.items()},
+                          'requests_by_host': dict(network.requests), 'statuses': dict(network.statuses)},
+                         ensure_ascii=False, default=str))
+        return 'dry run'
     rejected, evidence = [], {}
     if label in ('prices', 'pricefix'):  # only consistent KRX bars are published; a rejected one stays as PG has it
         day_bases = sources[0][1].bases
@@ -1066,7 +1095,10 @@ def run(label):
         run_id, outcome = settle(trial._pg, label, token, started, outcome, exc, requests, result)
     if run_id is not None and not outcome.startswith('held back'):
         try:
-            result['mirrored'] = mirror(pg, tables, since)
+            result['mirrored'] = mirror(pg, [t for t in tables if t in iso.KEYS], since)
+            for table in tables:
+                if table in iso.SHARED_KEYS and table in changes:
+                    result['mirrored'][table] = mirror_keys(pg, table, *changes[table])
             if signal_days:
                 result['mirrored']['signals'] = mirror_high52w(pg, signal_days)
         except Exception as exc:  # noqa: BLE001 - the shared file's readers could see unpublished closes: hold all

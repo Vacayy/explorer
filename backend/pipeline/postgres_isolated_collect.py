@@ -29,10 +29,18 @@ KEYS = {'ext_series': ('series', 'period'),
         'retail_flows': ('date',), 'retail_snapshots': ('episode',), 'tw_monthly_revenue': ('code', 'ym'),
         'kalshi_candles': ('market_ticker', 'day'), 'kalshi_events': ('id',),
         'index_intraday': ('key', 'trade_date', 'hhmm'),
-        'trade_stats': ('hs_code', 'period'), 'trade_beneficiaries': ('hs_code', 'name')}
+        'trade_stats': ('hs_code', 'period'), 'trade_beneficiaries': ('hs_code', 'name'),
+        'us_prices': ('stock_code', 'trade_date')}
 # Tables an isolated job writes by key that the shared collector file's jobs also write (signals: call momentum on
-# that path, the 52-week highs of the days the prices job publishes); the shared path keeps publishing them.
-SHARED_KEYS = {'signals': ('signal_type', 'entity_id', 'date')}
+# that path, the 52-week highs of the days the prices job publishes; cache_meta and market_indicators: the market job
+# here, the Korean movers and the US briefing there); the shared path keeps publishing them, and an isolated run puts
+# the keys it published into the shared file as well.
+SHARED_KEYS = {'signals': ('signal_type', 'entity_id', 'date'), 'cache_meta': ('cache_key',),
+               'market_indicators': ('snapshot_date', 'indicator')}
+
+
+def key_of(table):
+    return KEYS.get(table) or SHARED_KEYS[table]
 # Job records of isolated runs take their own id band, apart from the shared collector file's (100,000,000 on), so
 # the two paths never hand out the same id.
 JOB_RUNS_BAND = 150_000_000
@@ -75,8 +83,8 @@ def seed(pg, conn, tables, since=None):
     returns {table: row count}. An id table continues after the highest id in all of PG, not only in the window."""
     counts = {}
     for table in tables:
-        if table not in KEYS:
-            raise ValueError(f'{table} is not owned by an isolated job')
+        if table not in KEYS and table not in SHARED_KEYS:
+            raise ValueError(f'{table} is not written by an isolated job')
         found = pg.execute('SELECT columns,schema_sql FROM legacy_supplement_tables WHERE table_name=%s', (table,)).fetchone()
         if found is None:
             raise ValueError(f'{table} is not a supplement table')
@@ -115,7 +123,7 @@ def rows_by_key(conn, table):
     """{natural key: row dict} of a table in the private SQLite file."""
     cursor = conn.execute(f'SELECT * FROM "{table}"')
     names = [d[0] for d in cursor.description]
-    key = KEYS[table]
+    key = key_of(table)
     out = {}
     for values in cursor:
         row = dict(zip(names, values))
@@ -144,7 +152,7 @@ def _ordinals(pg, table, keys, key_columns=None):
     with pg.cursor().copy(f'COPY {name} (k) FROM STDIN') as copy:
         for k in keys:
             copy.write_row((list(_text(k)),))
-    expr = 'ARRAY[' + ','.join(f"r.row_data->>'{c}'" for c in (key_columns or KEYS[table])) + ']'
+    expr = 'ARRAY[' + ','.join(f"r.row_data->>'{c}'" for c in (key_columns or key_of(table))) + ']'
     return {tuple(k): ordinal for ordinal, k in pg.execute(
         f'SELECT r.row_ordinal, {expr} FROM legacy_supplement_rows r JOIN {name} i ON i.k = {expr} '
         'WHERE r.table_name=%s', (table,))}
@@ -214,7 +222,7 @@ def publish(pg, label, started, outcome, changes, source_states, *, token, reque
         live = postgres_live_tables.ready(pg)
         for table, (rows, deleted) in changes.items():
             if rows or deleted:
-                applied[table] = apply_keyed(pg, table, KEYS.get(table) or SHARED_KEYS[table], rows, deleted, live=live,
+                applied[table] = apply_keyed(pg, table, key_of(table), rows, deleted, live=live,
                                              history=(history, label, token) if history else None)
         if adjustments:
             applied['price_adjustments'] = (record_adjustments(pg, adjustments, history or label, label), 0)
