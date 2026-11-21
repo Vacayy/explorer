@@ -944,7 +944,7 @@ class CollectionTargetTest(unittest.TestCase):
     def test_close_partial_does_not_release_other_jobs_failures(self):
         with patch.object(engine, 'run', return_value=(0, '{"outcome":"partial: portfolio close reported errors"}')):
             self.assertTrue(scheduler._run_one('pfclose', lambda *_: None))
-            self.assertFalse(scheduler._run_one('credit', lambda *_: None))
+            self.assertFalse(scheduler._run_one('indexintraday', lambda *_: None))
         with patch.object(engine, 'run', return_value=(0, '{"outcome":"partial: portfolio close model cap reached"}')):
             self.assertTrue(scheduler._run_one('pfclose', lambda *_: None))
         with patch.object(engine, 'run', return_value=(0, '{"outcome":"partial: unknown"}')):
@@ -970,7 +970,7 @@ class CollectionTargetTest(unittest.TestCase):
     def test_scheduler_accepts_only_verified_briefing_partial(self):
         with patch.object(engine, 'run', return_value=(0, '{"outcome":"partial: US briefing headline failures; job_runs 1"}')):
             self.assertTrue(scheduler._run_one('usbriefing', lambda *_: None))
-            self.assertFalse(scheduler._run_one('credit', lambda *_: None))
+            self.assertFalse(scheduler._run_one('indexintraday', lambda *_: None))
         with patch.object(engine, 'run', return_value=(0, '{"outcome":"partial: unknown"}')):
             self.assertFalse(scheduler._run_one('usbriefing', lambda *_: None))
 

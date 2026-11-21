@@ -24,7 +24,12 @@ KEYS = {'ext_series': ('series', 'period'),
         'sector_benchmark_prices': ('ticker', 'trade_date'),
         'sector_index': ('sector', 'trade_date'),
         'us_ticker_sectors': ('ticker',),
-        'stock_prices': ('stock_code', 'trade_date')}
+        'stock_prices': ('stock_code', 'trade_date'),
+        'credit_bonds': ('ticker',), 'credit_quotes': ('symbol', 'date'), 'treasury_curve': ('date', 'tenor'),
+        'retail_flows': ('date',), 'retail_snapshots': ('episode',), 'tw_monthly_revenue': ('code', 'ym')}
+# Job records of isolated runs take their own id band, apart from the shared collector file's (100,000,000 on), so
+# the two paths never hand out the same id.
+JOB_RUNS_BAND = 150_000_000
 # A large table is seeded and compared only from a start date on this column (the run passes the date).
 WINDOWS = {'stock_prices': 'trade_date'}
 NOW = postgres_collect_runs.NOW
@@ -76,6 +81,17 @@ def seed(pg, conn, tables, since=None):
         counts[table] = conn.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0]
     conn.commit()
     return counts
+
+
+def seed_job_runs(pg, conn):
+    """An empty job_runs in the private file whose ids continue in the isolated band."""
+    schema_sql = pg.execute("SELECT schema_sql FROM legacy_supplement_tables WHERE table_name='job_runs'").fetchone()[0]
+    conn.execute(schema_sql)
+    top = pg.execute("SELECT COALESCE(max((row_data->>'id')::bigint),0) FROM legacy_supplement_rows WHERE table_name='job_runs' "
+                     "AND (row_data->>'id')::bigint >= %s", (JOB_RUNS_BAND,)).fetchone()[0]
+    conn.execute('DELETE FROM sqlite_sequence WHERE name=?', ('job_runs',))
+    conn.execute('INSERT INTO sqlite_sequence (name, seq) VALUES (?,?)', ('job_runs', max(top, JOB_RUNS_BAND - 1)))
+    conn.commit()
 
 
 def rows_by_key(conn, table):
@@ -145,7 +161,7 @@ def apply_keyed(pg, table, key, rows, deleted=(), *, live=None):
     return len(rows), len(gone)
 
 
-def publish(pg, label, started, outcome, changes, source_states, *, token, requests=None, result=None):
+def publish(pg, label, started, outcome, changes, source_states, *, token, requests=None, result=None, records=()):
     """One transaction: every table's upserts/deletes by key, the per-source state and the run record.
     `changes` = {table: (rows, deleted keys)}. Returns (run id, {table: (upserted, deleted)})."""
     applied = {}
@@ -154,6 +170,8 @@ def publish(pg, label, started, outcome, changes, source_states, *, token, reque
         for table, (rows, deleted) in changes.items():
             if rows or deleted:
                 applied[table] = apply_keyed(pg, table, KEYS[table], rows, deleted, live=live)
+        if records:  # the run's own job records (the legacy script's), in the isolated id band
+            applied['job_runs'] = apply_keyed(pg, 'job_runs', ('id',), list(records), live=live)
         for source, state in source_states.items():
             pg.execute('INSERT INTO collect_source_state (job,source,status,last_ok_at,failing_since,last_error,attempts,'
                        f'gaps_json,updated_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,{NOW}) ON CONFLICT (job,source) DO UPDATE SET '

@@ -23,15 +23,23 @@ from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-JOBS = ('extseries', 'sectorbench', 'prices')
+# Jobs that only write their own tables run their unchanged legacy script on the private file (one source).
+LEGACY = {'credit': ('credit_bonds', 'credit_quotes', 'treasury_curve'),
+          'retail': ('retail_flows', 'retail_snapshots'),
+          'twrevenue': ('tw_monthly_revenue',)}
+JOBS = ('extseries', 'sectorbench', 'prices', *LEGACY)
 # Requests per source host and run; a key starting with '.' covers every host under that domain.
 CAPS = {'extseries': {'': 30},
         # Naver realtime quotes in batches of 200 codes (about 15), then Yahoo for the gaps of the last 10 days
         # (+ Naver daily prices and DART disclosures for the few closes beyond the daily limit)
         'prices': {'': 20, 'polling.finance.naver.com': 30, '.finance.yahoo.com': 300},
+        # credit (macbook-source #3 6942831447): 34 companies' issuer scan, symbol search fallback, 10 FRED series
+        'credit': {'': 20, 'scanner.tradingview.com': 150, 'symbol-search.tradingview.com': 60,
+                   'data.tradingview.com': 150, 'fred.stlouisfed.org': 12},
+        'retail': {'': 20}, 'twrevenue': {'': 20},
         # 14 KR ETFs + KOSPI one by one, the US ETF batch, then sector info of followed tickers due for refresh
         'sectorbench': {'': 20, '.yahoo.com': 120}}
-TABLES = {'extseries': ('ext_series', 'expectation_claims'), 'prices': ('stock_prices',),
+TABLES = {**LEGACY, 'extseries': ('ext_series', 'expectation_claims'), 'prices': ('stock_prices',),
           'sectorbench': ('sector_benchmark_prices', 'sector_index', 'us_ticker_sectors')}
 BACKFILL_AFTER_DAYS = 45  # a source failing longer than its daily window re-reads its whole history once it answers
 SHRINK_LIMIT = 0.5
@@ -73,6 +81,24 @@ class Network:
             self.stopped.setdefault(host, f'{host} answered {status}')
 
     def install(self):
+        # Clients that do not go through an HTTP library (a websocket quote feed) are counted when they resolve the host:
+        # a stopped host is refused, and so many connections count against the host's cap as requests would.
+        import socket
+        resolve = socket.getaddrinfo
+        resolved = Counter()
+
+        def getaddrinfo(host, *args, **kwargs):
+            if isinstance(host, str) and host not in ('pg', 'localhost', '127.0.0.1'):
+                if host in self.stopped:
+                    raise Refused(self.stopped[host])
+                resolved[host] += 1
+                if resolved[host] > self.cap(host):
+                    self.stopped[host] = f'{host} reached the request cap {self.cap(host)}'
+                    raise Refused(self.stopped[host])
+                if resolved[host] > self.requests[host]:  # a connection no HTTP hook saw: count it here
+                    self.requests[host] = resolved[host]
+            return resolve(host, *args, **kwargs)
+        socket.getaddrinfo = getaddrinfo
         import requests.adapters
         send = requests.adapters.HTTPAdapter.send
 
@@ -121,6 +147,7 @@ class Run:
         self.path = Path(tempfile.mkdtemp(prefix='isolated-')) / 'run.db'
         with sqlite3.connect(self.path) as conn:
             self.seeded = iso.seed(pg, conn, tables, since)
+            iso.seed_job_runs(pg, conn)  # a legacy script's own job record lands here
             band(conn)  # new rows of an id table take the candidate's band (pipeline.postgres_id_bands)
             self.before = {t: iso.rows_by_key(conn, t) for t in tables}
 
@@ -154,6 +181,12 @@ class Run:
     def count(self, table, at='main'):
         with sqlite3.connect(self.path) as conn:
             return conn.execute(f'SELECT count(*) FROM "{"_checkpoint_" + table if at == "checkpoint" else table}"').fetchone()[0]
+
+    def job_records(self):
+        """The job records this run's legacy code wrote (the isolated id band)."""
+        with sqlite3.connect(self.path) as conn:
+            conn.row_factory = sqlite3.Row
+            return [dict(r) for r in conn.execute('SELECT * FROM job_runs ORDER BY id')]
 
     def changes(self):
         from pipeline import postgres_isolated_collect as iso
@@ -468,6 +501,29 @@ def mirror(pg, tables, since=None):
     return written
 
 
+def legacy_sources(label):
+    """The job's unchanged script as one source, on the private file; its own job record decides the outcome."""
+    import database
+    import refactor_collect_job as job
+    import refactor_collect_trial as trial
+    argv, record = job.job_argv(label)
+
+    def script(run, _prior):
+        database.init_db = lambda: None  # the private file has the owned tables; the rest is read from the projection
+        started = _now()
+        os.chdir('/app')
+        trial._run_script(*argv)  # a non-zero exit raises HeldBack: the source fails and its writes are rolled back
+        if not record:
+            return 'ok', {}, []
+        with run.connect() as conn:
+            found = conn.execute('SELECT status, summary FROM main.job_runs WHERE job=? AND ran_at>=? ORDER BY id DESC LIMIT 1',
+                                 (record, started)).fetchone()
+        if found is None or found[0] == 'error':
+            raise RuntimeError(f"job record {record}: {found[1][:150] if found else 'missing'}")
+        return ('partial' if found[0] == 'partial' else 'ok'), {'record': found[0], 'summary': (found[1] or '')[:200]}, []
+    return [('script', script)]
+
+
 NOT_MOVED = {'sectorbench': {'us_follow_prices': 'us_prices is still replaced whole by the shared-file jobs'}}
 
 
@@ -541,7 +597,8 @@ def run(label):
     since = price_window_start() if label == 'prices' else None
     private = Run(pg, tables, since)
     private.point_legacy_here()
-    sources = {'extseries': extseries_sources, 'sectorbench': sectorbench_sources, 'prices': prices_sources}[label](network)
+    sources = (legacy_sources(label) if label in LEGACY else
+               {'extseries': extseries_sources, 'sectorbench': sectorbench_sources, 'prices': prices_sources}[label](network))
     states, details = run_sources(private, sources, previous, network)
     changes = private.changes()
     rejected, evidence = [], {}
@@ -565,7 +622,8 @@ def run(label):
             outcome = 'partial' + outcome[len('applied'):] + f'; rejected {len(rejected)} closes'
     requests = dict(network.requests)
     try:
-        run_id, _ = iso.publish(pg, label, started, outcome, changes, states, token=token, requests=requests, result=result)
+        run_id, _ = iso.publish(pg, label, started, outcome, changes, states, token=token, requests=requests, result=result,
+                                records=private.job_records())
     except Exception as exc:  # noqa: BLE001 - whether the commit took effect is settled from the run record
         run_id, outcome = settle(trial._pg, label, token, started, outcome, exc, requests, result)
     if run_id is not None and not outcome.startswith('held back'):
