@@ -42,6 +42,12 @@ def initialize(pg):
                    'status TEXT NOT NULL,last_ok_at TEXT,failing_since TEXT,last_error TEXT,'
                    'attempts INTEGER NOT NULL DEFAULT 0,gaps_json TEXT NOT NULL DEFAULT \'[]\','
                    f'updated_at TEXT NOT NULL DEFAULT {NOW},PRIMARY KEY (job,source))')
+        # Every row an isolated run changed in a logged table: its key, the value before (null: a new row), the value
+        # after, the source and the run (the run record carries the same token).
+        pg.execute('CREATE TABLE IF NOT EXISTS collected_row_history (id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,'
+                   'table_name TEXT NOT NULL,row_key JSONB NOT NULL,previous JSONB,current JSONB,source TEXT NOT NULL,'
+                   f'job TEXT NOT NULL,token TEXT NOT NULL,changed_at TEXT NOT NULL DEFAULT {NOW})')
+        pg.execute('CREATE INDEX IF NOT EXISTS collected_row_history_key ON collected_row_history (table_name,row_key)')
 
 
 def states(pg, job):
@@ -133,7 +139,7 @@ def _ordinals(pg, table, keys, key_columns=None):
         'WHERE r.table_name=%s', (table,))}
 
 
-def apply_keyed(pg, table, key, rows, deleted=(), *, live=None):
+def apply_keyed(pg, table, key, rows, deleted=(), *, live=None, history=None):
     """In the caller's transaction: upsert `rows` and delete `deleted` keys of a supplement table by `key`.
     Returns (rows upserted, rows deleted)."""
     if live is None:
@@ -144,6 +150,23 @@ def apply_keyed(pg, table, key, rows, deleted=(), *, live=None):
     ordinals = _ordinals(pg, table, [tuple(row[c] for c in key) for row in rows] + list(deleted), key)
     last = pg.execute('SELECT COALESCE(max(row_ordinal),-1) FROM legacy_supplement_rows WHERE table_name=%s',
                       (table,)).fetchone()[0]
+    if history:  # (source, job, token): the value before each change, kept with its source
+        source, job, token = history
+        before = dict(pg.execute('SELECT row_ordinal,row_data FROM legacy_supplement_rows WHERE table_name=%s AND '
+                                 'row_ordinal=ANY(%s)', (table, list(ordinals.values()))).fetchall()) if ordinals else {}
+        with pg.cursor().copy('COPY collected_row_history (table_name,row_key,previous,current,source,job,token) '
+                              'FROM STDIN') as copy:
+            for row in rows:
+                k = tuple(row[c] for c in key)
+                previous = before.get(ordinals.get(_text(k)))
+                copy.write_row((table, json.dumps(dict(zip(key, k)), ensure_ascii=False),
+                                json.dumps(previous, ensure_ascii=False) if previous is not None else None,
+                                json.dumps(row, ensure_ascii=False), source, job, token))
+            for k in deleted:
+                previous = before.get(ordinals.get(_text(k)))
+                if previous is not None:
+                    copy.write_row((table, json.dumps(dict(zip(key, k)), ensure_ascii=False),
+                                    json.dumps(previous, ensure_ascii=False), None, source, job, token))
     for row in rows:
         ordinal = ordinals.get(_text(tuple(row[c] for c in key)))
         if ordinal is None:
@@ -161,7 +184,8 @@ def apply_keyed(pg, table, key, rows, deleted=(), *, live=None):
     return len(rows), len(gone)
 
 
-def publish(pg, label, started, outcome, changes, source_states, *, token, requests=None, result=None, records=()):
+def publish(pg, label, started, outcome, changes, source_states, *, token, requests=None, result=None, records=(),
+            history=None):
     """One transaction: every table's upserts/deletes by key, the per-source state and the run record.
     `changes` = {table: (rows, deleted keys)}. Returns (run id, {table: (upserted, deleted)})."""
     applied = {}
@@ -169,7 +193,8 @@ def publish(pg, label, started, outcome, changes, source_states, *, token, reque
         live = postgres_live_tables.ready(pg)
         for table, (rows, deleted) in changes.items():
             if rows or deleted:
-                applied[table] = apply_keyed(pg, table, KEYS[table], rows, deleted, live=live)
+                applied[table] = apply_keyed(pg, table, KEYS[table], rows, deleted, live=live,
+                                             history=(history, label, token) if history else None)
         if records:  # the run's own job records (the legacy script's), in the isolated id band
             applied['job_runs'] = apply_keyed(pg, 'job_runs', ('id',), list(records), live=live)
         for source, state in source_states.items():

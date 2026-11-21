@@ -214,6 +214,41 @@ class PricesTest(unittest.TestCase):
         self.assertEqual(jobs.krx_limits(5460), (3825, 7090))
         self.assertEqual(jobs.krx_limits(1220), (854, 1586))
 
+    def test_krx_days_skip_done_and_closed_and_start_at_the_switch(self):
+        from datetime import date
+        prior = {'2026-11-23': {'status': 'done'}, '2026-11-24': {'status': 'missing'}, '2026-11-25': {'status': 'closed'}}
+        self.assertEqual(jobs.krx_days(prior, '2026-11-27', today=date(2026, 11, 28), start='2026-11-23'),
+                         ['2026-11-24', '2026-11-26', '2026-11-27'])
+        self.assertEqual(jobs.krx_days({}, '2026-11-21', today=date(2026, 11, 21), start='2026-11-23'), [])
+
+    def test_krx_bars_kept_whole_or_rejected(self):
+        rows = [{'stock_code': 'A', 'trade_date': 'd', 'open': 100, 'high': 110, 'low': 95, 'close': 105},
+                {'stock_code': 'B', 'trade_date': 'd', 'open': 100, 'high': 104, 'low': 95, 'close': 105},
+                {'stock_code': 'C', 'trade_date': 'd', 'open': 100, 'high': 140, 'low': 95, 'close': 140}]
+        kept, rejected = jobs.validate_krx(rows, {('A', 'd'): 100, ('B', 'd'): 100, ('C', 'd'): 100})
+        self.assertEqual([r['stock_code'] for r in kept], ['A'])
+        self.assertEqual([c for c, _d, _w in rejected], ['B', 'C'])
+
+    def test_krx_market_day_maps_regular_session_and_skips_no_trade(self):
+        import sys, types
+        from unittest import mock
+        record = lambda code, close, vol: {'ISU_SRT_CD': code, 'TDD_CLSPRC': close, 'CMPPREVDD_PRC': '100', 'TDD_OPNPRC': '1,000',  # noqa: E731
+                                           'TDD_HGPRC': '1,200', 'TDD_LWPRC': '990', 'ACC_TRDVOL': vol, 'MKTCAP': '5,000', 'LIST_SHRS': '5'}
+        class Frame(list):
+            def to_dict(self, _orient):
+                return list(self)
+        fetch = mock.Mock(side_effect=lambda day, market: Frame([record('005930', '1,100', '10')] if market == 'STK'
+                                                                 else [record('123450', '0', '0')] if market == 'KSQ' else []))
+        core = types.SimpleNamespace(**{'전종목시세': lambda: types.SimpleNamespace(fetch=fetch)})
+        with mock.patch.dict(sys.modules, {'pykrx': types.ModuleType('pykrx'), 'pykrx.website': types.ModuleType('w'),
+                                           'pykrx.website.krx': types.ModuleType('k'),
+                                           'pykrx.website.krx.market': types.SimpleNamespace(core=core),
+                                           'pykrx.website.krx.market.core': core}):
+            rows, bases = jobs.krx_market_day('2026-11-23')
+        self.assertEqual(rows, [{'stock_code': '005930', 'trade_date': '2026-11-23', 'open': 1000, 'high': 1200, 'low': 990,
+                                 'close': 1100, 'volume': 10, 'market_cap': 5000, 'shares': 5}])
+        self.assertEqual(bases, {'005930': 1000})
+
     def test_closed_through(self):
         from datetime import datetime
         from zoneinfo import ZoneInfo

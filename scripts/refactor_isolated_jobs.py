@@ -463,45 +463,113 @@ def confirm_beyond_limit(conn, rejected, rows):
     return confirmed, still, evidence
 
 
+# From this day the daily bars come from KRX's own market-wide prices (regular session: open, high, low, close
+# together). Earlier days keep what was collected until they are corrected day by day, separately.
+PRICE_KRX_FROM = os.environ.get('PRICE_KRX_FROM', '2026-11-23')
+KRX_MARKETS = ('STK', 'KSQ', 'KNX')  # KOSPI, KOSDAQ, KONEX
+KRX_SOURCE = 'krx:전종목시세(MDCSTAT01501)'
+KRX_LOOKBACK_DAYS = 20     # missing days are tried again within this window
+KRX_EMPTY_IS_HOLIDAY = 3   # a weekday KRX still has no prices for after this many days was not a trading day
+
+
+def _krx_number(value):
+    text = str(value).replace(',', '').strip()
+    return int(float(text)) if text not in ('', '-') else None
+
+
+# Jobs whose every changed row is logged with its previous value and source (collected_row_history).
+HISTORY_SOURCE = {'prices': KRX_SOURCE}
+
+
+def krx_market_day(day):
+    """KRX's regular-session bars of every listed stock on `day`: (rows, {stock: base price}). A stock that did not
+    trade (no volume) has no row, as before."""
+    from pykrx.website.krx.market import core
+    rows, bases = [], {}
+    for market in KRX_MARKETS:
+        for r in core.전종목시세().fetch(day.replace('-', ''), market).to_dict('records'):
+            close, volume = _krx_number(r['TDD_CLSPRC']), _krx_number(r['ACC_TRDVOL'])
+            if not close or not volume:
+                continue
+            rows.append({'stock_code': r['ISU_SRT_CD'], 'trade_date': day, 'open': _krx_number(r['TDD_OPNPRC']),
+                         'high': _krx_number(r['TDD_HGPRC']), 'low': _krx_number(r['TDD_LWPRC']), 'close': close,
+                         'volume': volume, 'market_cap': _krx_number(r['MKTCAP']), 'shares': _krx_number(r['LIST_SHRS'])})
+            bases[r['ISU_SRT_CD']] = close - (_krx_number(r['CMPPREVDD_PRC']) or 0)
+    return rows, bases
+
+
+def krx_days(prior_days, through, today=None, start=PRICE_KRX_FROM):
+    """Weekdays from `start` (within the lookback) through `through` not yet collected or found closed."""
+    today = today or _kst_now().date()
+    first = max(date.fromisoformat(start), today - timedelta(days=KRX_LOOKBACK_DAYS))
+    days, d = [], first
+    while d.isoformat() <= through:
+        if d.weekday() < 5 and prior_days.get(d.isoformat(), {}).get('status') not in ('done', 'closed'):
+            days.append(d.isoformat())
+        d += timedelta(days=1)
+    return days
+
+
+def validate_krx(rows, bases):
+    """(rows to publish, rejected): KRX bars are taken as they are when consistent within the day and inside that
+    day's limits from KRX's own base price."""
+    kept, rejected = [], []
+    for row in rows:
+        o, h, low, c = row['open'], row['high'], row['low'], row['close']
+        base = bases.get((row['stock_code'], row['trade_date']))
+        reason = None
+        if not (low and h and o and low <= min(o, c) and max(o, c) <= h):
+            reason = 'open/close outside the day range'
+        elif base and base > 0 and not krx_limits(base)[0] <= c <= krx_limits(base)[1]:
+            reason = f'outside the limits of base {base}'
+        if reason:
+            rejected.append((row['stock_code'], row['trade_date'], reason))
+        else:
+            kept.append(row)
+    return kept, rejected
+
+
 def prices_sources(network):
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    import ingest_prices as ip
-    legacy_batch = ip._yf_batch
-    attempted = set()
+    bases = {}
 
-    def batch(yf, tickers, start, end, tries=4):
-        # once a Yahoo host is stopped, the rest of the batches are not tried (and not waited for): they stay gaps
-        if any(host.endswith('yahoo.com') for host in network.stopped):
-            return None, set()
-        attempted.update(t.split('.')[0] for t in tickers)
-        return legacy_batch(yf, tickers, start, end, tries=1)  # a 429 stops the host here instead of a backoff
-    ip._yf_batch = batch
-
-    def naver_daily(run, _prior):
-        ip.get_connection = run.connect
-        result = ip.ingest_daily(repair_days=0)
-        if result['status'] == 'error':
-            raise RuntimeError(f"every Naver batch failed ({result['failed']} stocks)")
-        return ('partial' if result['failed'] else 'ok'), {k: result[k] for k in ('upsert', 'days', 'changed', 'failed')}, []
-
-    def yahoo_gaps(run, prior):
-        ip.get_connection = run.connect
-        tries = {g['code']: g.get('tries', 0) for g in prior.get('gaps') or [] if isinstance(g, dict)}
-        with run.connect() as conn:
-            gaps = price_gaps(conn)
-        if not gaps:
-            return 'ok', {'gaps': 0}, []
-        order = sorted(gaps, key=lambda c: (tries.get(c, 0), c))  # least tried first: a dead code cannot starve the rest
-        ip.repair(PRICE_GAP_DAYS, only_missing=True, codes=order)
-        with run.connect() as conn:
-            left = price_gaps(conn)
-        state = [{'code': c, 'dates': d, 'tries': tries.get(c, 0) + (c in attempted)} for c, d in left.items()]
-        open_gaps = [g for g in state if g['tries'] < PRICE_GIVE_UP]
-        detail = {'gaps': len(gaps), 'filled': len(gaps) - len(left), 'left': len(left),
-                  'given_up': len(state) - len(open_gaps)}
-        return ('partial' if open_gaps else 'ok'), detail, state
-
-    return [('naver_daily', naver_daily), ('yahoo_gaps', yahoo_gaps)]
+    def krx_daily(run, prior):
+        prior_days = {g['day']: g for g in prior.get('gaps') or [] if isinstance(g, dict) and 'day' in g}
+        today = _kst_now().date()
+        todo = krx_days(prior_days, closed_through())
+        state = dict(prior_days)
+        collected, missing = {}, []
+        for day in todo:
+            entry = {'day': day, 'tries': prior_days.get(day, {}).get('tries', 0) + 1}
+            try:
+                rows, day_bases = krx_market_day(day)
+            except Exception as exc:  # noqa: BLE001 - recorded as missing; never filled from another source
+                state[day] = {**entry, 'status': 'missing', 'reason': f'{type(exc).__name__}: {str(exc)[:80]}'}
+                missing.append(day)
+                continue
+            if not rows:
+                old = (today - date.fromisoformat(day)).days > KRX_EMPTY_IS_HOLIDAY
+                state[day] = {**entry, 'status': 'closed' if old else 'missing', 'reason': 'KRX has no prices'}
+                if not old:
+                    missing.append(day)
+                continue
+            with run.connect() as conn:
+                conn.executemany(
+                    'INSERT INTO main.stock_prices (stock_code, trade_date, open, high, low, close, volume, market_cap, shares, '
+                    "fetched_at) VALUES (:stock_code,:trade_date,:open,:high,:low,:close,:volume,:market_cap,:shares,datetime('now')) "
+                    'ON CONFLICT(stock_code, trade_date) DO UPDATE SET open=excluded.open, high=excluded.high, low=excluded.low, '
+                    'close=excluded.close, volume=excluded.volume, market_cap=excluded.market_cap, shares=excluded.shares, '
+                    'fetched_at=excluded.fetched_at', rows)
+            bases.update({(code, day): base for code, base in day_bases.items()})
+            state[day] = {**entry, 'status': 'done', 'rows': len(rows)}
+            collected[day] = len(rows)
+        keep = sorted(state, reverse=True)[:30]
+        gaps = [state[d] for d in sorted(keep)]
+        detail = {'from': PRICE_KRX_FROM, 'collected': collected, 'missing': missing}
+        if todo and not collected and missing and len(missing) == len(todo):
+            return 'error', {**detail, 'error': f'KRX prices missing for {", ".join(missing)}'}, gaps
+        return ('partial' if missing else 'ok'), detail, gaps
+    krx_daily.bases = bases
+    return [('krx_daily', krx_daily)]
 
 
 def mirror(pg, tables, since=None):
@@ -577,6 +645,13 @@ def run_sources(run, sources, previous, network=None):
                             'gaps': (getattr(call, 'pending', None) or (lambda _r: []))(run) or prior.get('gaps') or ['all']}
             details[name] = {'error': error[:200]}
             continue
+        if status == 'error':  # a source that failed without raising keeps the gaps it worked out (its days)
+            run.rollback()
+            states[name] = {'status': 'error', 'last_ok_at': prior.get('last_ok_at'),
+                            'failing_since': prior.get('failing_since') or now, 'last_error': detail.get('error'),
+                            'attempts': prior.get('attempts', 0) + 1, 'gaps': gaps}
+            details[name] = detail
+            continue
         states[name] = {'status': status, 'last_ok_at': now,
                         'failing_since': (prior.get('failing_since') or now) if status == 'partial' else None,
                         'last_error': None, 'attempts': prior.get('attempts', 0) + 1 if status == 'partial' else 0,
@@ -631,11 +706,11 @@ def run(label):
     states, details = run_sources(private, sources, previous, network)
     changes = private.changes()
     rejected, evidence = [], {}
-    if label == 'prices':  # only validated closes are published; a rejected stock and date stays as PG has it
-        with private.connect() as conn:  # the projection's companies give DART corp codes
-            kept, rejected = validate_prices(conn, changes['stock_prices'][0])
-            confirmed, rejected, evidence = confirm_beyond_limit(conn, rejected, changes['stock_prices'][0])
-        changes['stock_prices'] = (kept + confirmed, changes['stock_prices'][1])
+    if label == 'prices':  # only consistent KRX bars are published; a rejected stock and date stays as PG has it
+        day_bases = sources[0][1].bases
+        rows = changes['stock_prices'][0]
+        kept, rejected = validate_krx(rows, day_bases)
+        changes['stock_prices'] = (kept, changes['stock_prices'][1])
     shrunk = [t for t in tables if private.seeded[t] and private.count(t) < SHRINK_LIMIT * private.seeded[t]]
     counts = {t: (len(rows), len(gone)) for t, (rows, gone) in changes.items()}
     result = {'sources': details, 'not_moved': NOT_MOVED.get(label, {}), 'stopped': network.stopped,
@@ -652,7 +727,7 @@ def run(label):
     requests = dict(network.requests)
     try:
         run_id, _ = iso.publish(pg, label, started, outcome, changes, states, token=token, requests=requests, result=result,
-                                records=private.job_records())
+                                records=private.job_records(), history=HISTORY_SOURCE.get(label))
     except Exception as exc:  # noqa: BLE001 - whether the commit took effect is settled from the run record
         run_id, outcome = settle(trial._pg, label, token, started, outcome, exc, requests, result)
     if run_id is not None and not outcome.startswith('held back'):
