@@ -1092,7 +1092,8 @@ def run_portfolio_close(send=None):
                 module.get_connection = lambda: _Borrowed(conn)
             database.get_connection = lambda: _Borrowed(conn)
             try:
-                result = portfolio_alerts.run('close', conn=conn, send=send or send_telegram)
+                with portfolio_dart_connection(conn):
+                    result = portfolio_alerts.run('close', conn=conn, send=send or send_telegram)
             except (trial.Aborted, Exception) as exc:
                 failure = exc
                 conn.rollback()
@@ -1113,7 +1114,7 @@ def run_portfolio_close(send=None):
     if failure is not None:
         if isinstance(failure, trial.Aborted):
             raise failure
-        raise trial.HeldBack('portfolio close failed after state reconciliation')
+        raise trial.HeldBack('portfolio close failed after state reconciliation: ' + portfolio_failure_location(failure))
     return result
 
 

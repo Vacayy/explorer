@@ -801,6 +801,44 @@ class CollectionTargetTest(unittest.TestCase):
         self.assertIn('summary:day', captured['after']['portfolio_alerts_sent'])
         self.assertEqual(sent, ['synthetic'])
 
+    def test_close_adapter_uses_disposable_dart_cache_and_reports_failure_location(self):
+        from pipeline import portfolio_alerts, postgres_owner_overrides as overrides, postgres_legacy_projection as projection
+        from services import dart_service
+        conn = sqlite3.connect(':memory:'); conn.row_factory = sqlite3.Row
+        conn.executescript("""
+            CREATE TEMP TABLE portfolio_alerts_sent(key TEXT PRIMARY KEY);
+            CREATE TEMP TABLE portfolio_principle_state(key TEXT PRIMARY KEY);
+            CREATE TEMP TABLE catalysts(id INTEGER PRIMARY KEY, natural_key TEXT);
+            CREATE TEMP TABLE portfolio_event_estimates(stock_code TEXT, kind TEXT);
+            CREATE TEMP TABLE transcript_calendar(ticker TEXT);
+            CREATE TEMP TABLE entity_digests(entity_id INTEGER, period TEXT, period_start TEXT);
+            CREATE TEMP TABLE portfolio_quotes(stock_code TEXT);
+        """)
+        conn.commit()
+        original_get = dart_service._get_dart
+        class PG:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def transaction(self): return self
+            def execute(self, *args): return None
+        class Projection:
+            def __init__(self, *args, **kwargs): pass
+            def write_connection(self, **kwargs): return conn, 1
+        def fake_close(mode, conn, send):
+            self.assertIsNot(dart_service._get_dart, original_get)  # the close run sees the disposable-cache binding
+            raise OSError('private-data-canary')
+        close_keys = {'catalysts': 'id', 'portfolio_event_estimates': 'stock_code|kind',
+                      'transcript_calendar': 'ticker', 'entity_digests': 'entity_id|period|period_start'}
+        with patch.dict(overrides.OVERRIDES, close_keys), \
+             patch.object(trial, '_pg', return_value=PG()), patch.object(projection, 'LegacyProjection', Projection), \
+             patch.object(projection, 'requester_is_operator', return_value=True), \
+             patch.object(portfolio_alerts, 'run', side_effect=fake_close), patch.object(overrides, 'apply'):
+            with self.assertRaises(trial.HeldBack) as raised:
+                job.run_portfolio_close(send=lambda x: True)
+        self.assertIn('OSError', str(raised.exception))
+        self.assertNotIn('private-data-canary', str(raised.exception))
+        self.assertIs(dart_service._get_dart, original_get)
+
     def test_briefing_preserves_pg_only_rows_and_refuses_duplicate_keys(self):
         with TemporaryDirectory() as directory:
             path = Path(directory) / 'work.db'
