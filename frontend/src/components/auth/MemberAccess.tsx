@@ -73,6 +73,14 @@ export function MemberAccessProvider({ children, enabled = PUBLIC_ACCESS }: { ch
   </AccessContext.Provider>
 }
 
+/** 운영자 전용·회원 전용 API를 불러도 되는가 — 공개 모드의 비로그인 방문자는 둘 다 아니다. 부르면 401이 '일부 데이터를
+ * 불러오지 못했습니다'로 보인다(2026-11-22). 공급자가 없으면(비공개 모드·단독 렌더) 예전처럼 둘 다 허용한다. */
+export function useAccessScope() {
+  const status = useContext(AccessContext)?.status ?? 'private'
+  return { operator: status === 'private' || status === 'operator',
+           member: status === 'private' || status === 'member' || status === 'operator' }
+}
+
 export function useMemberAccess() {
   const access = useContext(AccessContext)
   if (!access) throw new Error('MemberAccessProvider is required')

@@ -22,7 +22,7 @@ import { ApprovalsInbox, InboxSheet, useApprovalsCount } from "./Inboxes"
 import { AiOutputsButton, AiOutputsRow, AiOutputsSheet, useAiOutputs } from "./AiOutputs"
 import { ShellButton } from "./ShellButton"
 import { PUBLIC_ACCESS } from "@/lib/accessMode"
-import { AccountControl, useMemberAccess } from "@/components/auth/MemberAccess"
+import { AccountControl, useAccessScope, useMemberAccess } from "@/components/auth/MemberAccess"
 
 interface HealthItem { key: string; label: string; status: string; detail: string; critical?: boolean; latest?: string | null; owner?: string | null }
 const STATUS_LABEL: Record<string, string> = { stale: "지연", error: "오류" }
@@ -35,6 +35,7 @@ export function TopBar({ aiOpen, onToggleAi }: { aiOpen: boolean; onToggleAi: ()
   // 공개 모드의 비로그인 방문자: AI 버튼은 개인 대화 패널 대신 체험 채팅 화면으로 간다
   const access = useMemberAccess()
   const trial = PUBLIC_ACCESS && access.status !== "member" && access.status !== "operator"
+  const scope = useAccessScope()
   const { pathname, search } = useLocation()
   const here = locate(pathname, search)
   const phone = useMediaQuery(MOBILE_QUERY)
@@ -73,8 +74,8 @@ export function TopBar({ aiOpen, onToggleAi }: { aiOpen: boolean; onToggleAi: ()
         <ShellButton icon={Search} label="검색 (⌘K)" onClick={openOmnibar} className="xl:hidden" />
         {/* 폰(<768)은 검색 · AI 두 아이콘만 (ia-redesign §4.29) */}
         {/* 넓은 화면 오른쪽(D-323, 시안 Shell-Topbar·Home): 상태 점 · 인박스(점) · AI가 최근 만든 것(점, D-325) · 테마·설정 · AI */}
-        <HealthDot />
-        <ApprovalsInbox className="max-md:hidden" />
+        {scope.operator && <HealthDot />}
+        {scope.operator && <ApprovalsInbox className="max-md:hidden" />}
         <AiOutputsButton className="max-md:hidden" />
         <SettingsMenu />
         {trial ? (

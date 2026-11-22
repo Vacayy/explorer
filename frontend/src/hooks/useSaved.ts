@@ -1,6 +1,7 @@
 // 저장됨(북마크) 훅 — 목록 쿼리 + 저장/해제/메모 뮤테이션 (D-078)
 // SavedItem 타입은 여기 co-locate (기능 로컬 타입).
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useAccessScope } from "@/components/auth/MemberAccess"
 import { track } from "@/lib/usage"
 import api from "@/api/client"
 import { apiQuery, STALE } from "@/api/query"
@@ -30,9 +31,11 @@ export interface SaveInput {
 
 /** 저장 목록 (배지·토글 상태·리스트 공용 — ApprovalsInbox 패턴) */
 export function useSaved() {
-  return useQuery(
-    apiQuery<SavedItem[]>({ key: spineKeys.saved(), url: "/api/spine/saved", staleTime: STALE.short }),
-  )
+  const { member } = useAccessScope()  // 비로그인 방문자는 저장 목록이 없다(401을 오류로 띄우지 않게)
+  return useQuery({
+    ...apiQuery<SavedItem[]>({ key: spineKeys.saved(), url: "/api/spine/saved", staleTime: STALE.short }),
+    enabled: member,
+  })
 }
 
 export function useAddSaved() {

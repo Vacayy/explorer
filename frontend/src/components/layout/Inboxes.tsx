@@ -8,6 +8,7 @@ import ApprovalsCard from "@/components/home/ApprovalsCard"
 import { BriefingList } from "@/components/home/BriefingList"
 import { useHome } from "@/hooks/useHome"
 import { useSaved } from "@/hooks/useSaved"
+import { useAccessScope } from "@/components/auth/MemberAccess"
 import { ShellButton } from "./ShellButton"
 
 /**
@@ -15,9 +16,11 @@ import { ShellButton } from "./ShellButton"
  * count 쿼리는 ApprovalsCard와 같은 queryKey라 캐시를 공유한다.
  */
 export function useApprovalsCount() {
-  const { data: items = [] } = useQuery(
-    apiQuery<{ id: number }[]>({ key: ["spine", "approvals"], url: "/api/spine/approvals", staleTime: STALE.short }),
-  )
+  const { operator } = useAccessScope()
+  const { data: items = [] } = useQuery({
+    ...apiQuery<{ id: number }[]>({ key: ["spine", "approvals"], url: "/api/spine/approvals", staleTime: STALE.short }),
+    enabled: operator,
+  })
   return items.length
 }
 
