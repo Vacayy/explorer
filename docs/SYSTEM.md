@@ -20,6 +20,10 @@
 피드 수집은 별도 작업 볼륨과 전용 보류 표식을 지정해 다른 정기 작업과 실패를 격리할 수 있다. 피드 실행 전에는 계산 경로(서사 계산 버튼 등)가 PG에 먼저 추가한 엔티티·키워드·관계를 수집 사본에 받아 게시 기준선을 옮긴다(`scripts/refactor_feed_graph.py`). 수집 사본이 이미 PG에 있는 ID를 다시 발급하지 않게 하기 위해서다. 받아 올 수 없으면 피드만 보류한다. 기존 Telegram 첨부는 피드 작업에서만 읽기 전용 media 볼륨으로 참조한다. 가져온 문서의 공정한 지속 이월 저장소는 준비 중이며 아직 운영 수집에 연결하지 않았다.
 
 수집 작업 사본은 기본 볼륨 또는 명시적으로 이름을 제한한 복구 볼륨을 사용한다. 밀린 작업의 따라잡기는 정규 일정을 유지한 채 지정 시각까지 미룰 수 있다.
+
+공유 작업본 분리(`COLLECT_SHARED_WORK=0`, 2026-11-22부터 운영): 피드 외 작업은 공유 작업본 대신 KRX 로그인 보류 표식만 담은 상태 볼륨(`explorer-refactor-collect-state`)을 `/trial`에 붙인다. 격리 작업은 실행별 임시 SQLite에서 수집해 PG에 키 단위로 게시하고, 공유 파일이 없으면 미러를 건너뛴다. history는 PG에서 빌드한 프로젝션의 종가로 계획하고(프로젝션이 PG 최신 거래일보다 뒤처지면 보류), 작업 폴더는 history 볼륨에 둔다. peer·history의 실행 기록과 응답 캐시는 실행별 임시 파일에 쓴다. 피드는 자기 작업 사본에서 PG 그래프를 따라잡고 공유 작업본과의 갱신·동기화를 하지 않는다. 피드 실행 기록에는 사본에서 읽은 표(`work_tables_read`)가 남는다. 다시 붙일 때는 수집을 멈추고 `scripts/refactor_reattach_shared.py --since <분리 시각>`으로 분리 중 피드가 게시한 문서·그래프를 붙이고, 격리 작업이 게시한 표를 PG 기준(프로젝션)으로 바꾼 뒤 스위치를 끈다.
+
+화면 조회의 PG 전환: 미국장 브리핑(`GET /api/spine/us/briefing`)은 프로젝션 파일 대신 PG 원장 뷰에서 필요한 행만 요청별 메모리 SQLite로 읽어 기존 계산을 그대로 돌린다(`pipeline/postgres_us_briefing.py`). PG 읽기가 실패할 때만 프로젝션으로 답한다. 이를 위한 부분 표현식 인덱스 4개(문서 게시일, 서사 관계 양끝, 지표 최신 행)는 마이그레이션 17이다. 문서 논점 생성(`POST /api/spine/doc/{id}/claims`)은 로그인 회원만 등록하며, 문서 상세는 저장된 논점을 읽기만 하고 생성은 회원이 버튼으로 요청한다.
 > (구 ARCHITECTURE.md·PLAN.md는 초기 대시보드 시절 문서 — docs/private/archive/로 이동, 본 문서가 현행)
 
 ## 외부 컨콜 자료 표시 경계
@@ -459,7 +463,7 @@ Claude Code가 선택되지 않은 경우 `ANTHROPIC_API_KEY`가 있으면 API �
 | `doc_fts` / `doc_vec` | 264 | BM25(트리거 동기화) / 384d 벡터 |
 | `doc_chunks` / `chunk_fts` / `chunk_vec` | ~40K | **청크 인덱스(D-132, docs/specs/chat-retrieval.md)** — 대화 근거 전용. 문단 경계 청킹(≤1,500자=1청크, 장문 1,200자/겹침 150/문서당 ≤80) + **문맥 접두어 LLM 0**(`[소스·날짜] 제목 — enrichments.summary`)을 BM25·벡터 둘 다에. `content_hash`로 변경분만 재생성(트리거 없음, build_search_index가 빌드). 피드 검색은 문서 단위 doc_fts/doc_vec 유지 |
 | `doc_centroid_vec` | ~21K | **문서 대표 벡터(D-221)** — 청크 벡터 평균(정규화). 문서 디테일 '관련 문서'(`search.related_docs`) 전용. 청크 임베딩 텍스트는 요약 없이 `[소스·날짜] 제목`+본문(MiniLM 128토큰 절단 대응). 규칙 바꾸면 `build_search_index.py --reembed` |
-| `doc_claims` | 문서별 | **논점별 관련 자료(D-233, docs/specs/doc-related-claims.md)** — 상세를 처음 열 때 haiku로 뽑은 논점 1~3개 + 논점별 관련 자료(id·원문 인용·리랭커 점수) 저장. content_hash로 원문 변경 시 재생성, status running/ok/failed/skipped(600자 미만) |
+| `doc_claims` | 문서별 | **논점별 관련 자료(D-233, docs/specs/doc-related-claims.md)** — 로그인 회원이 요청할 때(2026-11-22부터; 이전엔 상세를 처음 열 때) haiku로 뽑은 논점 1~3개 + 논점별 관련 자료(id·원문 인용·리랭커 점수) 저장. content_hash로 원문 변경 시 재생성, status running/ok/failed/skipped(600자 미만) |
 | `feature_flags` / `job_runs` | 운영 | cron 작업 on/off 플래그 / 실행 로그(상태·요약·소요) — 관리자 페이지(D-055) |
 | `curation_log` | D-294 | 정리 작업 자동 처리 판정 기록(kind: alias·vocab_merge·knowledge·person(인물 이름 자동 정리 — approve 묶음·hold 그대로 둔 이름·reject 되돌림), verdict: approve·reject·hold·skip, applied). 병합은 `detail_json`에 진 쪽 엔티티 행·재배선 rowid(되돌리기 재료). 관리자 › 자동 정리(`/admin?view=curation`, `admin/CurationPanel`)에서 본다 — `GET /api/spine/curation` |
 | `llm_calls` | 콜당 | **LLM 호출 원장(D-130)** — job·model·engine·effort·input/cache_create/cache_read/output/thinking 토큰·cost_usd·duration_ms·ok/error. `pipeline/llm.py`가 기록(대화 경로부터). 프롬프트·출력 본문은 저장 안 함 |
