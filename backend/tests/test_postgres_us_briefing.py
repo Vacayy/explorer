@@ -42,6 +42,23 @@ class UsBriefingReadTest(unittest.TestCase):
             self.assertIn('CREATE INDEX CONCURRENTLY IF NOT EXISTS ' + name, ddl)
             self.assertIn("WHERE table_name='", ddl)
 
+    def test_list_is_newest_first_and_a_negative_limit_is_no_limit_as_in_sqlite(self):
+        seen = []
+
+        class PG:
+            def execute(self, sql, args):
+                seen.append((sql, args))
+                return [('2026-11-20', 'm', 'c')]
+        self.assertEqual(briefing.list_briefings(PG(), -1), [{'trade_date': '2026-11-20', 'model': 'm', 'created_at': 'c'}])
+        self.assertEqual(seen[0][1], (None,))
+        self.assertIn('COLLATE "C" DESC', seen[0][0])
+
+    def test_channel_match_is_sqlite_like(self):
+        pattern = briefing._like('cahier_de_market/%')
+        self.assertTrue(pattern.fullmatch('Cahier_de_market/12'))
+        self.assertTrue(pattern.fullmatch('cahierXde_market/12'))  # '_' is any one character, as in SQLite
+        self.assertFalse(pattern.fullmatch('cahier_de_market12'))
+
 
 if __name__ == '__main__':
     unittest.main()

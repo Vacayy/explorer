@@ -42,6 +42,8 @@ def steps():
         (16, 'image backfill record table', postgres_legacy_supplement.has_backfill_docs,
          postgres_legacy_supplement.initialize_backfill_docs),
         (17, 'US briefing read indexes', postgres_us_briefing.has_read_indexes, postgres_us_briefing.initialize_read_indexes),
+        (18, 'US briefing source-status index', postgres_us_briefing.has_source_indexes,
+         postgres_us_briefing.initialize_source_indexes),
     ]
 
 

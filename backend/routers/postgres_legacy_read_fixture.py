@@ -83,7 +83,7 @@ READ_ROUTES = {'/api/spine/home', '/api/spine/home/ai-activity', '/api/spine/hom
                '/api/spine/tw/propagation', '/api/spine/curation', '/api/spine/client-errors', '/api/spine/us', '/api/spine/us/{ticker}',
                '/api/spine/us/{ticker}/income-flow', '/api/spine/us/{ticker}/income-flow/quarters',
                '/api/spine/us/{ticker}/mentions', '/api/spine/us/{ticker}/prices/status',
-               '/api/spine/us/{ticker}/worldmodel', '/api/spine/us/briefing/list', '/api/spine/us/briefing/sources',
+               '/api/spine/us/{ticker}/worldmodel',
                '/api/spine/world/big-picture', '/api/spine/world/contested', '/api/spine/world/my-stocks',
                '/api/stock-prices/{stock_code}/snapshot', '/api/telegram/channels'}
 # Excluded after the probe: /api/spine/quotes and /api/spine/us/movers fetch external quotes;
@@ -260,6 +260,32 @@ def install(app, projection, *, database_host):
         if len(wanted) > QUOTE_CODES or any(not re.fullmatch(r'[0-9A-Z]{6}', code) for code in wanted):
             raise HTTPException(422, f'Up to {QUOTE_CODES} six-character stock codes')
         return [Quote(**q) for q in live_quotes(wanted)]
+
+    # The rest of the US briefing screen, read straight from PG (no in-memory file); the projection answers only
+    # when the PG read fails.
+    from models.us import UsBriefingListItem, UsBriefingSources
+    from pipeline import us_briefing as legacy_briefing
+
+    @router.get('/api/spine/us/briefing/list', response_model=list[UsBriefingListItem])
+    def us_briefing_list(limit: int = 30):
+        from pipeline import postgres_us_briefing
+        try:
+            with projection.factory() as pg:
+                items = postgres_us_briefing.list_briefings(pg, limit)
+        except Exception as exc:  # noqa: BLE001
+            log.warning('US briefing list PG read failed (%s); answered from the projection', type(exc).__name__)
+            items = legacy_briefing.list_briefings(limit=limit)
+        return [UsBriefingListItem(**item) for item in items]
+
+    @router.get('/api/spine/us/briefing/sources', response_model=UsBriefingSources)
+    def us_briefing_sources():
+        from pipeline import postgres_us_briefing
+        try:
+            with projection.factory() as pg:
+                return UsBriefingSources(**postgres_us_briefing.briefing_sources(pg))
+        except Exception as exc:  # noqa: BLE001
+            log.warning('US briefing sources PG read failed (%s); answered from the projection', type(exc).__name__)
+            return UsBriefingSources(**legacy_briefing.briefing_sources())
 
     @router.get('/api/spine/us/briefing', response_model=UsBriefing)
     def us_briefing(force: bool = False, trade_date: str | None = None):
