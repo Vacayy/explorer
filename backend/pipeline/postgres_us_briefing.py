@@ -252,8 +252,14 @@ def briefing_sources(pg):
     def channel(source_type, source_id):
         return [ch for ch, p in patterns.items() if source_type == 'telegram' and source_id and p.fullmatch(source_id)]
     telegram = " AND row_data->>'source_type'='telegram'"
-    posts = _gather(_documents(pg, telegram, days=RECENT_DAYS), channel)
-    quiet = [ch for ch in MACRO_CHANNELS if not posts.get(ch, [None])[0]]
+    from pipeline import postgres_document_meta as meta
+    with_meta = meta.current(pg)  # the text-free document table when built at this ledger version, else the view
+    if with_meta:
+        posts = _gather(pg.execute("SELECT source_type, source_id, published_at FROM document_meta "
+                                   "WHERE source_type='telegram'").fetchall(), channel)
+    else:
+        posts = _gather(_documents(pg, telegram, days=RECENT_DAYS), channel)
+    quiet = [] if with_meta else [ch for ch in MACRO_CHANNELS if not posts.get(ch, [None])[0]]
     if quiet:  # nothing lately: those channels' own documents only, in one read (source id index, migration 18)
         for ch in quiet:
             posts.pop(ch, None)
@@ -282,16 +288,21 @@ def briefing_sources(pg):
                                            f"WHERE table_name=%s{where}", (table, *args)) if v is not None]
         return max(values) if values else None
     mention_cut = (now - timedelta(hours=_MENTION_HOURS)).strftime('%Y-%m-%dT%H:%M:%S')
-    docs = _gather(_documents(pg, days=RECENT_DAYS), lambda *_: ['all']).get('all', [None, []])
-    if not docs[0]:  # nothing in the recent days: the newest of all documents
-        docs = _gather(_documents(pg), lambda *_: ['all']).get('all', [None, []])
+    if with_meta:
+        newest_doc, mentioned = pg.execute('SELECT max(published_at COLLATE "C"), count(*) FILTER (WHERE '
+                                           'published_at COLLATE "C" >= %s) FROM document_meta', (mention_cut,)).fetchone()
+    else:
+        docs = _gather(_documents(pg, days=RECENT_DAYS), lambda *_: ['all']).get('all', [None, []])
+        if not docs[0]:  # nothing in the recent days: the newest of all documents
+            docs = _gather(_documents(pg), lambda *_: ['all']).get('all', [None, []])
+        newest_doc, mentioned = docs[0], sum(p >= mention_cut for p in docs[1])
     company = [
         _source_item(clock, 'TradingView 스크리너', '전일 거래대금 상위 20 (섹터·등락률)', None,
                      newest('us_movers', 'fetched_at'), None),
         _source_item(clock, 'Yahoo Finance 종목 뉴스', '개별 이슈 종목의 헤드라인', None,
                      newest('us_ticker_news', 'fetched_at'), None),
         _source_item(clock, '수집 문서 언급', f'구독 소스 전체, 최근 {_MENTION_HOURS}시간 · 내러티브 요지', None,
-                     docs[0], sum(p >= mention_cut for p in docs[1])),
+                     newest_doc, mentioned),
     ]
     indicators = [
         _source_item(clock, '미국 지수', 'S&P 500 · 나스닥 · 다우 종가', None,
