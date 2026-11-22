@@ -25,6 +25,20 @@ class CollectionTargetTest(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
+    def test_reads_of_the_collector_file_are_recorded(self):
+        with TemporaryDirectory() as directory:
+            work, other = Path(directory) / 'work.db', Path(directory) / 'other.db'
+            for path in (work, other):
+                with sqlite3.connect(path) as db:
+                    db.execute('CREATE TABLE stocks(code TEXT)')
+                    db.execute('CREATE TABLE prices(code TEXT)')
+            with patch.object(trial, 'WORK', work), patch.object(trial, 'read', set()), \
+                    patch.object(sqlite3, 'connect', sqlite3.connect):
+                trial._watch_reads()
+                sqlite3.connect(str(work)).execute('SELECT code FROM stocks').fetchall()
+                sqlite3.connect(str(other)).execute('SELECT code FROM prices').fetchall()
+                self.assertEqual(trial.read, {'stocks'})
+
     def test_image_trial_without_candidate_does_not_block_future_feed(self):
         from pipeline import image_reading
         with TemporaryDirectory() as directory:

@@ -1309,6 +1309,7 @@ def _run(label, pg, waited):
         trial._point_legacy_at_work()
         try:
             if label == 'chain':
+                trial._watch_reads()  # what the intake still reads from its collector file
                 refused = _cap_table_model_calls(MAX_MODEL_CALLS)
                 entry.update(run_feeds(pg, refused))
                 if trial.requests_by_host and not trial.statuses:  # a connector may log its network errors and go on
@@ -1391,6 +1392,8 @@ def _run(label, pg, waited):
             outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'
     if trial.other_files:
         entry['other_sqlite_written'] = sorted(trial.other_files)
+    if trial.read:
+        entry['work_tables_read'] = sorted(trial.read)
     if waited:  # waited for the heavy lock (the builder or another heavy job held it)
         entry['waited_for_heavy_seconds'] = waited
     calls = pg.execute('SELECT count(*) FROM llm_calls WHERE created_at>=%s', (started,)).fetchone()[0]

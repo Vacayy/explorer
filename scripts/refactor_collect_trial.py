@@ -136,6 +136,7 @@ def _instrument():
 written = set()  # tables the job wrote in the collector file (sqlite authorizer)
 housekeeping = []  # non-empty while database.init_db runs
 other_files = set()  # other SQLite files the job wrote (recorded, never applied)
+read = set()  # tables the job read from the collector file (_watch_reads)
 
 
 def _watch_writes():
@@ -175,6 +176,22 @@ def _watch_writes():
         finally:
             housekeeping.pop()
     database.init_db = quiet_init_db
+
+
+def _watch_reads():
+    """Record every table a statement reads from the collector file: what a job still needs from it."""
+    connect = sqlite3.connect
+
+    def watched(*args, **kwargs):
+        conn = connect(*args, **kwargs)
+        if str(WORK) in str(args[0] if args else kwargs.get('database', '')):
+            def authorizer(action, table, *_rest):
+                if action == sqlite3.SQLITE_READ and table and not table.startswith('sqlite_'):
+                    read.add(table)
+                return sqlite3.SQLITE_OK
+            conn.set_authorizer(authorizer)
+        return conn
+    sqlite3.connect = watched
 
 
 def _point_legacy_at_work():
