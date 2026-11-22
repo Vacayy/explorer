@@ -109,5 +109,22 @@ def _rechunk(directory, path):
     return {key: result.get(key) for key in ('docs', 'chunks', 'orphans')}
 
 
+def refresh_document_meta():
+    """The text-free document table (pipeline.postgres_document_meta, migration 20) follows the ledger version, before
+    the build so it is not held behind one. Its own connection and time limit; a failure is logged and never stops
+    the build (readers use the ledger view while the table is not current)."""
+    from pipeline import postgres_document_meta as meta
+    dsn, schema = os.environ['REFACTOR_POSTGRES_DSN'], os.environ['REFACTOR_FIXTURE_SCHEMA']
+    try:
+        with psycopg.connect(dsn, autocommit=True, options=f'-c search_path={schema} -c statement_timeout=60000') as pg:
+            done = meta.refresh(pg) if meta.exists(pg) else None
+    except Exception as exc:  # noqa: BLE001
+        print(json.dumps({'document_meta_failed': f'{type(exc).__name__}: {str(exc)[:160]}'}), flush=True)
+        return
+    if done:
+        print(json.dumps({'document_meta': done, 'at': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())}), flush=True)
+
+
 if __name__ == '__main__':
+    refresh_document_meta()
     run(sys.argv[1] if len(sys.argv) > 1 else '/projection')
