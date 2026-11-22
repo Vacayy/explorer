@@ -165,8 +165,11 @@ def run_job(label, log=print):
             import refactor_collect_engine as engine
             # Graph rows the computation paths added to PG first (refactor_feed_graph.py): otherwise the refreshed
             # file issues their IDs again and the publication stops (runs 365, 445).
+            # Detached (COLLECT_SHARED_WORK=0): the catch-up is made in the feed's own file, which is neither refreshed
+            # from nor synchronized into the shared one.
             try:
-                code, output = engine.run(['python', '/app/scripts/refactor_feed_graph.py'], internet=False, limit=600)
+                code, output = engine.run(['python', '/app/scripts/refactor_feed_graph.py'], internet=False, limit=600,
+                                          job='' if engine.SHARED_WORK else 'feed-graph')
             except Exception as exc:  # noqa: BLE001 - nothing changed: the feed stays held
                 code, output = 1, f'{type(exc).__name__}: {str(exc)[:200]}'
             if code != 0:
@@ -174,7 +177,7 @@ def run_job(label, log=print):
                 return False
             log(f'feed graph catch-up: {output.strip().splitlines()[-1] if output.strip() else ""}')
             try:
-                refreshed = engine.feed_maintenance('refresh')
+                refreshed = engine.feed_maintenance('refresh') if engine.SHARED_WORK else True
             except Exception:  # a failed refresh never changes the shared work copy
                 refreshed = False
             if not refreshed:
@@ -188,7 +191,7 @@ def run_job(label, log=print):
         if not result:
             log(f'collection held after {step}: inspect the work copy and run before clearing the hold')
             return False
-        if sync_feed:
+        if sync_feed and engine.SHARED_WORK:
             try:
                 synchronized = engine.feed_maintenance('sync')
             except Exception:

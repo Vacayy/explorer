@@ -813,6 +813,29 @@ class CollectionTargetTest(unittest.TestCase):
             self.assertTrue(scheduler.FEED_HOLD.exists())
             self.assertFalse(scheduler.HOLD.exists())
 
+    def test_detached_feed_catches_up_in_its_own_file_without_refresh_or_sync(self):
+        with TemporaryDirectory() as directory, \
+             patch.object(scheduler, 'HOLD', Path(directory) / 'global'), \
+             patch.object(scheduler, 'FEED_HOLD', Path(directory) / 'feed'), \
+             patch.dict(os.environ, {'COLLECT_CHAIN_INTAKE_ONLY': '1', 'COLLECT_FEED_WORK_VOLUME': 'explorer-refactor-collect-feed-test',
+                                     'COLLECT_FEED_AUTO_SYNC': '1'}), \
+             patch.object(engine, 'SHARED_WORK', False), \
+             patch.object(scheduler, '_run_one', return_value=True) as run_one, \
+             patch.object(engine, 'run', return_value=(0, '{"feed_graph": {}}')) as run, \
+             patch.object(engine, 'feed_maintenance') as maintenance:
+            self.assertTrue(scheduler.run_job('chain', lambda *_: None))
+            self.assertEqual(run.call_args.kwargs['job'], 'feed-graph')
+            maintenance.assert_not_called()
+            run_one.assert_called_once()
+            self.assertFalse(scheduler.FEED_HOLD.exists())
+
+    def test_detached_jobs_mount_the_state_volume(self):
+        with patch.dict(os.environ, {'COLLECT_SHARED_WORK': '0', 'COLLECT_WORK_VOLUME': 'explorer-refactor-collect-recovery-x'}), \
+             patch.object(engine, 'SHARED_WORK', False):
+            self.assertEqual(engine.work_volume(), 'explorer-refactor-collect-state')
+            with self.assertRaises(ValueError):
+                engine.feed_maintenance('refresh')
+
     def test_zero_model_cap_is_scoped_to_keyword_feed(self):
         with patch.dict(os.environ, {'COLLECT_FEED_KEYWORD_ONLY': '1', 'COLLECT_MAX_MODEL_CALLS': '5'}), \
              patch.object(engine, 'run', return_value=(0, '{"outcome":"applied: ok"}')) as run:

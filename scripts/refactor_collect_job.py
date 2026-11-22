@@ -355,6 +355,24 @@ def _guarded_history_publish(folder, destination, *, publish):
         shutil.rmtree(staging, ignore_errors=True)
 
 
+def _point_legacy_at_private():
+    """A private SQLite file for a job's own run record and response cache (job_runs, cache_meta): neither is
+    published, so neither goes to the shared collector file."""
+    import sqlite3
+    import tempfile
+    from contextlib import closing
+    import config
+    import database
+    private = Path(tempfile.mkdtemp(prefix='job-')) / 'own.db'
+    with closing(sqlite3.connect(private)) as db, db:
+        db.execute("CREATE TABLE job_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, job TEXT NOT NULL, status TEXT NOT NULL, "
+                   "summary TEXT, duration_ms INTEGER, ran_at TEXT DEFAULT (datetime('now')))")
+        db.execute("CREATE TABLE cache_meta (cache_key TEXT PRIMARY KEY, fetched_at TEXT DEFAULT (datetime('now')), "
+                   "expires_at TEXT)")
+    config.DB_PATH = database.DB_PATH = private
+    return private
+
+
 def history_source(pg):
     """The projection file the plan reads PG's prices from; refused while it does not show PG's latest trade date."""
     import sqlite3
@@ -371,16 +389,9 @@ def history_source(pg):
 def run_market_history():
     import functools
     import sqlite3
-    import tempfile
     from contextlib import closing
-    import config
-    import database
     import refresh_market_history as refresh
-    private = Path(tempfile.mkdtemp(prefix='history-')) / 'runs.db'  # the script's own run record, read back below
-    with closing(sqlite3.connect(private)) as db:
-        db.execute('CREATE TABLE job_runs (id INTEGER PRIMARY KEY, job TEXT, status TEXT, summary TEXT, '
-                   'duration_ms INTEGER, ran_at TEXT)')
-    config.DB_PATH = database.DB_PATH = private
+    private = _point_legacy_at_private()  # the script's own run record, read back below
     refresh.SOURCE, refresh.DESTINATION = history_source(trial._pg()), HISTORY_DESTINATION
     refresh.ROOT = HISTORY_DESTINATION.parent / 'market-history-work'
     refresh.history.publish = functools.partial(_guarded_history_publish, publish=refresh.history.publish)
@@ -1311,7 +1322,7 @@ def _run(label, pg, waited):
             outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'
     elif label == PEER:
         trial._instrument()
-        trial._point_legacy_at_work()  # the collector's response cache and run record go to the work copy
+        _point_legacy_at_private()  # the collector's response cache and run record, kept to this run
         try:
             entry['peer'] = run_peer()
             outcome = (f"applied: {entry['peer']['as_of']}, {entry['peer']['companies']} companies" if entry['peer']['shown']

@@ -1142,7 +1142,7 @@ def run(label):
                                 adjustments=getattr(sources[0][1], 'adjustments', ()))
     except Exception as exc:  # noqa: BLE001 - whether the commit took effect is settled from the run record
         run_id, outcome = settle(trial._pg, label, token, started, outcome, exc, requests, result)
-    if run_id is not None and not outcome.startswith('held back'):
+    if run_id is not None and not outcome.startswith('held back') and trial.WORK.exists():  # no file: detached
         try:
             result['mirrored'] = mirror(pg, [t for t in tables if t in iso.KEYS], since)
             for table in tables:

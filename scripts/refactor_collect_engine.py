@@ -19,7 +19,15 @@ from urllib.parse import quote
 API = 'explorer-refactor-single-path'
 IMAGE = 'explorer-refactor-test:psycopg-3.2.13-auth'
 NETWORK = 'explorer-refactor-preview-private'
+# Detached from the shared collector file (COLLECT_SHARED_WORK=0): every job but the feed mounts this volume at /trial
+# instead; it holds only the KRX login hold. The collector file's volume stays as it was, to reattach.
+STATE_VOLUME = 'explorer-refactor-collect-state'
+SHARED_WORK = os.environ.get('COLLECT_SHARED_WORK', '1') != '0'
+
+
 def work_volume():
+    if not SHARED_WORK:
+        return STATE_VOLUME
     name = os.environ.get('COLLECT_WORK_VOLUME', 'explorer-refactor-collect-trial')
     if name != 'explorer-refactor-collect-trial' and not re.fullmatch(r'explorer-refactor-collect-recovery-[a-z0-9-]+', name):
         raise ValueError('Invalid collection work volume')
@@ -165,7 +173,7 @@ def remove(name):
 
 def feed_maintenance(action, *, limit=600):
     """Network-isolated one-shot work-copy refresh/sync, called only while the scheduler owns its lock."""
-    if action not in ('refresh', 'sync') or not FEED_VOLUME or os.environ.get('COLLECT_TARGET') != 'live':
+    if action not in ('refresh', 'sync') or not FEED_VOLUME or not SHARED_WORK or os.environ.get('COLLECT_TARGET') != 'live':
         raise ValueError('Feed maintenance needs the explicitly selected live feed volume')
     api = call('GET', f'/containers/{API}/json')
     spec = {'Image': IMAGE, 'Cmd': ['python', f'/app/scripts/refactor_feed_{action}.py'],
@@ -208,7 +216,8 @@ def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=No
     if job in {'briefing', 'observeweekly', 'observealerts', 'pfintraday', 'pfclose'} and any(not found.get(key) for key in SEND_KEYS):
         raise ValueError('Telegram send credentials are missing')
     env += [f'{key}={value}' for key, value in found.items()]
-    volume = FEED_VOLUME if job == 'chain' and FEED_VOLUME else VOLUME
+    # the feed's own collector file: its intake, and its graph catch-up when detached from the shared file
+    volume = FEED_VOLUME if job in ('chain', 'feed-graph') and FEED_VOLUME else VOLUME
     binds = [f'{ROOT}/backend:/app/backend:ro', f'{ROOT}/scripts:/app/scripts:ro',
              'explorer-refactor-single-projection:/projection:ro', f'{volume}:/trial',
              'explorer-public-codex-auth:/provider-auth', 'explorer-data-rehearsal_models:/models:ro',
