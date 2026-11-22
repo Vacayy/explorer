@@ -291,12 +291,18 @@ def _write_collected(conn, ident, state):
         raw = state['raw']
         conn.execute('UPDATE collected_timeline_source_projection SET topic_names=%s,preview=%s,document=%s WHERE document_id=%s',
                      (sorted({link.name for link in doc.entities}), (raw.get('title') or raw.get('markdown') or '')[:180],
-                      Jsonb({**detail, 'published_at': timeline[0]}), ident))
+                      Jsonb({**detail, 'published_at': _iso_utc(timeline[0])}), ident))
         enrichment = max(state['enrichments'], key=lambda row: (row.get('enriched_at') or '', row['id']), default=None)
         conn.execute('UPDATE collected_timeline_source_metadata SET enrichment_id=%s,entity_order=%s WHERE document_id=%s',
                      (enrichment and enrichment['id'], Jsonb([{'entity_id': row['entity_id'], 'link_type': row['link_type'],
                                                              'confidence': row['confidence']} for row in state['links']]), ident))
     return None
+
+
+def _iso_utc(value):
+    """A timestamptz read back from PG as the ISO text the first publication stored (UTC, `+00:00`)."""
+    from datetime import datetime, timezone
+    return value.astimezone(timezone.utc).isoformat() if isinstance(value, datetime) else value
 
 
 def publish_revisions(conn, work, origin, doc_ids, *, run_id):
