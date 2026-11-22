@@ -225,6 +225,10 @@ def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=No
              f'{HOME}/developer/agent-whiteboard/runtime/explorer/codex-credential-gate.py:/control/codex-credential-gate.py:ro']
     if job == 'history':  # the market history job alone writes its own volume (refactor_collect_job.MARKET_HISTORY)
         binds.append(f'{HISTORY_VOLUME}:/history')
+    if job == 'reattach':  # refactor_reattach_shared.py: the feed's file, read only, beside the shared one at /trial
+        if not SHARED_WORK:
+            raise ValueError('Reattach writes the shared collector file: run it with COLLECT_SHARED_WORK=1')
+        binds.append(f'{FEED_VOLUME}:/feed:ro')
     if job == 'chain':  # the Telegram connector only references pre-existing media; it never writes this volume
         binds.append('explorer-refactor-media:/app/media:ro')
     if job == 'peer':  # the peer monitor's state (refactor_collect_job.PEER)
