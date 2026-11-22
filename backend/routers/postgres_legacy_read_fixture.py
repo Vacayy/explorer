@@ -24,7 +24,7 @@ READ_ROUTES = {'/api/spine/home', '/api/spine/home/ai-activity', '/api/spine/hom
                '/api/spine/search', '/api/spine/search/today',
                '/api/spine/regimes', '/api/spine/regimes/brk', '/api/spine/regimes/state', '/api/spine/regimes/commentary',
                # Home KR/US/stocks tabs
-               '/api/spine/indices/breadth', '/api/spine/credit', '/api/spine/market/{market}/overview', '/api/spine/risk',
+               '/api/spine/indices/breadth', '/api/spine/credit', '/api/spine/risk',
                '/api/spine/world/changes', '/api/spine/retail', '/api/spine/trend-leaders', '/api/spine/pricing',
                '/api/spine/tracker/status', '/api/spine/trade/grid', '/api/spine/trade/follow', '/api/spine/trade/highlights',
                '/api/spine/transcript/season', '/api/spine/transcript/season/kr', '/api/spine/groups', '/api/spine/approvals',
@@ -240,6 +240,16 @@ def install(app, projection, *, database_host):
     @router.get('/api/spine/macro')
     def macro():
         return from_pg('macro', get_macro)
+
+    from typing import Literal
+    from models.market_overview import MarketOverview
+    from routers import spine_market_overview
+
+    @router.get('/api/spine/market/{market}/overview', response_model=MarketOverview)
+    def market_overview(market: Literal['kr', 'us']):
+        if market == 'kr':  # the US overview still reads the projection
+            return from_pg('kr_overview', lambda: spine_market_overview.market_overview('kr'))
+        return spine_market_overview.market_overview(market)
 
     @router.get('/api/spine/market-regime')
     def market_regime():

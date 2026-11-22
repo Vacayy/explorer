@@ -9,6 +9,8 @@ jobs publish by key:
                 index_intraday (the latest bar while a market is open)
   macro         market_indicators: the newest SERIES_ROWS of the macro leader's series; macro_signals
   regime        market_indicators: the newest SERIES_ROWS of the regime's series
+  kr_overview   market_indicators: the newest rows of the KR index and USD/KRW series; index_intraday; retail_flows;
+                the market breadth computed in PG (kr_breadth) into the legacy read's own 10-minute memo
   market_today  market_today, market_today_links, narrative_candidates (small tables); the API's market-today route
                 already reads PG through pipeline.postgres_market_today_fixture
 """
@@ -76,15 +78,76 @@ def _regime_series():
     return sorted({indicator_canon.CANONICAL.get(name, name) for name in (*market_regime.RAW_INDICATORS, 'kospi_vol')})
 
 
+OVERVIEW_ROWS = 300  # the KR overview reads at most 255 rows of an index series
+
+
+def kr_breadth(pg):
+    """pipeline.indices.kr_breadth computed in PG (the recent days of every listed price, which no in-memory file
+    should hold): days within 20 of the newest, the newest two days with at least half the most prices, up/down/flat
+    between them. Dates compare as SQLite's text does; closes as SQLite's REAL."""
+    from datetime import date, datetime, timedelta, timezone
+    recent = (datetime.now(timezone.utc) - timedelta(days=60)).strftime('%Y-%m-%d')
+    newest = None
+    for since in (recent, None):  # the price date index (migration 19); the whole table only if nothing is recent
+        newest = pg.execute("SELECT max(row_data->>'trade_date' COLLATE \"C\") FROM legacy_snapshot_rows WHERE "
+                            "table_name='stock_prices'" + (" AND row_data->>'trade_date' >= %s" if since else ''),
+                            (since,) if since else ()).fetchone()[0]
+        if newest:
+            break
+    if not newest:
+        return None
+    since = (date.fromisoformat(newest[:10]) - timedelta(days=20)).isoformat()
+    counts = sorted(pg.execute("SELECT row_data->>'trade_date', count(*) FROM legacy_snapshot_rows WHERE "
+                               "table_name='stock_prices' AND row_data->>'trade_date' >= %s GROUP BY 1", (since,)).fetchall(),
+                    reverse=True)
+    full = max(n for _, n in counts)
+    days = [day for day, n in counts if n * 2 >= full]
+    if len(days) < 2:
+        return None
+    day, prev = days[0], days[1]
+    up, down, flat = pg.execute(
+        "SELECT COALESCE(sum((a.c > b.c)::int), 0), COALESCE(sum((a.c < b.c)::int), 0), COALESCE(sum((a.c = b.c)::int), 0) "
+        "FROM (SELECT row_data->>'stock_code' k, (row_data->>'close')::float8 c FROM legacy_snapshot_rows "
+        "      WHERE table_name='stock_prices' AND row_data->>'trade_date' = %s) a "
+        "JOIN (SELECT row_data->>'stock_code' k, (row_data->>'close')::float8 c FROM legacy_snapshot_rows "
+        "      WHERE table_name='stock_prices' AND row_data->>'trade_date' = %s) b ON b.k = a.k "
+        "WHERE a.c > 0 AND b.c > 0", (day, prev)).fetchone()
+    if up + down == 0:
+        return None
+    return {'trade_date': day, 'prev_date': prev, 'up': up, 'down': down, 'flat': flat,
+            'up_ratio': round(up / (up + down), 4)}
+
+
+def _kr_overview(rows):
+    from pipeline import market_overview
+    rows.series(['index_kospi', 'index_kosdaq', 'macro_usdkrw'], OVERVIEW_ROWS)
+    rows.table('index_intraday')
+    rows.table('retail_flows')
+    memo = market_overview._breadth_memo  # the legacy read keeps the breadth 10 minutes; it is refilled from PG
+    if not (memo and time.monotonic() - memo[0] < market_overview.BREADTH_TTL):
+        started = time.perf_counter()
+        market_overview._breadth_memo = (time.monotonic(), kr_breadth(rows.pg))
+        rows.spent['pg_ms'] += (time.perf_counter() - started) * 1000
+
+
 SCREENS = {
     'indices': (('market_indicators', 'index_intraday'),
                 lambda rows: (rows.series(_index_series()), rows.table('index_intraday'))),
     'macro': (('market_indicators', 'macro_signals'),
               lambda rows: (rows.series(_macro_series(), SERIES_ROWS), rows.table('macro_signals'))),
     'regime': (('market_indicators',), lambda rows: rows.series(_regime_series(), SERIES_ROWS)),
+    'kr_overview': (('market_indicators', 'index_intraday', 'retail_flows'), _kr_overview),
     'market_today': (('market_today', 'market_today_links', 'narrative_candidates'),
                      lambda rows: [rows.table(t) for t in ('market_today', 'market_today_links', 'narrative_candidates')]),
 }
+
+
+def prepare(pg):
+    """A screen read's own connection: no JIT (a new connection per request would compile every view query again)
+    and the planner told that random reads are cheap here (with the default 4 it scans the 2.4 GB supplement table
+    instead of a date index: 5.5 s against 0.02 s). Session settings only; the database's stay as they are (D-294)."""
+    pg.execute('SET jit = off')
+    pg.execute('SET random_page_cost = 1.1')
 
 
 def answer(factory, screen, compute):
@@ -94,7 +157,7 @@ def answer(factory, screen, compute):
     tables, load = SCREENS[screen]
     started = time.perf_counter()
     with factory() as pg:
-        pg.execute('SET jit = off')  # a new connection per request: JIT would compile every view query again (D-294)
+        prepare(pg)
         rows = Rows(pg, tables)
         load(rows)
         rows.mem.commit()
@@ -110,3 +173,25 @@ def answer(factory, screen, compute):
             'screen': screen, 'pg_ms': round(rows.spent['pg_ms']), 'insert_ms': round(rows.spent['insert_ms']),
             'rows': rows.spent['rows'], 'load_ms': round((loaded - started) * 1000),
             'compute_ms': round((done - loaded) * 1000), 'total_ms': round((done - started) * 1000)}), flush=True)
+
+
+def price_indexes(conn):
+    """stock_prices by trade date in both the snapshot and the supplement rows: the market breadth's recent days and
+    the prices job's day reads (without them three weeks of prices took 52 s)."""
+    from pipeline.postgres_us_briefing import _base_schema
+    base, here = _base_schema(conn), conn.execute('SELECT current_schema()').fetchone()[0]
+    return [(schema, name, f'CREATE INDEX CONCURRENTLY IF NOT EXISTS {name} ON {schema}.{table} '
+                           "((row_data->>'trade_date')) WHERE table_name='stock_prices'")
+            for schema, table, name in ((base, 'legacy_snapshot_rows', 'legacy_snapshot_rows_price_date'),
+                                        (here, 'legacy_supplement_rows', 'legacy_supplement_rows_price_date'))]
+
+
+def has_price_indexes(conn):
+    return all(conn.execute('SELECT to_regclass(%s)', (f'{schema}.{name}',)).fetchone()[0] is not None
+               for schema, name, _ in price_indexes(conn))
+
+
+def initialize_price_indexes(conn):
+    for schema, name, ddl in price_indexes(conn):
+        if conn.execute('SELECT to_regclass(%s)', (f'{schema}.{name}',)).fetchone()[0] is None:
+            conn.execute(ddl)

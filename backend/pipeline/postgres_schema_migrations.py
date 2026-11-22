@@ -20,7 +20,7 @@ def _column(table, column):
 def steps():
     """(version, name, present(conn), initialize(conn)) in application order."""
     from pipeline import postgres_identity_store, postgres_trial_quota, postgres_usage_gate
-    from pipeline import postgres_chain_reports, postgres_client_errors, postgres_collect_runs, postgres_legacy_supplement, postgres_live_tables, postgres_llm_calls, postgres_observe_ledgers, postgres_owner_legacy_fixture, postgres_study_owners, postgres_us_briefing
+    from pipeline import postgres_chain_reports, postgres_client_errors, postgres_collect_runs, postgres_legacy_supplement, postgres_live_tables, postgres_llm_calls, postgres_observe_ledgers, postgres_owner_legacy_fixture, postgres_study_owners, postgres_us_briefing, postgres_screen_reads
     from routers import postgres_member_thesis_fixture, postgres_questions_fixture
     return [
         (1, 'identity (principals, sessions)', _table('principals'), postgres_identity_store.initialize),
@@ -44,6 +44,7 @@ def steps():
         (17, 'US briefing read indexes', postgres_us_briefing.has_read_indexes, postgres_us_briefing.initialize_read_indexes),
         (18, 'US briefing source-status index', postgres_us_briefing.has_source_indexes,
          postgres_us_briefing.initialize_source_indexes),
+        (19, 'stock price date indexes', postgres_screen_reads.has_price_indexes, postgres_screen_reads.initialize_price_indexes),
     ]
 
 

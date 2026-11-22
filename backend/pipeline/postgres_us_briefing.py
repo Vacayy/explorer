@@ -39,8 +39,9 @@ def load(pg, now=None, trade_date=None, spent=None):
     spent = spent if spent is not None else {}
     spent.update(pg_ms=0.0, insert_ms=0.0, rows=0)
     # Each request has its own connection, so JIT would compile every view query again: 2.5 s on a first request,
-    # 0.3 s without it (2026-11-22).
-    pg.execute('SET jit = off')
+    # 0.3 s without it (2026-11-22). The settings are pipeline.postgres_screen_reads.prepare's.
+    from pipeline.postgres_screen_reads import prepare
+    prepare(pg)
     from pipeline import us_briefing
     from pipeline.postgres_candidate_job_runs import COLUMNS as RUN_COLUMNS
     from pipeline.postgres_legacy_projection import derive_owner_transcript_follow
@@ -227,7 +228,8 @@ def briefing_sources(pg):
     from pipeline.macro_news import FEEDS
     from pipeline.postgres_owner_records_fixture import SOURCE_TABLES
     from pipeline.us_briefing import MACRO_CHANNELS, _MENTION_HOURS, _source_item
-    pg.execute('SET jit = off')
+    from pipeline.postgres_screen_reads import prepare
+    prepare(pg)
     clock = sqlite3.connect(':memory:')  # SQLite's julianday() for _source_item's ages; no rows
     clock.row_factory = sqlite3.Row
     now = datetime.now(timezone.utc)
