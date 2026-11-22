@@ -11,6 +11,7 @@ jobs publish by key:
   regime        market_indicators: the newest SERIES_ROWS of the regime's series
   kr_overview   market_indicators: the newest rows of the KR index and USD/KRW series; index_intraday; retail_flows;
                 the market breadth computed in PG (kr_breadth) into the legacy read's own 10-minute memo
+  us_overview   market_indicators: the newest rows of the US index series and the four US tiles'; index_intraday
   market_today  market_today, market_today_links, narrative_candidates (small tables); the API's market-today route
                 already reads PG through pipeline.postgres_market_today_fixture
 """
@@ -147,6 +148,10 @@ SCREENS = {
               lambda rows: (rows.series(_macro_series(), SERIES_ROWS), rows.table('macro_signals'))),
     'regime': (('market_indicators',), lambda rows: rows.series(_regime_series(), SERIES_ROWS)),
     'kr_overview': (('market_indicators', 'index_intraday', 'retail_flows'), _kr_overview),
+    'us_overview': (('market_indicators', 'index_intraday'),
+                    lambda rows: (rows.series(['index_sp500', 'index_nasdaq', 'index_dow', 'risk_fear_greed', 'risk_us10y',
+                                               'risk_us2y', 'macro_dxy', 'macro_oil'], OVERVIEW_ROWS),
+                                  rows.table('index_intraday'))),
     'market_today': (('market_today', 'market_today_links', 'narrative_candidates'),
                      lambda rows: [rows.table(t) for t in ('market_today', 'market_today_links', 'narrative_candidates')]),
 }

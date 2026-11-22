@@ -247,9 +247,7 @@ def install(app, projection, *, database_host):
 
     @router.get('/api/spine/market/{market}/overview', response_model=MarketOverview)
     def market_overview(market: Literal['kr', 'us']):
-        if market == 'kr':  # the US overview still reads the projection
-            return from_pg('kr_overview', lambda: spine_market_overview.market_overview('kr'))
-        return spine_market_overview.market_overview(market)
+        return from_pg(f'{market}_overview', lambda: spine_market_overview.market_overview(market))
 
     @router.get('/api/spine/market-regime')
     def market_regime():
