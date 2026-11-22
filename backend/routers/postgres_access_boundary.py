@@ -55,6 +55,8 @@ def route_policy(method, path):
         return 'operator'  # proposes from the shared narratives into the operator's tracker
     if method == 'POST' and re.fullmatch(r'/api/spine/doc/[^/]+/digest', path):
         return 'operator'  # model-backed video jobs are operated by the owner
+    if method == 'POST' and re.fullmatch(r'/api/spine/doc/[^/]+/claims', path):
+        return 'member'  # a model-backed job: signed in before it is queued; opening a document only reads the claims
     if path.startswith('/api/spine/questions'):
         return 'member'  # each member's own tracked questions (question_principals)
     if _MEMBER.match(path):

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { SourceBadge } from '@/components/shared/SourceBadge'
 import { DetailLink as Link } from '@/components/shared/DetailNavigation'
+import { useMemberAccess } from '@/components/auth/MemberAccess'
 import { useDocClaims, useRelatedDocs } from '@/hooks/useDocClaims'
 import type { ClaimRelated, RelatedDoc } from '@/types'
 
@@ -16,14 +17,18 @@ export function DocRelated({ docId }: { docId: number }) {
   const groups = claims.data?.claims ?? []
   const shown = new Set(groups.flatMap((g) => g.related.map((r) => r.id)))
   const similar = (related.data ?? []).filter((r) => !shown.has(r.id)).slice(0, 3)
-  const building = claims.isLoading || status === 'none' || status === 'running'
-  if (!claims.isError && !related.isError && !building && status !== 'failed' && groups.length === 0 && similar.length === 0) return null
+  const access = useMemberAccess()
+  // 논점 만들기는 모델 호출이라 로그인한 사용자만 요청한다(비공개 모드는 운영자 본인)
+  const canBuild = access.status === 'private' || access.status === 'member' || access.status === 'operator'
+  const building = claims.isLoading || status === 'running'
+  const offer = canBuild && status === 'none'
+  if (!claims.isError && !related.isError && !building && !offer && status !== 'failed' && groups.length === 0 && similar.length === 0) return null
   return (
     <Card className="gap-3 rounded-[var(--radius-card)] p-4 shadow-none">
       <CardContent className="space-y-5 px-0">
         {claims.isError && <ErrorState error={claims.error} onRetry={() => void claims.refetch()} retrying={claims.isFetching} />}
         {related.isError && <ErrorState error={related.error} onRetry={() => void related.refetch()} retrying={related.isFetching} />}
-        {(building || status === 'failed' || groups.length > 0) && (
+        {(building || offer || status === 'failed' || groups.length > 0) && (
           <section aria-live="polite">
             <h2 className="mb-1 text-[15px] leading-[1.4] font-semibold">이 자료의 논점별 관련 자료</h2>
             {building && (
@@ -32,10 +37,17 @@ export function DocRelated({ docId }: { docId: number }) {
                 <Skeleton className="h-4 w-2/3" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-5/6" />
               </div>
             )}
+            {offer && (
+              <div className="space-y-2">
+                <p className="text-caption text-muted-foreground">아직 정리된 논점이 없습니다.</p>
+                <Button size="sm" variant="outline" disabled={claims.build.isPending} onClick={() => claims.build.mutate()}>논점 정리하기</Button>
+                {claims.build.isError && <p role="alert" className="text-sm text-destructive">요청하지 못했습니다. 잠시 뒤 다시 시도해 주세요.</p>}
+              </div>
+            )}
             {status === 'failed' && (
               <div className="space-y-2">
                 <p role="alert" className="text-sm text-destructive">{claims.data?.error}</p>
-                <Button size="sm" variant="outline" disabled={claims.build.isPending} onClick={() => claims.build.mutate()}>다시 시도</Button>
+                {canBuild && <Button size="sm" variant="outline" disabled={claims.build.isPending} onClick={() => claims.build.mutate()}>다시 시도</Button>}
               </div>
             )}
             {status === 'ok' && groups.length === 0 && <p className="text-caption text-muted-foreground">이 자료의 논점과 충분히 맞닿은 다른 자료를 아직 찾지 못했습니다.</p>}

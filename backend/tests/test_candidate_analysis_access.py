@@ -16,6 +16,34 @@ class CandidateAnalysisAccessTest(unittest.TestCase):
         self.assertEqual(route_policy('POST', '/api/spine/doc/{doc_id}/digest'), 'operator')
         self.assertEqual(route_policy('GET', '/api/spine/doc/{doc_id}'), 'public')
 
+    def test_document_claims_read_publicly_and_are_built_only_when_signed_in(self):
+        self.assertEqual(route_policy('GET', '/api/spine/doc/{doc_id}/claims'), 'public')
+        self.assertEqual(route_policy('POST', '/api/spine/doc/{doc_id}/claims'), 'member')
+        queued = []
+        with tempfile.TemporaryDirectory() as directory:
+            identities = IdentityStore(Path(directory) / 'identity.sqlite', clock=lambda: 1000)
+            identities.initialize()
+            member = identities.get_or_create_google_user('accounts.google.com', 'member')
+            token = identities.issue_session(member.id, ttl_seconds=60)
+            service = SimpleNamespace(identities=identities, config=SimpleNamespace(public_origin='https://beta.example'))
+            app = FastAPI()
+            @app.get('/api/spine/doc/{doc_id}/claims')
+            def read(doc_id: int):
+                return {'status': 'ok', 'claims': [{'claim': 'kept'}]}
+            @app.post('/api/spine/doc/{doc_id}/claims', status_code=202)
+            def build(doc_id: int):
+                queued.append(doc_id)
+                return {'status': 'running'}
+            app.add_middleware(CandidateAccessBoundary, routes=app.router.routes, service_factory=lambda: service)
+            with TestClient(app, base_url='https://beta.example') as client:
+                self.assertEqual(client.get('/api/spine/doc/7/claims').json()['claims'], [{'claim': 'kept'}])
+                self.assertEqual(client.post('/api/spine/doc/7/claims').status_code, 401)
+                self.assertEqual(queued, [])
+                headers = {'Cookie': SESSION_COOKIE + '=' + token, 'origin': 'https://beta.example',
+                           'x-csrf-token': session_csrf(token)}
+                self.assertEqual(client.post('/api/spine/doc/7/claims', headers=headers).status_code, 202)
+                self.assertEqual(queued, [7])
+
     def test_analysis_reads_are_public_and_writes_are_operator_only(self):
         paths = ['/api/analysis/runs', '/api/analysis/runs/{run_id}',
                  '/api/analysis/runs/{run_id}/events', '/api/analysis/runs/{run_id}/artifacts/{artifact_id}',
