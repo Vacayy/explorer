@@ -461,11 +461,14 @@ def _scope_to_requester(conn, pg):
             temp.add(table)
         conn.execute(statement)
     # A requester with no portfolio: the legacy readers create the default portfolio group on first read, which the
-    # read-only file refuses (a 500). An empty group in this connection's copy lets them answer with nothing.
+    # read-only file refuses (a 500). An empty group in this connection's copy lets them answer with nothing. The copy
+    # (CREATE TABLE AS) has no column defaults, so the row gets the ones the legacy table would give it: without them
+    # created_at was null and every anonymous page failed the groups contract (10,318 reports, 2026-11-17~22).
     if conn.execute("SELECT 1 FROM temp.sqlite_master WHERE type='table' AND name='stock_groups'").fetchone() and \
             not conn.execute("SELECT 1 FROM temp.stock_groups WHERE kind='portfolio'").fetchone():
         from pipeline.portfolio import GROUP_NAME
-        conn.execute("INSERT INTO temp.stock_groups (id, name, kind) VALUES (-1, ?, 'portfolio')", (GROUP_NAME,))
+        conn.execute("INSERT INTO temp.stock_groups (id, name, kind, note, created_at, updated_at) "
+                     "VALUES (-1, ?, 'portfolio', '', datetime('now'), datetime('now'))", (GROUP_NAME,))
 
 
 _MEMBER_QUESTION = "SELECT question_id FROM question_principals"
