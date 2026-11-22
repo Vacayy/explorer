@@ -217,9 +217,19 @@ def install(app, projection, *, database_host):
     from routers.spine_quotes import Quote
     router = APIRouter()
 
+    def from_pg(screen, compute):
+        """The legacy read on the screen's rows from PG (pipeline.postgres_screen_reads, D-294); the projection file
+        answers only when that read fails."""
+        from pipeline import postgres_screen_reads
+        try:
+            return postgres_screen_reads.answer(projection.factory, screen, compute)
+        except Exception as exc:  # noqa: BLE001
+            log.warning('%s PG read failed (%s); answered from the projection', screen, type(exc).__name__)
+            return compute()
+
     @router.get('/api/spine/indices')
     def indices():
-        return get_indices()  # the legacy route would schedule a refresh once its cache expires
+        return from_pg('indices', get_indices)  # the legacy route would schedule a refresh once its cache expires
 
     @router.get('/api/spine/kr/movers')
     def kr_movers(force: bool = False):
@@ -229,11 +239,11 @@ def install(app, projection, *, database_host):
 
     @router.get('/api/spine/macro')
     def macro():
-        return get_macro()
+        return from_pg('macro', get_macro)
 
     @router.get('/api/spine/market-regime')
     def market_regime():
-        return get_regime()
+        return from_pg('regime', get_regime)
 
     @router.get('/api/spine/home/predictions/{event_ticker}', response_model=KalshiDetail)
     def prediction_detail(event_ticker: str = Path(..., pattern=r'^[A-Za-z0-9._-]{1,80}$'),
