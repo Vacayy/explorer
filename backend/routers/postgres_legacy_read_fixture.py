@@ -218,7 +218,7 @@ def install(app, projection, *, database_host):
     router = APIRouter()
 
     def from_pg(screen, compute):
-        """The legacy read on the screen's rows from PG (pipeline.postgres_screen_reads, D-294); the projection file
+        """The legacy read on the screen's rows from PG (pipeline.postgres_screen_reads, D-343); the projection file
         answers only when that read fails."""
         from pipeline import postgres_screen_reads
         try:

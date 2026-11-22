@@ -1,4 +1,4 @@
-"""Screen reads from PG without the projection file (D-294): the rows a legacy read reaches, taken from the ledger view
+"""Screen reads from PG without the projection file (D-343): the rows a legacy read reaches, taken from the ledger view
 into a private in-memory SQLite file per request, and the legacy function run on it unchanged.
 
 Each screen names its loads (SCREENS); `answer` runs one and logs `screen_timing` (PG reads, filling the file, the
@@ -159,7 +159,7 @@ SCREENS = {
 
 def prepare(pg):
     """A screen read's own connection: no JIT (a new connection per request would compile every view query again).
-    A session setting only; the database's stay as they are (D-294)."""
+    A session setting only; the database's stay as they are (D-343)."""
     pg.execute('SET jit = off')
 
 
