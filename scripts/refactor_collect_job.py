@@ -79,11 +79,12 @@ LOCAL_LEDGERS = {'llm_calls'}
 # (pipeline.postgres_sector_refresh; after the daily price collection and once after the cutover).
 SECTOR_REFRESH = 'sectorrefresh'
 # Discovery and analysis price history (scripts/refresh_market_history.py, D-177/D-220): its plan → collect → publish
-# unchanged, from the collected prices; staged in the trial volume (a stopped run resumes), published in its own
-# volume (architect #3 6942803616): only this job mounts it writable, the API reads it read-only
-# (ANALYSIS_MARKET_HISTORY), and /projection stays read-only for every job.
+# unchanged, planned from the prices in PG as the projection shows them (never the shared collector file), staged
+# beside the published file in its own volume (a stopped run resumes; architect #3 6942803616): only this job mounts it
+# writable, the API reads it read-only (ANALYSIS_MARKET_HISTORY), and /projection stays read-only for every job.
 MARKET_HISTORY = 'history'
 HISTORY_DESTINATION = Path(os.environ.get('HISTORY_DESTINATION', '/history/market_history.sqlite'))
+PROJECTION = Path(os.environ.get('PROJECTION_ROOT', '/projection'))
 HISTORY_SHRINK_LIMIT = 0.5
 # Peer monitor (scripts/refresh_peer_monitor.py): the collector unchanged on its own state volume (the MacBook's
 # logs/peer-monitor at T0 continues the observation chain), read as the legacy API does, then recorded and shown through
@@ -354,17 +355,50 @@ def _guarded_history_publish(folder, destination, *, publish):
         shutil.rmtree(staging, ignore_errors=True)
 
 
+def history_source(pg):
+    """The projection file the plan reads PG's prices from; refused while it does not show PG's latest trade date."""
+    import sqlite3
+    source = PROJECTION / json.loads((PROJECTION / 'current.json').read_text())['file']
+    with sqlite3.connect(f'file:{source}?mode=ro', uri=True) as db:
+        shown = db.execute('SELECT max(trade_date) FROM stock_prices').fetchone()[0]
+    latest = pg.execute("SELECT max(row_data->>'trade_date') FROM legacy_supplement_rows "
+                        "WHERE table_name='stock_prices'").fetchone()[0]
+    if latest and (shown or '') < latest:
+        raise trial.HeldBack(f'projection shows prices to {shown}, PG has {latest}: a later run plans from it')
+    return source
+
+
 def run_market_history():
     import functools
     import sqlite3
+    import tempfile
+    from contextlib import closing
+    import config
+    import database
     import refresh_market_history as refresh
-    refresh.SOURCE, refresh.DESTINATION = trial.WORK, HISTORY_DESTINATION
-    refresh.ROOT = trial.WORK.parent / 'market-history'
+    private = Path(tempfile.mkdtemp(prefix='history-')) / 'runs.db'  # the script's own run record, read back below
+    with closing(sqlite3.connect(private)) as db:
+        db.execute('CREATE TABLE job_runs (id INTEGER PRIMARY KEY, job TEXT, status TEXT, summary TEXT, '
+                   'duration_ms INTEGER, ran_at TEXT)')
+    config.DB_PATH = database.DB_PATH = private
+    refresh.SOURCE, refresh.DESTINATION = history_source(trial._pg()), HISTORY_DESTINATION
+    refresh.ROOT = HISTORY_DESTINATION.parent / 'market-history-work'
     refresh.history.publish = functools.partial(_guarded_history_publish, publish=refresh.history.publish)
+    plan = refresh.history.plan
+
+    def resumable_plan(source, folder, *args, **kwargs):
+        # every projection build is a new file: a staged folder of the same trading day resumes from the newer one
+        if (folder / 'staging.sqlite').exists():
+            with closing(sqlite3.connect(folder / 'staging.sqlite')) as stage, stage:
+                stage.execute("UPDATE metadata SET value=? WHERE key='source' AND value LIKE ?",
+                              (json.dumps(str(source.resolve())), json.dumps(f'{PROJECTION}/')[:-1] + '%'))
+        return plan(source, folder, *args, **kwargs)
+    refresh.history.plan = resumable_plan
     before = refresh._published()
     code = refresh.main()
-    summary = sqlite3.connect(trial.WORK).execute("SELECT status, summary FROM job_runs WHERE job='market_history' "
-                                                  'ORDER BY id DESC LIMIT 1').fetchone()
+    with closing(sqlite3.connect(private)) as db:
+        summary = db.execute("SELECT status, summary FROM job_runs WHERE job='market_history' "
+                             'ORDER BY id DESC LIMIT 1').fetchone()
     if code != 0:
         raise trial.HeldBack(summary[1] if summary else f'exit {code}')
     return {'before': before, 'after': refresh._published(), 'status': summary[0], 'summary': summary[1]}
@@ -1247,7 +1281,6 @@ def _run(label, pg, waited):
             outcome = f'failed: {type(exc).__name__}: {str(exc)[:200]}'
     elif label == MARKET_HISTORY:
         trial._instrument()
-        trial._point_legacy_at_work()
         try:
             entry['history'] = run_market_history()
             outcome = f"{'skipped' if entry['history']['status'] == 'skipped' else 'applied'}: {entry['history']['summary']}"

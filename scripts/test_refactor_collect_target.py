@@ -39,6 +39,48 @@ class CollectionTargetTest(unittest.TestCase):
                 sqlite3.connect(str(other)).execute('SELECT code FROM prices').fetchall()
                 self.assertEqual(trial.read, {'stocks'})
 
+    def test_history_plans_from_the_projection_not_the_collector_file(self):
+        import config
+        import database
+        import refresh_market_history as refresh
+        from pipeline.ops import record_run
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            projection, history = root / 'projection', root / 'history'
+            projection.mkdir(); history.mkdir()
+            (projection / 'current.json').write_text(json.dumps({'file': 'p2.db'}))
+            with sqlite3.connect(projection / 'p2.db') as db:
+                db.execute('CREATE TABLE stock_prices(stock_code TEXT, trade_date TEXT)')
+                db.execute("INSERT INTO stock_prices VALUES ('005930','2026-11-20')")
+            folder = history / 'market-history-work' / '2026-11-20'
+            folder.mkdir(parents=True)
+            with sqlite3.connect(folder / 'staging.sqlite') as db:  # a stopped run of the same day, planned from p1
+                db.execute('CREATE TABLE metadata (key TEXT PRIMARY KEY,value TEXT NOT NULL)')
+                db.execute("INSERT INTO metadata VALUES ('source', ?)", (json.dumps(str(projection / 'p1.db')),))
+            pg = types.SimpleNamespace(execute=lambda *_: types.SimpleNamespace(fetchone=lambda: ('2026-11-20',)))
+            seen = {}
+
+            def main():
+                seen['source'] = refresh.SOURCE
+                refresh.history.plan(refresh.SOURCE, refresh.ROOT / '2026-11-20')
+                with sqlite3.connect(folder / 'staging.sqlite') as db:
+                    seen['resumed'] = json.loads(db.execute("SELECT value FROM metadata WHERE key='source'").fetchone()[0])
+                record_run('market_history', 'ok', 'planned')
+                return 0
+            with patch.object(job, 'PROJECTION', projection), \
+                    patch.object(job, 'HISTORY_DESTINATION', history / 'market_history.sqlite'), \
+                    patch.object(trial, '_pg', return_value=pg), patch.object(refresh, 'main', main), \
+                    patch.object(refresh.history, 'plan', lambda source, folder: None), \
+                    patch.object(refresh.history, 'publish'), patch.object(refresh, '_published', return_value=(None, 0)), \
+                    patch.object(config, 'DB_PATH', config.DB_PATH), patch.object(database, 'DB_PATH', database.DB_PATH):
+                result = job.run_market_history()
+                self.assertEqual(seen['source'], projection / 'p2.db')
+                self.assertEqual(seen['resumed'], str((projection / 'p2.db').resolve()))
+                self.assertEqual((result['status'], result['summary']), ('ok', 'planned'))
+                behind = types.SimpleNamespace(execute=lambda *_: types.SimpleNamespace(fetchone=lambda: ('2026-11-23',)))
+                with self.assertRaisesRegex(trial.HeldBack, 'projection shows prices to 2026-11-20, PG has 2026-11-23'):
+                    job.history_source(behind)
+
     def test_image_trial_without_candidate_does_not_block_future_feed(self):
         from pipeline import image_reading
         with TemporaryDirectory() as directory:
