@@ -117,12 +117,17 @@ def refresh_document_meta():
     dsn, schema = os.environ['REFACTOR_POSTGRES_DSN'], os.environ['REFACTOR_FIXTURE_SCHEMA']
     try:
         with psycopg.connect(dsn, autocommit=True, options=f'-c search_path={schema} -c statement_timeout=60000') as pg:
-            done = meta.refresh(pg) if meta.exists(pg) else None
+            # One publication moves the version more than once (the document, then its enrichments and links): a
+            # refresh finished between them would leave the table one version behind until the next cycle, after a
+            # whole build (2 min on 2026-11-22). Refresh again while the version moved, at most three times.
+            for _ in range(3):
+                done = meta.refresh(pg) if meta.exists(pg) else None
+                if not done:
+                    break
+                print(json.dumps({'document_meta': done, 'at': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())}),
+                      flush=True)
     except Exception as exc:  # noqa: BLE001
         print(json.dumps({'document_meta_failed': f'{type(exc).__name__}: {str(exc)[:160]}'}), flush=True)
-        return
-    if done:
-        print(json.dumps({'document_meta': done, 'at': time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())}), flush=True)
 
 
 if __name__ == '__main__':
