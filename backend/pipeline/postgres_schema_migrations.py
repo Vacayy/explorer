@@ -20,7 +20,7 @@ def _column(table, column):
 def steps():
     """(version, name, present(conn), initialize(conn)) in application order."""
     from pipeline import postgres_identity_store, postgres_trial_quota, postgres_usage_gate
-    from pipeline import postgres_chain_reports, postgres_client_errors, postgres_collect_runs, postgres_legacy_supplement, postgres_live_tables, postgres_llm_calls, postgres_observe_ledgers, postgres_owner_legacy_fixture, postgres_study_owners
+    from pipeline import postgres_chain_reports, postgres_client_errors, postgres_collect_runs, postgres_legacy_supplement, postgres_live_tables, postgres_llm_calls, postgres_observe_ledgers, postgres_owner_legacy_fixture, postgres_study_owners, postgres_us_briefing
     from routers import postgres_member_thesis_fixture, postgres_questions_fixture
     return [
         (1, 'identity (principals, sessions)', _table('principals'), postgres_identity_store.initialize),
@@ -41,6 +41,7 @@ def steps():
          postgres_legacy_supplement.initialize_doc_scans),
         (16, 'image backfill record table', postgres_legacy_supplement.has_backfill_docs,
          postgres_legacy_supplement.initialize_backfill_docs),
+        (17, 'US briefing read indexes', postgres_us_briefing.has_read_indexes, postgres_us_briefing.initialize_read_indexes),
     ]
 
 

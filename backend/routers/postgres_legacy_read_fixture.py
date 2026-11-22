@@ -265,7 +265,14 @@ def install(app, projection, *, database_host):
     def us_briefing(force: bool = False, trade_date: str | None = None):
         if force:
             raise HTTPException(405, 'Collection is unavailable in the read-only preview')
-        return build_briefing(force=False, trade_date=trade_date)
+        # Read from PG (pipeline.postgres_us_briefing): the projection's answer without its file; the file answers
+        # only when that read fails.
+        from pipeline import postgres_us_briefing
+        try:
+            return postgres_us_briefing.build_briefing(projection.factory, trade_date=trade_date)
+        except Exception as exc:  # noqa: BLE001
+            log.warning('US briefing PG read failed (%s); answered from the projection', type(exc).__name__)
+            return build_briefing(force=False, trade_date=trade_date)
 
     # Fixed wrapper paths (e.g. /us/briefing) must win over legacy patterns like /us/{ticker}.
     wrappers = [route for route in router.routes]
