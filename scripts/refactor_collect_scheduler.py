@@ -32,6 +32,9 @@ sys.path.insert(0, str(ROOT / 'scripts'))  # refactor_collect_engine, refactor_c
 LOCK = Path(os.environ.get('COLLECT_SCHEDULER_LOCK', Path.home() / 'server-data/review/refactor-single/collect-scheduler.lock'))
 HOLD = Path(os.environ.get('COLLECT_SCHEDULER_HOLD', Path.home() / 'server-data/review/refactor-single/collect-scheduler.hold'))
 FEED_HOLD = Path(os.environ.get('COLLECT_FEED_HOLD', Path.home() / 'server-data/review/refactor-single/collect-feed.hold'))
+# The image recovery job (refactor_collect_job 'images') writes the feed's collector file but holds only itself: its failure
+# never stops the feed or the other jobs, and it does not run while the feed is held.
+IMAGES_HOLD = Path(os.environ.get('COLLECT_IMAGES_HOLD', Path.home() / 'server-data/review/refactor-single/collect-images.hold'))
 JOB_SECONDS = int(os.environ.get('COLLECT_JOB_SECONDS', '3600'))  # one job's time limit (the MacBook chain step limit)
 TICK_SECONDS = 20
 # Jobs on the isolated path (refactor_isolated_jobs.py): a failed source publishes nothing and holds only itself.
@@ -54,6 +57,8 @@ CHAIN_SEQUENCE = ('chain_macro_news', 'chain', 'chain_causal', 'chain_signals', 
 # Per-run host caps of the intake (PM 6938365215, 6940286658): ~30 Naver blog feeds, 32 Telegram channel pages,
 # 25 YouTube channel feeds plus captions, Telegram images read within the 30-minute image budget (numbered CDN hosts).
 JOB_HOST_CAPS = {'chain': 'rss.blog.naver.com=40,t.me=40,www.youtube.com=40,.telesco.pe=40',
+                 # one preview page per Telegram document, its CDN images, blog images on Naver's hosts
+                 'images': 't.me=20,.telesco.pe=40,.pstatic.net=60',
                  # A prior daily run used 21 Naver and 263 Yahoo requests; enforce a bounded production run.
                  'prices': 'polling.finance.naver.com=30,.finance.yahoo.com=300',
                  'pfintraday': 'polling.finance.naver.com=30',
@@ -152,6 +157,11 @@ def run_job(label, log=print):
     steps = (('chain',) if os.environ.get('COLLECT_CHAIN_INTAKE_ONLY') == '1' else CHAIN_SEQUENCE) if label == 'chain' else (label,)
     for step in steps:
         marker_path = FEED_HOLD if step == 'chain' and os.environ.get('COLLECT_FEED_WORK_VOLUME') else HOLD
+        if step == 'images':
+            if FEED_HOLD.exists():
+                log('images skipped: the feed is held')
+                return False
+            marker_path = IMAGES_HOLD
         marker_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with marker_path.open('x') as marker:
@@ -202,6 +212,8 @@ def run_job(label, log=print):
                 log('feed synchronization failed: collection held for reconciliation')
                 return False
         marker_path.unlink()
+    if label == 'chain' and os.environ.get('COLLECT_CHAIN_IMAGES') == '1':
+        run_job('images', log)  # after the intake, on its own hold: its outcome does not change the chain's
     return True
 
 

@@ -43,7 +43,8 @@ ISOLATED_JOBS = {'extseries', 'sectorbench', 'prices', 'pricefix', 'pricefactors
 # included): a Market Today slot is one call; the US briefing is the macro light (macro.interpret), the macro issues
 # (briefing.macro) and the synthesis (briefing.synthesize), one each (cached ones make none). Their network reads are optional (index values, macro series): the legacy job still
 # writes its result when every one fails, so 'no source answered' does not hold them back.
-TABLE_MODEL_CAPS = {'markettoday': 2, 'usbriefing': 6, 'trade': 6, 'usfund': 60,
+IMAGE_RECOVERY_IMAGES = int(os.environ.get('COLLECT_IMAGE_RECOVERY_IMAGES', '2'))
+TABLE_MODEL_CAPS = {'images': 2 * IMAGE_RECOVERY_IMAGES, 'markettoday': 2, 'usbriefing': 6, 'trade': 6, 'usfund': 60,
                     # Brokers' forecasts from feed documents: one call per document, at most 25 documents per run.
                     'expfeed': 25,
                     # US earnings-call momentum (pending the PM's figures): digests of new calls (up to 22), extraction
@@ -66,8 +67,12 @@ CHAIN_STEPS = {'chain_macro_news': (['scripts/fetch_macro_news.py'], None),  # h
                # Image readings the intake missed (budget, failures) put into existing documents' bodies: at most 10 calls
                # per run (PM 6940286658); documents change, so it publishes revisions (table path).
                'chain_images': (['scripts/backfill_images.py', '--calls', '10', '--minutes', '8'], 'image_backfill'),
-               'chain_digests': (['scripts/compute_digests.py'], None)}
-CHAIN_TABLE_STEPS = {'chain_macro_news', 'chain_actions', 'chain_images'}
+               'chain_digests': (['scripts/compute_digests.py'], None),
+               # Image readings the strict feed intake left out, on the feed's own collector file and its own budget
+               # (PM 2026-11-22): documents chosen by ID, Telegram images found again on the public preview page.
+               # Each reading is two engine attempts here (Claude is off in job containers; Codex answers).
+               'images': (['scripts/recover_images.py', '--images', str(IMAGE_RECOVERY_IMAGES)], 'image_recovery')}
+CHAIN_TABLE_STEPS = {'chain_macro_news', 'chain_actions', 'chain_images', 'images'}
 # Tables a collection job writes that are published as documents and graph rows (new ones, and revisions of existing
 # ones against the published projection), not replaced as supplement tables; the full-text index is derived.
 DOCUMENT_TABLES = {'raw_documents', 'enrichments', 'entity_links', 'entities', 'entity_keywords', 'entity_relations',

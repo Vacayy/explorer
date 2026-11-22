@@ -58,7 +58,7 @@ HISTORY_VOLUME = 'explorer-refactor-history'  # market_history.sqlite; the API a
 LOCAL_SOURCES = Path(os.environ.get('COLLECT_LOCAL_SOURCES', HOME / 'server-data/review/refactor-single/local-sources'))
 API_ENV = ('REFACTOR_POSTGRES_DSN', 'REFACTOR_TEST_DISPOSABLE', 'FASTEMBED_CACHE_PATH', 'CODEX_BIN', 'CODEX_HOME',
            'CODEX_FALLBACK_MODEL', 'HOME', 'ENRICH_ENGINE')
-FORWARDED = ('TRIAL_MAX_REQUESTS', 'TRIAL_HOST_CAPS', 'COLLECT_FEED_SOURCES', 'COLLECT_MAX_NEW_DOCS',
+FORWARDED = ('TRIAL_MAX_REQUESTS', 'TRIAL_HOST_CAPS', 'COLLECT_IMAGE_RECOVERY_IMAGES', 'COLLECT_IMAGE_RECOVERY_IDS', 'COLLECT_FEED_SOURCES', 'COLLECT_MAX_NEW_DOCS',
              'COLLECT_MAX_MODEL_CALLS', 'COLLECT_PROJECTION_WAIT', 'TRIAL_MAX_ERRORS', 'COLLECT_FEED_MINIMAL_BLOG',
              'COLLECT_FEED_KEYWORD_ONLY', 'COLLECT_FEED_STRICT_IMAGES', 'COLLECT_FEED_BATCH_MODEL',
              'COLLECT_FEED_YOUTUBE', 'COLLECT_FEED_TELEGRAM')
@@ -217,7 +217,7 @@ def run(argv, *, name=None, memory='2g', internet=True, limit=3600, extra_env=No
         raise ValueError('Telegram send credentials are missing')
     env += [f'{key}={value}' for key, value in found.items()]
     # the feed's own collector file: its intake, and its graph catch-up when detached from the shared file
-    volume = FEED_VOLUME if job in ('chain', 'feed-graph') and FEED_VOLUME else VOLUME
+    volume = FEED_VOLUME if job in ('chain', 'feed-graph', 'images') and FEED_VOLUME else VOLUME
     binds = [f'{ROOT}/backend:/app/backend:ro', f'{ROOT}/scripts:/app/scripts:ro',
              'explorer-refactor-single-projection:/projection:ro', f'{volume}:/trial',
              'explorer-public-codex-auth:/provider-auth', 'explorer-data-rehearsal_models:/models:ro',

@@ -11,13 +11,13 @@ _HEADERS = {
 }
 
 
-def scrape_channel(channel_name: str) -> list[dict]:
+def scrape_channel(channel_name: str, before: int | None = None) -> list[dict]:
     """Scrape latest messages from a public Telegram channel.
 
-    Uses t.me/s/{channel_name} preview page.
+    Uses t.me/s/{channel_name} preview page; `before` pages back to the messages older than that ID.
     Only works for PUBLIC channels with preview enabled.
     """
-    url = f"https://t.me/s/{channel_name}"
+    url = f"https://t.me/s/{channel_name}" + (f"?before={int(before)}" if before else "")
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=15, verify=False)
     except Exception:
