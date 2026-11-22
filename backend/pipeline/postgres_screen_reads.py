@@ -86,6 +86,16 @@ def kr_breadth(pg):
     should hold): days within 20 of the newest, the newest two days with at least half the most prices, up/down/flat
     between them. Dates compare as SQLite's text does; closes as SQLite's REAL."""
     from datetime import date, datetime, timedelta, timezone
+    # Only these reads tell the planner that random reads are cheap: at the default 4 it scans the 2.4 GB supplement
+    # table instead of the price date index (5.5 s against 0.02 s); the briefing's reads got slower with it (1.5 s).
+    pg.execute('SET random_page_cost = 1.1')
+    try:
+        return _kr_breadth(pg, date, datetime, timedelta, timezone)
+    finally:
+        pg.execute('RESET random_page_cost')
+
+
+def _kr_breadth(pg, date, datetime, timedelta, timezone):
     recent = (datetime.now(timezone.utc) - timedelta(days=60)).strftime('%Y-%m-%d')
     newest = None
     for since in (recent, None):  # the price date index (migration 19); the whole table only if nothing is recent
@@ -143,11 +153,9 @@ SCREENS = {
 
 
 def prepare(pg):
-    """A screen read's own connection: no JIT (a new connection per request would compile every view query again)
-    and the planner told that random reads are cheap here (with the default 4 it scans the 2.4 GB supplement table
-    instead of a date index: 5.5 s against 0.02 s). Session settings only; the database's stay as they are (D-294)."""
+    """A screen read's own connection: no JIT (a new connection per request would compile every view query again).
+    A session setting only; the database's stay as they are (D-294)."""
     pg.execute('SET jit = off')
-    pg.execute('SET random_page_cost = 1.1')
 
 
 def answer(factory, screen, compute):

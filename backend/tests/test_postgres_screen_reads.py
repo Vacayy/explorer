@@ -19,6 +19,8 @@ class ScreenReadsTest(unittest.TestCase):
 
         class PG:
             def execute(self, sql, args=()):
+                if sql.startswith(('SET ', 'RESET ')):
+                    return None
                 value = next(answers)
                 return type('R', (), {'fetchone': lambda s: value, 'fetchall': lambda s: value})()
         self.assertEqual(screens.kr_breadth(PG()), {'trade_date': '2026-11-20', 'prev_date': '2026-11-18', 'up': 5,
